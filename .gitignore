@@ -1,0 +1,6 @@
+# Godot
+.godot/
+*.tmp
+/android/
+# Captures locales
+/screenshots/local/

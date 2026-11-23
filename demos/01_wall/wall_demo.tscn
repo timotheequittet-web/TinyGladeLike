@@ -1,0 +1,164 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://demos/01_wall/wall_demo.gd" id="1_ki7bd"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_wall.gd" id="2_nqxjh"]
+[ext_resource type="Resource" path="res://addons/bastide/styles/presets/medieval_stone.tres" id="3_6c1yo"]
+[ext_resource type="Script" path="res://demos/common/free_camera.gd" id="4_k2jlw"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_uwa81"]
+sky_top_color = Color(0.36, 0.56, 0.82, 1)
+sky_horizon_color = Color(0.78, 0.82, 0.86, 1)
+ground_bottom_color = Color(0.3, 0.32, 0.28, 1)
+ground_horizon_color = Color(0.7, 0.72, 0.7, 1)
+
+[sub_resource type="Sky" id="Sky_17ame"]
+sky_material = SubResource("ProceduralSkyMaterial_uwa81")
+
+[sub_resource type="Environment" id="Environment_5ebku"]
+background_mode = 2
+sky = SubResource("Sky_17ame")
+ambient_light_source = 3
+ambient_light_energy = 0.9
+tonemap_mode = 4
+ssao_enabled = true
+ssao_radius = 1.2
+ssao_intensity = 2.5
+glow_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.75, 0.8, 0.86, 1)
+fog_density = 0.006
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_1nu5r"]
+albedo_color = Color(0.42, 0.55, 0.3, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_0knwg"]
+material = SubResource("StandardMaterial3D_1nu5r")
+size = Vector2(800, 800)
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_qvcbo"]
+
+[sub_resource type="Curve3D" id="Curve3D_3kp7t"]
+bake_interval = 0.25
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -22, 0, 12, 0, 0, 0, 0, 0, 0, -8, 0, 12),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[sub_resource type="Curve3D" id="Curve3D_eafin"]
+bake_interval = 0.25
+_data = {
+"points": PackedVector3Array(0, 0, 0, 5, 0, 0, -4, 0, 16, -4, 0, 3, 4, 0, -3, 8, 0, 10, -5, 0, 0, 0, 0, 0, 20, 0, 8),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_lsfmf"]
+closed = true
+bake_interval = 0.25
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -16, 0, -4, 0, 0, 0, 0, 0, 0, -4, 0, -2, 0, 0, 0, 0, 0, -5, -2, 0, -12, 5, 0, 0, 0, 0, 0, -10, 0, -20, 0, 0, 0, 0, 0, 0, -18, 0, -14),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0)
+}
+point_count = 5
+
+[sub_resource type="Curve3D" id="Curve3D_d8854"]
+closed = true
+bake_interval = 0.25
+_data = {
+"points": PackedVector3Array(-1.76736, 0, 0, 1.76736, 0, 0, 12, 0, -11.2, 0, 0, -1.76736, 0, 0, 1.76736, 15.2, 0, -8, 1.76736, 0, 0, -1.76736, 0, 0, 12, 0, -4.8, 0, 0, 1.76736, 0, 0, -1.76736, 8.8, 0, -8),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[node name="WallDemo" type="Node3D" unique_id=1506996448]
+script = ExtResource("1_ki7bd")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=506263230]
+environment = SubResource("Environment_5ebku")
+
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=904534691]
+transform = Transform3D(0.7880108, 0.41195798, -0.45752564, 0, 0.7431448, 0.6691306, 0.6156615, -0.5272821, 0.5856061, 0, 0, 0)
+light_color = Color(1, 0.93, 0.82, 1)
+light_energy = 1.25
+shadow_enabled = true
+directional_shadow_max_distance = 120.0
+
+[node name="Sol" type="StaticBody3D" parent="." unique_id=859716486]
+
+[node name="Mesh" type="MeshInstance3D" parent="Sol" unique_id=1675304423]
+mesh = SubResource("PlaneMesh_0knwg")
+
+[node name="Shape" type="CollisionShape3D" parent="Sol" unique_id=1875729243]
+shape = SubResource("WorldBoundaryShape3D_qvcbo")
+
+[node name="Murs" type="Node3D" parent="." unique_id=2056856648]
+
+[node name="MurDroit" type="Path3D" parent="Murs" unique_id=645734044]
+curve = SubResource("Curve3D_3kp7t")
+script = ExtResource("2_nqxjh")
+style = ExtResource("3_6c1yo")
+seed = 3
+
+[node name="MurCourbe" type="Path3D" parent="Murs" unique_id=843043540]
+curve = SubResource("Curve3D_eafin")
+script = ExtResource("2_nqxjh")
+style = ExtResource("3_6c1yo")
+seed = 11
+
+[node name="Enceinte" type="Path3D" parent="Murs" unique_id=2031919419]
+curve = SubResource("Curve3D_lsfmf")
+script = ExtResource("2_nqxjh")
+style = ExtResource("3_6c1yo")
+seed = 27
+
+[node name="TourRonde" type="Path3D" parent="Murs" unique_id=962843346]
+curve = SubResource("Curve3D_d8854")
+script = ExtResource("2_nqxjh")
+style = ExtResource("3_6c1yo")
+seed = 5
+height = 5.5
+
+[node name="Camera" type="Camera3D" parent="." unique_id=1881135987]
+transform = Transform3D(1, 0, 0, 0, 0.92718387, 0.3746066, 0, -0.3746066, 0.92718387, -6, 13, 34)
+fov = 60.0
+script = ExtResource("4_k2jlw")
+
+[node name="Interface" type="CanvasLayer" parent="." unique_id=1779476925]
+
+[node name="Panneau" type="PanelContainer" parent="Interface" unique_id=312507503]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 16.0
+
+[node name="VBox" type="VBoxContainer" parent="Interface/Panneau" unique_id=1690587920]
+layout_mode = 2
+
+[node name="Aide" type="Label" parent="Interface/Panneau/VBox" unique_id=1313740685]
+layout_mode = 2
+text = "Clic droit + souris : regarder   ZQSD : bouger   A/E : bas/haut   Maj : vite
+Clic gauche : lancer une boule (collisions)"
+
+[node name="Seed" type="HBoxContainer" parent="Interface/Panneau/VBox" unique_id=381237941]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="Interface/Panneau/VBox/Seed" unique_id=703885652]
+layout_mode = 2
+text = "Seed"
+
+[node name="SeedBox" type="SpinBox" parent="Interface/Panneau/VBox/Seed" unique_id=839314034]
+unique_name_in_owner = true
+layout_mode = 2
+max_value = 99999.0
+value = 1.0
+
+[node name="RandomButton" type="Button" parent="Interface/Panneau/VBox/Seed" unique_id=1095413393]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Seed aléatoire"
+
+[node name="Stats" type="Label" parent="Interface/Panneau/VBox" unique_id=2040752238]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13

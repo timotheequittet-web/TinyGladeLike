@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="BastideStyle" format=3]
+
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_style.gd" id="1_4i8uw"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_wall_style.gd" id="2_a4gn6"]
+
+[sub_resource type="Resource" id="Resource_esg65"]
+script = ExtResource("2_a4gn6")
+
+[resource]
+script = ExtResource("1_4i8uw")
+wall = SubResource("Resource_esg65")

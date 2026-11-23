@@ -39,6 +39,11 @@ func _init() -> void:
 	_test_japanese_wall()
 	_test_style_switch()
 	_test_triangle_budget()
+	# Étape 4 : construction en jeu.
+	_test_stroke_simplify()
+	_test_stroke_smooth_resample()
+	_test_stroke_rectangle()
+	_test_stroke_union()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -614,3 +619,75 @@ func _test_triangle_budget() -> void:
 	check(mr < 22000, "maison médiévale 10 × 6 m : %d triangles (< 22 000 ; ~33 000 à l'étape 2)" % mr)
 	check(jr < 24000, "maison japonaise 10 × 6 m : %d triangles (< 24 000)" % jr)
 	check(mu < 45000, "manoir en U de 3 étages : %d triangles (< 45 000 ; ~67 000 à l'étape 2)" % mu)
+
+
+# --- Étape 4 ---------------------------------------------------------------------------
+
+func _test_stroke_simplify() -> void:
+	print("Tracés à main levée : simplification")
+	var pts := PackedVector3Array()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	for i in 101:
+		pts.append(Vector3(i * 0.2, 0, rng.randf_range(-0.05, 0.05)))
+	var s := BastideStroke.simplify(pts, 0.2)
+	check(s.size() == 2, "une ligne tremblante devient un segment (%d points)" % s.size())
+	check(s[0] == pts[0] and s[1] == pts[100], "les extrémités sont gardées")
+	var corner := PackedVector3Array()
+	for i in 21:
+		corner.append(Vector3(i * 0.5, 0, 0))
+	for i in range(1, 21):
+		corner.append(Vector3(10, 0, i * 0.5))
+	var c := BastideStroke.simplify(corner, 0.2)
+	check(c.size() == 3 and c[1].is_equal_approx(Vector3(10, 0, 0)), "un angle droit garde son sommet")
+
+
+func _test_stroke_smooth_resample() -> void:
+	print("Tracés à main levée : lissage et rééchantillonnage")
+	var ctrl := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 10)])
+	var path := BastideStroke.wall_path(ctrl, false, 0.5)
+	check(path[0] == ctrl[0] and path[path.size() - 1] == ctrl[2], "un mur ouvert garde ses extrémités")
+	var max_gap := 0.0
+	var min_gap := 99.0
+	for i in range(1, path.size()):
+		var d := path[i].distance_to(path[i - 1])
+		max_gap = maxf(max_gap, d)
+		min_gap = minf(min_gap, d)
+	check(max_gap <= 0.63 and min_gap > 0.12, "points espacés régulièrement (%.2f à %.2f m)" % [min_gap, max_gap])
+	var far := 99.0
+	for p in path:
+		far = minf(far, p.distance_to(Vector3(10, 0, 0)))
+	check(far > 0.3, "l'angle est arrondi (passe à %.2f m du sommet)" % far)
+	var loop := BastideStroke.wall_path(PackedVector3Array([Vector3(0, 0, 0), Vector3(8, 0, 0), Vector3(8, 0, 8), Vector3(0, 0, 8)]), true, 0.5)
+	check(loop[0].distance_to(loop[loop.size() - 1]) <= 0.6 and loop[0].distance_to(loop[loop.size() - 1]) > 0.1,
+			"une enceinte fermée ne double pas son premier point")
+	var spec := BastideWallSpec.from_points(path, false, 3, 1.9)
+	var layout := BastideWallGenerator.generate(spec, load(JAPANESE_PATH))
+	check(not layout.is_empty(), "un tracé lissé donne un mur")
+
+
+func _test_stroke_rectangle() -> void:
+	print("Tracés à main levée : rectangle de maison")
+	var r := BastideStroke.rectangle(Vector3(0, 0, 0), Vector3(7.3, 0, 5.1), Vector3.RIGHT, 0.5, 4.0)
+	check(r.size() == 4, "4 coins")
+	check(is_equal_approx(r[0].distance_to(r[1]) * r[1].distance_to(r[2]), 7.5 * 5.0) or
+			is_equal_approx(r[0].distance_to(r[1]) * r[1].distance_to(r[2]), 5.0 * 7.5), "dimensions arrondies au demi-mètre")
+	var tiny := BastideStroke.rectangle(Vector3(0, 0, 0), Vector3(0.5, 0, -0.3), Vector3(1, 0, 1), 0.5, 4.0)
+	check(tiny[0].distance_to(tiny[1]) >= 3.99 and tiny[1].distance_to(tiny[2]) >= 3.99, "taille minimale respectée")
+	check(BastideStroke.signed_area(tiny) > 0.0 and BastideStroke.signed_area(r) > 0.0, "contour toujours dans le même sens")
+
+
+func _test_stroke_union() -> void:
+	print("Tracés à main levée : agrandir une maison")
+	var a := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])
+	var b := PackedVector3Array([Vector3(6, 0, 4), Vector3(10, 0, 4), Vector3(10, 0, 14), Vector3(6, 0, 14)])
+	check(BastideStroke.overlaps(a, b), "les deux rectangles se chevauchent")
+	var u := BastideStroke.union(a, b)
+	check(u.size() == 6, "l'union donne une maison en L (%d angles)" % u.size())
+	var far := PackedVector3Array([Vector3(30, 0, 0), Vector3(34, 0, 0), Vector3(34, 0, 4), Vector3(30, 0, 4)])
+	check(not BastideStroke.overlaps(a, far) and BastideStroke.union(a, far).is_empty(), "deux maisons éloignées ne fusionnent pas")
+	var pts := PackedVector3Array()
+	for p in u:
+		pts.append(p)
+	var layout := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(pts, 3), load(JAPANESE_PATH))
+	check(not layout.is_empty(), "la maison en L se génère")

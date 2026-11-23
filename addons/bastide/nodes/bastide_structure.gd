@@ -104,6 +104,37 @@ static func presets(refresh := false) -> Array:
 	return out
 
 
+## Apparence du mesh généré, gardée d'une régénération à l'autre (construction en
+## jeu : aperçu fantôme, surbrillance au survol). Sans effet sur le calcul.
+var mesh_transparency := 0.0:
+	set(value):
+		mesh_transparency = value
+		_apply_look()
+var mesh_overlay: Material:
+	set(value):
+		mesh_overlay = value
+		_apply_look()
+var mesh_casts_shadow := true:
+	set(value):
+		mesh_casts_shadow = value
+		_apply_look()
+
+
+## MeshInstance3D interne posé par la dernière génération (null avant la première).
+func get_mesh_instance() -> MeshInstance3D:
+	return get_node_or_null(NodePath(BastideResultApplier.MESH_NAME)) as MeshInstance3D
+
+
+func _apply_look() -> void:
+	var mi := get_mesh_instance()
+	if mi == null:
+		return
+	mi.transparency = mesh_transparency
+	mi.material_overlay = mesh_overlay
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh_casts_shadow and mesh_transparency < 0.5 \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 ## Statistiques de la dernière génération (triangles, durée…).
 var last_stats := {}
 
@@ -204,6 +235,7 @@ func _apply(result: BastideBuildResult) -> void:
 		last_stats = {}
 		return
 	BastideResultApplier.apply(self, result, generate_collision, collision_layer)
+	_apply_look()
 	last_stats = result.stats
 	rebuilt.emit(last_stats)
 

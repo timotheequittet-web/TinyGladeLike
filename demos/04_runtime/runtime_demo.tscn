@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://demos/04_runtime/runtime_demo.gd" id="1_q1mkd"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_orbit_camera.gd" id="2_1cge1"]
+[ext_resource type="Script" path="res://demos/04_runtime/scenery.gd" id="3_o2c6s"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_site.gd" id="4_uvevg"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_tool.gd" id="5_hbpmb"]
+[ext_resource type="Script" path="res://demos/04_runtime/ambience.gd" id="6_b38ro"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_a5b3o"]
+sky_top_color = Color(0.42, 0.6, 0.84, 1)
+sky_horizon_color = Color(0.93, 0.86, 0.78, 1)
+sky_curve = 0.12
+ground_bottom_color = Color(0.35, 0.38, 0.3, 1)
+ground_horizon_color = Color(0.86, 0.8, 0.7, 1)
+sun_angle_max = 20.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="Sky_uji84"]
+sky_material = SubResource("ProceduralSkyMaterial_a5b3o")
+
+[sub_resource type="Environment" id="Environment_6w2e4"]
+background_mode = 2
+sky = SubResource("Sky_uji84")
+ambient_light_source = 3
+ambient_light_energy = 0.85
+reflected_light_source = 2
+tonemap_mode = 4
+tonemap_exposure = 1.05
+ssao_enabled = true
+ssao_radius = 1.4
+ssao_intensity = 2.2
+ssil_enabled = true
+ssil_intensity = 0.6
+glow_enabled = true
+glow_intensity = 0.55
+glow_bloom = 0.04
+glow_hdr_threshold = 1.1
+fog_enabled = true
+fog_light_color = Color(0.9, 0.84, 0.76, 1)
+fog_sun_scatter = 0.25
+fog_density = 0.0045
+fog_aerial_perspective = 0.35
+adjustment_enabled = true
+adjustment_contrast = 1.03
+adjustment_saturation = 1.08
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_ndi6n"]
+
+[node name="RuntimeDemo" type="Node3D" unique_id=654492424]
+script = ExtResource("1_q1mkd")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1656111324]
+environment = SubResource("Environment_6w2e4")
+
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=885572978]
+transform = Transform3D(0.7880108, 0.3170891, -0.5277249, 0, 0.8571673, 0.5150381, 0.6156615, -0.40585557, 0.67545706, 0, 0, 0)
+light_color = Color(1, 0.87, 0.7, 1)
+light_energy = 1.55
+shadow_enabled = true
+shadow_blur = 1.6
+directional_shadow_max_distance = 150.0
+
+[node name="Camera" type="Camera3D" parent="." unique_id=1176139963]
+fov = 50.0
+script = ExtResource("2_1cge1")
+distance = 70.0
+max_distance = 75.0
+yaw_degrees = -25.0
+bounds_radius = 45.0
+
+[node name="Decor" type="Node3D" parent="." unique_id=702055423 node_paths=PackedStringArray("follow")]
+script = ExtResource("3_o2c6s")
+follow = NodePath("../Camera")
+
+[node name="Sol" type="StaticBody3D" parent="." unique_id=1415176689]
+collision_layer = 2
+
+[node name="Shape" type="CollisionShape3D" parent="Sol" unique_id=39160051]
+shape = SubResource("WorldBoundaryShape3D_ndi6n")
+
+[node name="Chantier" type="Node3D" parent="." unique_id=675482567]
+script = ExtResource("4_uvevg")
+
+[node name="Outil" type="Node3D" parent="." unique_id=1368821465 node_paths=PackedStringArray("site", "camera")]
+script = ExtResource("5_hbpmb")
+site = NodePath("../Chantier")
+camera = NodePath("../Camera")
+
+[node name="Ambiance" type="Node" parent="." unique_id=1625825568]
+script = ExtResource("6_b38ro")

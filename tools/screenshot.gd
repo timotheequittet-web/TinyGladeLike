@@ -22,11 +22,25 @@ var _building_views := [
 ]
 
 
+var _styles_views := [
+	["etape3_vue_generale", Vector3(0, 17, 44), Vector3(-21, 0, 0)],
+	["etape3_japonais", Vector3(22, 7, 31), Vector3(-12, 8, 0)],
+	["etape3_medieval", Vector3(-20, 7, 31), Vector3(-12, -8, 0)],
+	["etape3_ferme_japonaise", Vector3(40, 9, 8), Vector3(-18, 55, 0)],
+	["etape3_toits", Vector3(21, 22, 18), Vector3(-50, 0, 0)],
+	["etape3_porte", Vector3(15, 2.3, 18.5), Vector3(-4, 0, 0)],
+]
+
+
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out_dir: String = args[0] if args.size() > 0 else "/tmp/shots"
 	var scene_path: String = args[1] if args.size() > 1 else "res://demos/01_wall/wall_demo.tscn"
-	var views: Array = _building_views if scene_path.contains("02_building") else _wall_views
+	var views: Array = _wall_views
+	if scene_path.contains("02_building"):
+		views = _building_views
+	elif scene_path.contains("03_styles"):
+		views = _styles_views
 	var scene: Node = (load(scene_path) as PackedScene).instantiate()
 	root.add_child(scene)
 	current_scene = scene

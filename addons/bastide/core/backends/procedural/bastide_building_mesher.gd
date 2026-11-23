@@ -4,14 +4,19 @@ extends RefCounted
 ## Backend procédural des bâtiments : BastideBuildingLayout → BuildResult.
 ## Ne décide rien : ouvertures, couleurs et profils viennent du plan.
 ##
-## Murs enduits percés de vraies ouvertures (avec leur tableau), soubassement et
-## chaînes d'angle en pierre, bandeaux, encadrements, volets, jardinières, porte
-## cintrée à claveaux, puis le toit (BastideRoofMesher).
+## Murs enduits percés de vraies ouvertures (avec leur tableau), puis selon le style :
+## - maçonnerie : soubassement et chaînes d'angle en pierre, bandeaux, encadrements,
+##   fenêtres à croisillons, volets, jardinières, porte cintrée à claveaux ;
+## - ossature bois : poteaux et poutres apparents, bardage bas, fenêtres à
+##   claire-voie devant un écran de papier, porte coulissante, noren, auvent ;
+## puis le toit (BastideRoofMesher).
 
 const Kind := BastideBuildingLayout.OpeningKind
 const ROLE_BODY := &"body"
 const ROLE_ROOF := &"roof"
 const ROLE_GLASS := &"glass"
+const ROLE_WOOD := &"wood"
+const ROLE_PAPER := &"paper"
 const FOOTING := 0.3
 ## Le haut des murs monte un peu dans l'épaisseur du toit : aucune fente sous l'égout.
 const WALL_TOP_SINK := 0.05
@@ -24,25 +29,35 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 	var ws := style.get_wall_style()
 	var t0 := Time.get_ticks_usec()
 
+	var lattice := bs.window_kind == BastideBuildingStyle.WindowKind.LATTICE
+	var sliding := bs.door_kind == BastideBuildingStyle.DoorKind.SLIDING
 	for f: BastideBuildingLayout.Facade in layout.facades:
-		var grid := _grid(layout, f)
-		_plaster(mb, layout, f, grid[0], grid[1])
+		var grid := _grid(layout, f, bs)
+		_plaster(mb, layout, f, grid[0], grid[1], bs)
 		if bs.plinth_height > 0.0:
 			_plinth(mb, layout, f, bs, ws)
-		if bs.string_courses:
+		if layout.timber:
+			_timber_frame(mb, layout, f, bs)
+		elif bs.string_courses:
 			for k in range(1, layout.floors):
 				_band(mb, layout, f, layout.base_y + k * layout.floor_height - 0.07, 0.15, 0.05, ws.quoin_color, ws)
 		for o in f.openings:
 			match o.kind:
-				Kind.WINDOW:
-					_window(mb, layout, f, o, bs, ws, true, grid)
-				Kind.ATTIC:
-					_window(mb, layout, f, o, bs, ws, false, grid)
+				Kind.WINDOW, Kind.ATTIC:
+					if lattice:
+						_lattice_window(mb, layout, f, o, bs, grid, o.kind == Kind.WINDOW)
+					else:
+						_window(mb, layout, f, o, bs, ws, o.kind == Kind.WINDOW, grid)
 				Kind.DOOR:
-					_door(mb, layout, f, o, bs, ws, grid)
+					if sliding:
+						_sliding_door(mb, layout, f, o, bs, ws, grid)
+					else:
+						_door(mb, layout, f, o, bs, ws, grid)
 		if with_collision:
 			_facade_collision(result, layout, f)
-	if bs.quoins:
+	if layout.pent_roof:
+		_pent_roof(mb, result, layout, style, with_collision)
+	if bs.quoins and not layout.timber:
 		for i in layout.facades.size():
 			var f: BastideBuildingLayout.Facade = layout.facades[i]
 			if f.convex_start:
@@ -56,6 +71,8 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		ROLE_BODY: style.get_material(),
 		ROLE_ROOF: style.get_roof_material(),
 		ROLE_GLASS: style.get_glass_material(),
+		ROLE_WOOD: style.get_wood_material(),
+		ROLE_PAPER: style.get_paper_material(),
 	})
 	result.stats = {
 		"facades": layout.facades.size(),
@@ -63,11 +80,19 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		"doors": layout.count(Kind.DOOR),
 		"floors": layout.floors,
 		"triangles": mb.triangle_count,
-		"roof": "plat" if layout.roof.fallback == "plat" else ("pignons" if layout.roof.weights.has(0.0) else "croupes"),
+		"roof": _roof_name(layout.roof),
 		"notes": ", ".join(layout.notes),
 		"timings_us": {"walls": t_walls, "total": Time.get_ticks_usec() - t0},
 	}
 	return result
+
+
+static func _roof_name(roof: BastideRoofLayout) -> String:
+	if roof.fallback == "plat":
+		return "plat"
+	if not roof.gable_panels.is_empty():
+		return "irimoya"
+	return "pignons" if roof.weights.has(0.0) else "croupes"
 
 
 # --- Enduit ------------------------------------------------------------------------
@@ -76,7 +101,8 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 ## bords des ouvertures, plus le remplissage autour des arcs et le triangle du pignon.
 ## Tous les morceaux partagent exactement leurs sommets (aucune fente visible).
 static func _plaster(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
-		xs: PackedFloat32Array, ys: PackedFloat32Array) -> void:
+		xs: PackedFloat32Array, ys: PackedFloat32Array, bs: BastideBuildingStyle) -> void:
+	var wainscot_top := layout.base_y + bs.wainscot_height if bs.wainscot_height > 0.0 else -INF
 	var hint := f.out3()
 	for xi in xs.size() - 1:
 		for yi in ys.size() - 1:
@@ -93,6 +119,12 @@ static func _plaster(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: B
 				if cy > o.y0 and cy < o.y1 + o.arch:
 					skip = true
 			if skip:
+				continue
+			if cy < wainscot_top:
+				# Bardage bas : planches de bois sombre.
+				var wc := bs.wainscot_color
+				mb.add_quad(ROLE_WOOD, f.point(x0, y0), f.point(x1, y0), f.point(x1, y1), f.point(x0, y1), hint,
+					wc.darkened(0.15), wc.darkened(0.15), wc, wc)
 				continue
 			mb.add_quad(ROLE_BODY, f.point(x0, y0), f.point(x1, y0), f.point(x1, y1), f.point(x0, y1), hint,
 				_plaster_at(layout, f, y0), _plaster_at(layout, f, y0), _plaster_at(layout, f, y1), _plaster_at(layout, f, y1))
@@ -122,11 +154,13 @@ static func _plaster(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: B
 
 
 ## Lignes de la grille d'une façade : bords des ouvertures, axe des arcs.
-static func _grid(layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade) -> Array:
+static func _grid(layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade, bs: BastideBuildingStyle) -> Array:
 	var y_bot := layout.base_y - FOOTING
 	var y_top := layout.eave_y + WALL_TOP_SINK
 	var xs := PackedFloat32Array([0.0, f.length])
 	var ys := PackedFloat32Array([y_bot, y_top, layout.base_y + 1.6])
+	if bs.wainscot_height > 0.0:
+		ys.append(layout.base_y + bs.wainscot_height)
 	for o in f.openings:
 		if o.kind == Kind.ATTIC:
 			continue
@@ -270,7 +304,10 @@ static func _plinth(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Ba
 				var base := ws.stone_color.lerp(ws.stone_color_alt, BastideRng.randf_at(layout.seed, "plinth_alt", sk))
 				var c := base.lightened(tint) if tint > 0.0 else base.darkened(-tint)
 				var d := prot * (0.85 + BastideRng.randf_at(layout.seed, "plinth_d", sk) * 0.3)
-				_facade_block(mb, f, acc, acc + lengths[li], ya, yb, -0.1, d, c, mortar.lerp(c, 0.3), ws.stone_bevel)
+				# Le dessus d'un rang est caché par le rang suivant.
+				var hidden_top := BastideMeshBuilder.FACE_TOP if r < rows - 1 else 0
+				_facade_block(mb, f, acc, acc + lengths[li], ya, yb, -0.1, d, c, mortar.lerp(c, 0.3), ws.stone_bevel,
+					false, ROLE_BODY, hidden_top)
 				acc += lengths[li]
 
 
@@ -321,24 +358,41 @@ static func _quoins(mb: BastideMeshBuilder, layout: BastideBuildingLayout, prev:
 		var fa := [o_out, c2 + f.dir * la + f.out * prot, c2 + f.dir * la - f.out * depth, o_in]
 		# Bloc sur la façade précédente (fin de l'angle).
 		var fb := [c2 - prev.dir * lb + prev.out * prot, o_out, o_in, c2 - prev.dir * lb - prev.out * depth]
-		for quad in [fa, fb]:
+		# Faces cachées : dans le mur, contre l'autre bloc de l'angle, sous le bloc suivant.
+		# Le dessus n'est caché que si le bloc du dessus est plus long (rangs alternés).
+		var not_last := y1 < top - 1e-4
+		var top_a := BastideMeshBuilder.FACE_TOP if not_last and not long_side else 0
+		var top_b := BastideMeshBuilder.FACE_TOP if not_last and long_side else 0
+		var skips := [BastideMeshBuilder.FACE_BACK_23 | BastideMeshBuilder.FACE_SIDE_30 | top_a,
+			BastideMeshBuilder.FACE_BACK_23 | BastideMeshBuilder.FACE_SIDE_12 | top_b]
+		for qi in 2:
+			var quad: Array = [fa, fb][qi]
 			var k: Array = []
 			for yy in [y, y1]:
 				for p: Vector2 in quad:
 					k.append(Vector3(p.x, yy, p.y))
-			mb.add_block(ROLE_BODY, k, ws.stone_bevel * 0.8, 0.012, c, edge)
+			mb.add_block(ROLE_BODY, k, ws.stone_bevel * 0.8, 0.012, c, edge, false, skips[qi])
 		y = y1
 		row += 1
 
 
 ## Bloc collé à une façade : u0-u1 le long, y0-y1 en hauteur, d0-d1 en profondeur (vers l'extérieur).
 static func _facade_block(mb: BastideMeshBuilder, f: BastideBuildingLayout.Facade, u0: float, u1: float,
-		y0: float, y1: float, d0: float, d1: float, color: Color, edge: Color, bevel := 0.03, bottom := false) -> void:
+		y0: float, y1: float, d0: float, d1: float, color: Color, edge: Color, bevel := 0.03, bottom := false,
+		role := ROLE_BODY, extra_skip := 0) -> void:
 	var k := [
 		f.point(u0, y0, d0), f.point(u1, y0, d0), f.point(u1, y0, d1), f.point(u0, y0, d1),
 		f.point(u0, y1, d0), f.point(u1, y1, d0), f.point(u1, y1, d1), f.point(u0, y1, d1),
 	]
-	mb.add_block(ROLE_BODY, k, bevel, 0.006, color, edge, bottom)
+	# La face arrière d'un bloc qui part de l'intérieur du mur est cachée : pas émise.
+	var skip := (BastideMeshBuilder.FACE_FRONT_01 if d0 <= 0.0 else 0) | extra_skip
+	mb.add_block(role, k, bevel, 0.006, color, edge, bottom, skip)
+
+
+## Pièce de bois simple (sans biseau) collée à une façade.
+static func _wood_block(mb: BastideMeshBuilder, f: BastideBuildingLayout.Facade, u0: float, u1: float,
+		y0: float, y1: float, d0: float, d1: float, color: Color, extra_skip := 0, bottom := false) -> void:
+	_facade_block(mb, f, u0, u1, y0, y1, d0, d1, color, color, 0.0, bottom, ROLE_WOOD, extra_skip)
 
 
 # --- Fenêtres -----------------------------------------------------------------------
@@ -365,14 +419,14 @@ static func _window(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Ba
 	var fw := 0.055
 	var d0 := depth - 0.01
 	var d1 := depth + 0.035
-	_facade_block(mb, f, u0, u0 + fw, y0, y1, d0, d1, wood, wood.darkened(0.3), 0.008)
-	_facade_block(mb, f, u1 - fw, u1, y0, y1, d0, d1, wood, wood.darkened(0.3), 0.008)
-	_facade_block(mb, f, u0 + fw, u1 - fw, y1 - fw, y1, d0, d1, wood, wood.darkened(0.3), 0.008)
-	_facade_block(mb, f, u0 + fw, u1 - fw, y0, y0 + fw, d0, d1, wood, wood.darkened(0.3), 0.008)
+	_wood_block(mb, f, u0, u0 + fw, y0, y1, d0, d1, wood)
+	_wood_block(mb, f, u1 - fw, u1, y0, y1, d0, d1, wood)
+	_wood_block(mb, f, u0 + fw, u1 - fw, y1 - fw, y1, d0, d1, wood)
+	_wood_block(mb, f, u0 + fw, u1 - fw, y0, y0 + fw, d0, d1, wood)
 	var mid := (u0 + u1) * 0.5
-	_facade_block(mb, f, mid - 0.022, mid + 0.022, y0 + fw, y1 - fw, d0, d1 - 0.01, wood, wood.darkened(0.3), 0.006)
+	_wood_block(mb, f, mid - 0.022, mid + 0.022, y0 + fw, y1 - fw, d0, d1 - 0.01, wood)
 	var ty := lerpf(y0, y1, 0.62)
-	_facade_block(mb, f, u0 + fw, u1 - fw, ty - 0.022, ty + 0.022, d0, d1 - 0.01, wood, wood.darkened(0.3), 0.006)
+	_wood_block(mb, f, u0 + fw, u1 - fw, ty - 0.022, ty + 0.022, d0, d1 - 0.01, wood)
 	# Encadrement de pierre.
 	var jw := 0.13
 	var sp := 0.035
@@ -406,10 +460,10 @@ static func _shutters(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: 
 			var c := base.lightened(t) if t > 0.0 else base.darkened(-t)
 			var ba := lerpf(a, b, float(i) / boards) + 0.006
 			var bb := lerpf(a, b, float(i + 1) / boards) - 0.006
-			_facade_block(mb, f, ba, bb, y0, y1, 0.02, 0.055, c, c.darkened(0.25), 0.008)
+			_wood_block(mb, f, ba, bb, y0, y1, 0.02, 0.055, c)
 		var batten := base.darkened(0.15)
 		for yy in [lerpf(y0, y1, 0.18), lerpf(y0, y1, 0.82)]:
-			_facade_block(mb, f, a + 0.03, b - 0.03, yy - 0.04, yy + 0.04, 0.05, 0.075, batten, batten.darkened(0.2), 0.008)
+			_wood_block(mb, f, a + 0.03, b - 0.03, yy - 0.04, yy + 0.04, 0.05, 0.075, batten)
 
 
 static func _flower_box(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
@@ -418,7 +472,7 @@ static func _flower_box(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f
 	var u1: float = o.u1 + 0.02
 	var top: float = o.y0 - 0.11
 	var wood := bs.wood_color.lightened(0.08)
-	_facade_block(mb, f, u0, u1, top - 0.2, top, 0.1, 0.32, wood, wood.darkened(0.3), 0.012, true)
+	_facade_block(mb, f, u0, u1, top - 0.2, top, 0.1, 0.32, wood, wood.darkened(0.3), 0.012, true, ROLE_WOOD)
 	var leaf := Color(0.3, 0.45, 0.2)
 	_facade_block(mb, f, u0 + 0.03, u1 - 0.03, top, top + 0.07, 0.13, 0.29, leaf, leaf.darkened(0.3), 0.03)
 	if bs.flower_colors.is_empty():
@@ -490,12 +544,12 @@ static func _door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Bast
 				poly.append(top_line[k])
 		poly.append(Vector2(a, _line_at(top_line, a)))
 		for k in range(1, poly.size() - 1):
-			mb.add_tri(ROLE_BODY, f.point(poly[0].x, poly[0].y, depth), f.point(poly[k].x, poly[k].y, depth),
+			mb.add_tri(ROLE_WOOD, f.point(poly[0].x, poly[0].y, depth), f.point(poly[k].x, poly[k].y, depth),
 				f.point(poly[k + 1].x, poly[k + 1].y, depth), f.out3(), c.darkened(0.1), c, c)
 		if i > 0:
 			var seam := c.darkened(0.45)
 			var ta := _line_at(top_line, a) - 0.01
-			mb.add_quad(ROLE_BODY, f.point(a - 0.008, y0, depth + 0.003), f.point(a + 0.008, y0, depth + 0.003),
+			mb.add_quad(ROLE_WOOD, f.point(a - 0.008, y0, depth + 0.003), f.point(a + 0.008, y0, depth + 0.003),
 				f.point(a + 0.008, ta, depth + 0.003), f.point(a - 0.008, ta, depth + 0.003), f.out3(), seam, seam, seam, seam)
 	var iron := Color(0.14, 0.13, 0.13)
 	for yy in [y0 + 0.35, y0 + (y1 - y0) * 0.78]:
@@ -546,6 +600,249 @@ static func _line_at(line: PackedVector2Array, x: float) -> float:
 		if x >= p.x - 1e-5 and x <= q.x + 1e-5:
 			return lerpf(p.y, q.y, clampf((x - p.x) / maxf(q.x - p.x, 1e-6), 0.0, 1.0))
 	return line[0].y
+
+
+# --- Ossature bois --------------------------------------------------------------------
+
+## Morceaux [u0, u1] d'une poutre le long d'une façade, interrompus par les portes.
+static func _cut_at_doors(f: BastideBuildingLayout.Facade, span: Vector2, pad: float) -> Array:
+	var pieces: Array = [span]
+	for o in f.openings:
+		if o.kind != Kind.DOOR:
+			continue
+		var cut := Vector2(o.u0 - pad, o.u1 + pad)
+		var next: Array = []
+		for p: Vector2 in pieces:
+			if cut.y <= p.x or cut.x >= p.y:
+				next.append(p)
+				continue
+			if cut.x > p.x:
+				next.append(Vector2(p.x, cut.x))
+			if cut.y < p.y:
+				next.append(Vector2(cut.y, p.y))
+		pieces = next
+	return pieces
+
+
+## Poteaux d'angle et intermédiaires, lisse basse, poutres d'étage, sablière, et
+## lattes du bardage bas.
+static func _timber_frame(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
+		bs: BastideBuildingStyle) -> void:
+	var wood := bs.timber_color
+	var pw := bs.post_width
+	var bh := bs.beam_height
+	var y_sill := layout.base_y + bs.plinth_height
+	var y_eave := layout.eave_y
+	var tint := BastideRng.signed_at(layout.seed, "timber", f.index) * 0.04
+	wood = wood.lightened(tint) if tint > 0.0 else wood.darkened(-tint)
+	# Poteaux d'angle : un sur chaque façade, légèrement décalés pour ne pas se
+	# chevaucher face contre face dans l'angle.
+	var a0 := 0.05 if f.convex_start else 0.0
+	var c1 := 0.03 if f.convex_end else 0.0
+	_wood_block(mb, f, -a0, pw, y_sill, y_eave, -0.05, 0.04, wood)
+	_wood_block(mb, f, f.length - pw, f.length + c1, y_sill, y_eave, -0.05, 0.045, wood)
+	for u in f.posts:
+		var c := wood.darkened(BastideRng.randf_at(layout.seed, "post", BastideRng.combine(f.index, int(u * 10.0))) * 0.06)
+		_wood_block(mb, f, u - pw * 0.5, u + pw * 0.5, y_sill, y_eave, -0.05, 0.03, c)
+	# Poutres horizontales.
+	var beam := wood.darkened(0.06)
+	var span := Vector2(-0.06 if f.convex_start else 0.0, f.length + (0.06 if f.convex_end else 0.0))
+	for piece: Vector2 in _cut_at_doors(f, span, 0.0):
+		_wood_block(mb, f, piece.x, piece.y, y_sill, y_sill + bh, -0.05, 0.05, beam)
+	for k in range(1, layout.floors):
+		var y := layout.base_y + k * layout.floor_height
+		_wood_block(mb, f, span.x, span.y, y - bh * 0.5, y + bh * 0.5, -0.05, 0.055, beam)
+	_wood_block(mb, f, span.x, span.y, y_eave - bh * 1.2, y_eave + WALL_TOP_SINK, -0.05, 0.06, beam.darkened(0.08))
+	# Bardage bas : lattes verticales et lisse haute.
+	if bs.wainscot_height > 0.0:
+		var top := layout.base_y + bs.wainscot_height
+		var batten := bs.wainscot_color.lightened(0.08)
+		for piece: Vector2 in _cut_at_doors(f, Vector2(pw, f.length - pw), 0.02):
+			var count := maxi(1, roundi((piece.y - piece.x) / 0.32))
+			for i in range(1, count):
+				var u := lerpf(piece.x, piece.y, float(i) / count)
+				var on_post := false
+				for p in f.posts:
+					on_post = on_post or absf(u - p) < pw * 0.5 + 0.03
+				if not on_post:
+					mb.add_quad(ROLE_WOOD, f.point(u - 0.018, y_sill + bh, 0.012), f.point(u + 0.018, y_sill + bh, 0.012),
+						f.point(u + 0.018, top, 0.012), f.point(u - 0.018, top, 0.012), f.out3(), batten, batten, batten, batten)
+			_wood_block(mb, f, piece.x, piece.y, top - 0.03, top + 0.04, -0.05, 0.035, beam)
+
+
+## Fenêtre à claire-voie : cadre de bois, lattes verticales devant un écran de papier
+## quadrillé (shoji). `real_hole` : percée dans le mur (sinon posée sur un pignon).
+static func _lattice_window(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
+		o: Dictionary, bs: BastideBuildingStyle, grid: Array, real_hole: bool) -> void:
+	var u0: float = o.u0
+	var u1: float = o.u1
+	var y0: float = o.y0
+	var y1: float = o.y1
+	var wood := bs.timber_color.lightened(0.06)
+	var depth := -0.12 if real_hole else 0.01
+	if real_hole:
+		_reveals(mb, f, u0, u1, y0, y1, depth, wood.darkened(0.2), grid, true)
+	# Papier et son quadrillage.
+	var paper := bs.paper_color
+	var pd := depth + 0.005
+	mb.add_quad(ROLE_PAPER, f.point(u0, y0, pd), f.point(u1, y0, pd), f.point(u1, y1, pd), f.point(u0, y1, pd),
+		f.out3(), paper.darkened(0.05), paper.darkened(0.05), paper, paper)
+	var kumiko := wood.lightened(0.15)
+	var gd := pd + 0.006
+	var cols := maxi(2, roundi((u1 - u0) / 0.3))
+	var rows := maxi(2, roundi((y1 - y0) / 0.3))
+	for i in range(1, cols):
+		var u := lerpf(u0, u1, float(i) / cols)
+		mb.add_quad(ROLE_WOOD, f.point(u - 0.01, y0, gd), f.point(u + 0.01, y0, gd), f.point(u + 0.01, y1, gd),
+			f.point(u - 0.01, y1, gd), f.out3(), kumiko, kumiko, kumiko, kumiko)
+	for i in range(1, rows):
+		var y := lerpf(y0, y1, float(i) / rows)
+		mb.add_quad(ROLE_WOOD, f.point(u0, y - 0.01, gd), f.point(u1, y - 0.01, gd), f.point(u1, y + 0.01, gd),
+			f.point(u0, y + 0.01, gd), f.out3(), kumiko, kumiko, kumiko, kumiko)
+	# Cadre.
+	var fw := 0.07
+	var d1 := 0.035
+	_wood_block(mb, f, u0 - fw, u0, y0 - fw, y1 + fw, depth, d1, wood)
+	_wood_block(mb, f, u1, u1 + fw, y0 - fw, y1 + fw, depth, d1, wood)
+	_wood_block(mb, f, u0, u1, y1, y1 + fw, depth, d1, wood)
+	_wood_block(mb, f, u0 - fw - 0.04, u1 + fw + 0.04, y0 - fw, y0, depth, d1 + 0.03, wood.darkened(0.08), 0, true)
+	# Lattes verticales (le dessus et le dessous touchent le cadre : non émis).
+	var bar := wood.darkened(0.1)
+	var count := maxi(3, roundi((u1 - u0) / bs.lattice_spacing))
+	for i in range(1, count):
+		var u := lerpf(u0, u1, float(i) / count)
+		_wood_block(mb, f, u - 0.018, u + 0.018, y0, y1, depth + 0.04, 0.02, bar, BastideMeshBuilder.FACE_TOP)
+
+
+## Porte coulissante : deux vantaux décalés (bas en planches, haut à claire-voie sur
+## papier), linteau de bois, pierre de seuil et, selon la seed, un noren.
+static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
+		o: Dictionary, bs: BastideBuildingStyle, ws: BastideWallStyle, grid: Array) -> void:
+	var u0: float = o.u0
+	var u1: float = o.u1
+	var y0: float = o.y0
+	var y1: float = o.y1
+	var wood := bs.timber_color.lightened(0.08)
+	var depth := -0.16
+	_reveals(mb, f, u0, u1, y0, y1, depth, wood.darkened(0.25), grid, false)
+	_reveal_h(mb, f, _between(grid[0], u0, u1), y1, depth, Vector3.DOWN, wood.darkened(0.3), wood.darkened(0.45))
+	# Fond sombre (entrée).
+	var dark := Color(0.06, 0.05, 0.045)
+	mb.add_quad(ROLE_BODY, f.point(u0, y0, depth - 0.03), f.point(u1, y0, depth - 0.03), f.point(u1, y1, depth - 0.03),
+		f.point(u0, y1, depth - 0.03), f.out3(), dark, dark, dark, dark)
+	# Deux vantaux : le gauche fermé, le droit à moitié ouvert (glissé derrière).
+	var w := (u1 - u0) * 0.5
+	var leaves := [[u0, u0 + w + 0.03, depth + 0.07], [u0 + w * 1.55, u1, depth + 0.035]]
+	var paper := bs.paper_color
+	var low := y0 + minf(0.75, (y1 - y0) * 0.38)
+	for leaf: Array in leaves:
+		var a: float = leaf[0]
+		var b: float = leaf[1]
+		var d: float = leaf[2]
+		var fw := 0.06
+		# Planches du bas.
+		var plank := bs.door_color
+		_wood_block(mb, f, a + fw, b - fw, y0 + fw, low, d - 0.02, d, plank.darkened(0.1))
+		for i in range(1, 4):
+			var u := lerpf(a + fw, b - fw, float(i) / 4.0)
+			mb.add_quad(ROLE_WOOD, f.point(u - 0.006, y0 + fw, d + 0.002), f.point(u + 0.006, y0 + fw, d + 0.002),
+				f.point(u + 0.006, low, d + 0.002), f.point(u - 0.006, low, d + 0.002), f.out3(),
+				plank.darkened(0.4), plank.darkened(0.4), plank.darkened(0.4), plank.darkened(0.4))
+		# Haut : papier et lattes.
+		mb.add_quad(ROLE_PAPER, f.point(a + fw, low, d - 0.015), f.point(b - fw, low, d - 0.015),
+			f.point(b - fw, y1 - fw, d - 0.015), f.point(a + fw, y1 - fw, d - 0.015), f.out3(), paper.darkened(0.08), paper.darkened(0.08), paper, paper)
+		var bars := maxi(3, roundi((b - a - 2.0 * fw) / bs.lattice_spacing))
+		for i in range(1, bars):
+			var u := lerpf(a + fw, b - fw, float(i) / bars)
+			_wood_block(mb, f, u - 0.014, u + 0.014, low, y1 - fw, d - 0.012, d, wood.darkened(0.12), BastideMeshBuilder.FACE_TOP)
+		# Cadre du vantail.
+		_wood_block(mb, f, a, a + fw, y0, y1, d - 0.025, d + 0.01, wood)
+		_wood_block(mb, f, b - fw, b, y0, y1, d - 0.025, d + 0.01, wood)
+		_wood_block(mb, f, a + fw, b - fw, y1 - fw, y1, d - 0.025, d + 0.01, wood)
+		_wood_block(mb, f, a + fw, b - fw, y0, y0 + fw, d - 0.025, d + 0.01, wood)
+		_wood_block(mb, f, a + fw, b - fw, low - 0.025, low + 0.025, d - 0.02, d + 0.008, wood)
+	# Linteau et montants.
+	var beam := bs.timber_color
+	_wood_block(mb, f, u0 - 0.14, u1 + 0.14, y1, y1 + 0.16, -0.05, 0.06, beam)
+	_wood_block(mb, f, u0 - 0.12, u0, y0, y1, -0.05, 0.05, beam)
+	_wood_block(mb, f, u1, u1 + 0.12, y0, y1, -0.05, 0.05, beam)
+	# Pierre de seuil.
+	var stone := ws.stone_color.darkened(0.05)
+	_facade_block(mb, f, u0 + 0.1, u1 - 0.1, y0 - 0.15, y0 + 0.12, 0.05, 0.6, stone, ws.mortar_color.lerp(stone, 0.4),
+		0.04, false)
+	# Noren : trois pans de tissu suspendus sous le linteau, un peu écartés du mur.
+	if layout.noren_color.a > 0.0:
+		var cloth := layout.noren_color
+		var top := y1 + 0.08
+		var drop := minf(0.65, (y1 - y0) * 0.33)
+		var dd := 0.12
+		_wood_block(mb, f, u0 - 0.05, u1 + 0.05, top - 0.03, top + 0.02, dd - 0.02, dd + 0.02, beam.darkened(0.2))
+		var panels := 3
+		for i in panels:
+			var a := lerpf(u0 - 0.02, u1 + 0.02, float(i) / panels) + 0.012
+			var b := lerpf(u0 - 0.02, u1 + 0.02, float(i + 1) / panels) - 0.012
+			var sway := BastideRng.signed_at(layout.seed, "noren", BastideRng.combine(f.index, i)) * 0.03
+			var c := cloth.darkened(0.08 * i)
+			var p0 := f.point(a, top - 0.03, dd)
+			var p1 := f.point(b, top - 0.03, dd)
+			var p2 := f.point(b, top - drop, dd + 0.03 + sway)
+			var p3 := f.point(a, top - drop, dd + 0.03 + sway)
+			mb.add_quad(ROLE_BODY, p0, p1, p2, p3, f.out3(), c, c, c.darkened(0.12), c.darkened(0.12))
+			mb.add_quad(ROLE_BODY, p0, p1, p2, p3, -f.out3(), c.darkened(0.3), c.darkened(0.3), c.darkened(0.4), c.darkened(0.4))
+			# Motif clair au centre du rideau.
+			if i == panels / 2:
+				var mu := (a + b) * 0.5
+				var my := top - drop * 0.5
+				var mc := cloth.lerp(Color(0.95, 0.93, 0.86), 0.85)
+				var ms := minf(b - a, drop) * 0.22
+				mb.add_quad(ROLE_BODY, f.point(mu - ms, my - ms, dd + 0.018 + sway * 0.5), f.point(mu + ms, my - ms, dd + 0.018 + sway * 0.5),
+					f.point(mu + ms, my + ms, dd + 0.012 + sway * 0.3), f.point(mu - ms, my + ms, dd + 0.012 + sway * 0.3),
+					f.out3(), mc, mc, mc, mc)
+
+
+## Auvent de tuiles (hisashi) entre le rez-de-chaussée et l'étage, tout autour.
+static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideBuildingLayout,
+		style: BastideStyle, with_collision: bool) -> void:
+	var bs := style.get_building_style()
+	var rs := style.get_roof_style()
+	var fp := layout.footprint
+	var n := fp.size()
+	var depth := bs.pent_depth
+	var outer := BastidePolygon.offset(fp, -depth, 3.0)
+	if BastidePolygon.self_intersects(outer):
+		return
+	var tan_p := tan(deg_to_rad(bs.pent_pitch))
+	var y_top := layout.base_y + layout.floor_height + 0.32
+	var y_bot := y_top - depth * tan_p
+	var tp := BastideRoofMesher.TileParams.from_style(rs, bs.pent_pitch, y_bot, layout.roof.color)
+	var under := rs.underside_color
+	var thick := 0.08
+	for i in n:
+		var j := (i + 1) % n
+		var f: BastideBuildingLayout.Facade = layout.facades[i]
+		var out := f.out3()
+		var poly := PackedVector3Array([
+			Vector3(outer[i].x, y_bot, outer[i].y), Vector3(outer[j].x, y_bot, outer[j].y),
+			Vector3(fp[j].x, y_top, fp[j].y), Vector3(fp[i].x, y_top, fp[i].y)])
+		var nrm := (out * tan_p + Vector3.UP).normalized()
+		BastideRoofMesher.tile_polygon(mb, poly, nrm, f.dir3(), -out, tp, layout.seed, 1000 + i)
+		var low := PackedVector3Array()
+		for p in poly:
+			low.append(p - Vector3(0.0, thick, 0.0))
+		for t in range(1, 3):
+			mb.add_tri(ROLE_WOOD, low[0], low[t], low[t + 1], Vector3.DOWN, under, under, under)
+		mb.add_quad(ROLE_WOOD, poly[0], poly[1], low[1], low[0], out, under, under, under, under)
+		if with_collision:
+			for t in range(1, 3):
+				col.collision_faces.append(poly[0])
+				col.collision_faces.append(poly[t])
+				col.collision_faces.append(poly[t + 1])
+		# Arêtier (angle saillant) ou noue (angle rentrant) entre deux pans.
+		var arc := {"a": Vector3(outer[i].x, y_bot, outer[i].y), "b": Vector3(fp[i].x, y_top, fp[i].y)}
+		if BastidePolygon.is_convex_vertex(fp, i):
+			BastideRoofMesher.stacked_ridge(mb, arc.a, arc.b, tan_p, rs.ridge_color, 0.12, 0.09, false)
+		else:
+			BastideRoofMesher.valley(mb, arc.a, arc.b, tan_p, rs.ridge_color.darkened(0.1), 0.0, false)
 
 
 # --- Collisions --------------------------------------------------------------------------

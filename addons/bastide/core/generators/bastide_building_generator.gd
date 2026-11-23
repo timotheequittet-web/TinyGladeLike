@@ -46,6 +46,11 @@ static func generate(spec: BastideBuildingSpec, style: BastideStyle) -> BastideB
 		var si := int(BastideRng.randf_at(spec.seed, "shutter_color") * bs.shutter_colors.size()) % bs.shutter_colors.size()
 		layout.shutter_color = bs.shutter_colors[si]
 	var has_shutters := BastideRng.randf_at(spec.seed, "shutters") < bs.shutter_chance
+	if not bs.noren_colors.is_empty():
+		var ni := int(BastideRng.randf_at(spec.seed, "noren") * bs.noren_colors.size()) % bs.noren_colors.size()
+		layout.noren_color = bs.noren_colors[ni]
+	layout.timber = bs.facade_kind == BastideBuildingStyle.FacadeKind.TIMBER
+	layout.pent_roof = bs.pent_roof and layout.floors >= 2
 
 	# --- Façades -------------------------------------------------------------------
 	var n := fp.size()
@@ -93,7 +98,44 @@ static func generate(spec: BastideBuildingSpec, style: BastideStyle) -> BastideB
 	# --- Ouvertures ----------------------------------------------------------------
 	for f: BastideBuildingLayout.Facade in layout.facades:
 		_place_openings(f, layout, bs, f.index == door_facade, has_shutters, spec.seed)
+		if layout.timber:
+			_place_posts(f, bs)
 	return layout
+
+
+## Ossature bois : un poteau entre deux travées, et des poteaux réguliers (environ
+## un « ken », 1,8 m) sur les façades aveugles. Jamais à travers une ouverture ni
+## collé à un angle.
+static func _place_posts(f: BastideBuildingLayout.Facade, bs: BastideBuildingStyle) -> void:
+	var cand := PackedFloat32Array()
+	var windows: Array = f.openings.filter(func(o): return o.kind != Kind.ATTIC)
+	if windows.is_empty():
+		var count := maxi(1, roundi(f.length / 1.8))
+		for i in range(1, count):
+			cand.append(f.length * i / count)
+	else:
+		var spans: Array = []
+		for o in windows:
+			spans.append(Vector2(o.u0, o.u1))
+		spans.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+		# Entre deux ouvertures voisines, et entre l'angle et la première/dernière.
+		var prev := 0.0
+		for sp: Vector2 in spans:
+			if sp.x - prev > 0.9:
+				cand.append((prev + sp.x) * 0.5 if prev > 0.0 else sp.x - bs.post_width * 0.5 - 0.12)
+			prev = maxf(prev, sp.y)
+		if f.length - prev > 0.9:
+			cand.append(prev + bs.post_width * 0.5 + 0.12)
+	var half := bs.post_width * 0.5
+	for u in cand:
+		if u < half + 0.45 or u > f.length - half - 0.45:
+			continue
+		var clear := true
+		for o in f.openings:
+			if u + half > o.u0 - 0.03 and u - half < o.u1 + 0.03:
+				clear = false
+		if clear and (f.posts.is_empty() or u - f.posts[f.posts.size() - 1] > bs.post_width * 2.0):
+			f.posts.append(u)
 
 
 ## Haut du mur le long d'une façade : le dessous du toit, jamais sous l'égout.

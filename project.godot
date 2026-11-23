@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="TinyGladeLike (démo Bastide)"
-run/main_scene="res://demos/02_building/building_demo.tscn"
+run/main_scene="res://demos/03_styles/styles_demo.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [display]

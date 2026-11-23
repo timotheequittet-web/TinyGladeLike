@@ -2,9 +2,11 @@
 
 **Bastide** est un addon Godot 4 de construction procédurale « toujours belle », inspiré de Tiny Glade : on trace grossièrement, des règles corrigent et décorent.
 
-![Démo de l'étape 2](docs/captures/etape2_vue_generale.jpg)
+![Démo de l'étape 3 : le même hameau en médiéval et en japonais](docs/captures/etape3_vue_generale.jpg)
 
-État : **étape 2 terminée** (bâtiments sur contour avec toits calculés), après l'étape 1 (murs procéduraux sur Path3D). Prochaines étapes : styles interchangeables (médiéval / japonais), puis mode kit. L'architecture complète est décrite dans le document de conception du projet.
+État : **étape 3 terminée** (styles interchangeables : « médiéval pierre » et « japonais traditionnel bois »), après l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaines étapes : décor japonais (torii, sol, plantes, petits murets), puis mode kit. L'architecture complète est décrite dans le document de conception du projet.
+
+![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
 Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 
@@ -12,12 +14,12 @@ Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 
 1. Sur GitHub, bouton vert **Code > Download ZIP**, puis décompresse le dossier où tu veux.
 2. Ouvre Godot 4.7.2, clique sur **Importer**, et choisis le fichier `project.godot` du dossier décompressé, puis **Importer et modifier**.
-3. Appuie sur **F5** : la démo des bâtiments (`demos/02_building/building_demo.tscn`) se lance. La démo des murs est dans `demos/01_wall/wall_demo.tscn` (ouvre-la puis **F6**).
+3. Appuie sur **F5** : la démo des styles (`demos/03_styles/styles_demo.tscn`) se lance, avec le même hameau à gauche en médiéval et à droite en japonais. Les démos précédentes sont dans `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs) : ouvre-les puis **F6**.
    - Clic droit maintenu + souris : regarder
    - ZQSD (ou WASD) : se déplacer, A/E : descendre/monter, Maj : plus vite
    - Clic gauche : lancer une boule pour tester les collisions
-   - En haut à gauche : **Seed** (variation de tous les bâtiments), **Étages**, **Toits** (croupes ou pignons)
-4. **Dans l'éditeur** : ouvre `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
+   - En haut à gauche (démo des styles) : **Côte à côte**, **Tout médiéval**, **Tout japonais**, **Inverser** changent le style de chaque hameau d'un coup ; **Seed** fait varier les deux hameaux pareil
+4. **Dans l'éditeur** : ouvre `styles_demo.tscn` ou `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
 
 ## Utiliser les murs
 
@@ -36,11 +38,41 @@ Les meshes générés ne sont pas enregistrés dans la scène : le `.tscn` ne co
 - **Ajouter un bâtiment** : ajoute un nœud `BastideBuilding` (il hérite de `Path3D`). Une maison rectangulaire apparaît tout de suite.
 - **Changer la forme** : chaque point de la courbe est un angle de la maison. Déplace les points, ajoute-en (outil « Ajouter un point ») ou supprimes-en. Le contour est toujours fermé et les poignées de courbe sont ignorées (murs droits). Les formes en L, en U, en T, en croix ou irrégulières marchent.
 - **Étages** : `floors` (0 = valeur du style, 2 par défaut).
-- **Toit** : `roof` = Style, Croupes (des pans de tous les côtés) ou Pignons (les bouts étroits des ailes deviennent des murs triangulaires).
+- **Toit** : `roof` = Style, Croupes (des pans de tous les côtés), Pignons (les bouts étroits des ailes deviennent des murs triangulaires) ou Irimoya (croupe en bas, petit pignon de bois en haut).
 - **Porte** : automatique (au milieu de la plus longue façade sous le toit), ou choisis le côté avec `door_facade` (0 = du premier au deuxième point).
 - **Variation** : `seed` ou le bouton **Nouvelle seed** : couleur du toit et des volets, teinte de l'enduit, jardinières, cheminée, pierres. Même seed = même maison.
-- **Style** : les réglages des bâtiments et des toits sont dans le même fichier `medieval_stone.tres`, volets **Building** (étages, épaisseur, fenêtres, porte, couleurs) et **Roof** (pente, débord, tuiles, couleurs possibles, cheminée).
+- **Style** : voir « Changer de style » plus bas. Les réglages des bâtiments et des toits sont dans le fichier du style, volets **Building** (construction, étages, fenêtres, porte, ossature bois, couleurs) et **Roof** (forme, pente, débord, tuiles, faîtage, couleurs possibles, cheminée).
 - **Collisions** : murs, pignons, toit et cheminée (désactivables dans le groupe « Collisions »).
+
+## Changer de style
+
+Un style est une Resource (`BastideStyle`, fichier `.tres`) qui décrit **tout** : proportions, couleurs, matériaux et règles (créneaux ou petit toit de tuiles, fenêtres à croisillons ou à claire-voie, porte cintrée ou coulissante, toit à pignons ou irimoya…). Changer le style d'un nœud change donc son architecture, pas seulement ses couleurs.
+
+- **En un clic** : sélectionne un mur ou un bâtiment (ou plusieurs à la fois), puis dans l'inspecteur choisis un style dans la liste **Style Preset** de l'inspecteur. Tout style `.tres` rangé dans `addons/bastide/styles/presets/` apparaît dans cette liste.
+- **Glisser-déposer** : tu peux aussi glisser un `.tres` de style depuis le système de fichiers sur la propriété `style`.
+- **Créer ton style** : duplique `japanese_wood.tres` (clic droit > Dupliquer) dans le dossier des presets, renomme-le (`display_name`), puis règle ses volets **Wall**, **Building**, **Roof** et **Garden**.
+- **Depuis du code** : `node.style = load("res://addons/bastide/styles/presets/japanese_wood.tres")`.
+
+Les deux styles livrés :
+
+| | Médiéval pierre | Japonais traditionnel bois |
+|---|---|---|
+| Murs | pierres apparentes, chaperon, créneaux, piliers | soubassement de pierres, enduit de terre, petit toit de tuiles rondes |
+| Façades | enduit, chaînes d'angle et bandeaux de pierre | ossature bois apparente (poteaux tous les 1,8 m environ, poutres), bardage bas en bois brûlé |
+| Fenêtres | croisillons, encadrement de pierre, volets, jardinières | claire-voie de lattes devant un écran de papier quadrillé |
+| Porte | porte en planches cintrée à claveaux | porte coulissante à deux vantaux, pierre de seuil, noren (rideau) selon la seed |
+| Toit | tuiles plates, pignons, cheminée | irimoya (croupe en bas, petit pignon de bois en haut), tuiles rondes, bords relevés, faîtage maçonné à épis, chevrons apparents, auvent entre les étages |
+
+Le volet **Garden** (sol, chemins, végétation, couleur des torii) est déjà prévu dans chaque style ; il servira à l'étape décor.
+
+## Les règles « toujours beau » de l'étape 3
+
+- Le style choisit les pièces, le plan sémantique reste le même : même contour, mêmes travées, même porte, quel que soit le style. Les deux hameaux de la démo sont donc « la même ville » dans deux architectures.
+- Ossature bois : un poteau entre deux travées, jamais à travers une fenêtre ni collé à un angle ; poteaux réguliers sur les façades aveugles.
+- Toit irimoya : la croupe basse fait le tour du bâtiment, les petits pignons ne se posent que sur les bouts étroits des ailes ; un plan carré garde une croupe simple. Si le contour ne s'y prête pas, repli sur des croupes, jamais de trou.
+- Bords relevés : seul le débord se relève (au-delà de l'aplomb des murs), un peu plus aux angles, et la déformation ne dépend que de la position : les pans restent jointifs et le dessous du toit repose toujours sur les murs.
+- Auvent seulement à partir de deux étages ; noren tiré par la seed.
+- Allègement : les petites pièces de bois sont dessinées sans biseau invisible, les faces cachées (contre le mur, sous le bloc du dessus) ne sont plus émises et les tuiles plates n'ont plus qu'un ressaut par rang. Une maison de 10 × 6 m passe de ~33 000 à ~19 000 triangles, le manoir en U de 3 étages de ~67 000 à ~38 000, sans différence visible.
 
 ## Les règles « toujours beau » de l'étape 2
 
@@ -80,7 +112,7 @@ house.set_footprint(PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vec
 
 ## Tests
 
-Les tests du cœur de l'addon (106 vérifications, dont le squelette droit sur 900 contours aléatoires) tournent sans affichage :
+Les tests du cœur de l'addon (138 vérifications, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -100,9 +132,9 @@ addons/bastide/
     layout/      les plans sémantiques (mur, bâtiment, toit)
     backends/    plan → géométrie (procedural/ aujourd'hui, kit/ à l'étape 6)
     mesh/        construction des meshes multi-matériaux
-  styles/      Resources de style (mur, bâtiment, toit) et presets
+  styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, base commune BastideStructure)
-  shaders/     shader pierre procédural (aucune texture)
+  shaders/     shaders pierre et bois procéduraux (aucune texture)
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)

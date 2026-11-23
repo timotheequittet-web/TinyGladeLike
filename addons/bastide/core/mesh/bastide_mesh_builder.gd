@@ -21,6 +21,16 @@ class Surface:
 		c.append(ca); c.append(cb); c.append(ccol)
 
 
+## En dessous de ce biseau, une face « bombée » est dessinée plate : le biseau
+## ferait moins d'un pixel à distance normale de jeu.
+const FLAT_BEVEL := 0.013
+## Faces d'un bloc (add_block), pour `skip` : on n'émet pas les faces cachées.
+const FACE_TOP := 1
+const FACE_FRONT_01 := 2   # face k0-k1
+const FACE_SIDE_12 := 4    # face k1-k2
+const FACE_BACK_23 := 8    # face k2-k3
+const FACE_SIDE_30 := 16   # face k3-k0
+
 var _surfaces := {}  # role -> Surface
 var triangle_count := 0
 
@@ -69,6 +79,10 @@ func add_pillow_quad(role: StringName, corners: Array, hint: Vector3, bevel: flo
 	var b: Vector3 = corners[1]
 	var c: Vector3 = corners[2]
 	var d: Vector3 = corners[3]
+	if bevel < FLAT_BEVEL:
+		# Biseau invisible à l'œil : un simple quadrilatère (2 triangles au lieu de 10).
+		add_quad(role, a, b, c, d, hint, color, color, color, color)
+		return
 	var nrm := (c - a).cross(d - b)
 	if nrm.length_squared() < 1e-12:
 		return
@@ -120,24 +134,66 @@ static func _ring(surf: Surface, p0: Vector3, p1: Vector3, q1: Vector3, q0: Vect
 
 ## Bloc à 8 coins (pas forcément parallélépipédique), chaque face bombée.
 ## Ordre des coins : 0-3 dessous (contour), 4-7 dessus (même ordre).
+## `skip` : masque de faces cachées à ne pas émettre (FACE_*), par exemple la face
+## collée contre un mur.
 func add_block(role: StringName, k: Array, bevel: float, bulge: float, color: Color, edge_color: Color,
-		with_bottom := false) -> void:
+		with_bottom := false, skip := 0) -> void:
 	var center := Vector3.ZERO
 	for p: Vector3 in k:
 		center += p
 	center /= 8.0
-	var faces := [
-		[k[4], k[5], k[6], k[7]],  # dessus
-		[k[0], k[1], k[5], k[4]],
-		[k[1], k[2], k[6], k[5]],
-		[k[2], k[3], k[7], k[6]],
-		[k[3], k[0], k[4], k[7]],
-	]
+	var faces := []
+	if not skip & FACE_TOP:
+		faces.append([k[4], k[5], k[6], k[7]])
+	if not skip & FACE_FRONT_01:
+		faces.append([k[0], k[1], k[5], k[4]])
+	if not skip & FACE_SIDE_12:
+		faces.append([k[1], k[2], k[6], k[5]])
+	if not skip & FACE_BACK_23:
+		faces.append([k[2], k[3], k[7], k[6]])
+	if not skip & FACE_SIDE_30:
+		faces.append([k[3], k[0], k[4], k[7]])
 	if with_bottom:
 		faces.append([k[0], k[3], k[2], k[1]])
 	for f in faces:
 		var fc: Vector3 = (f[0] + f[1] + f[2] + f[3]) * 0.25
 		add_pillow_quad(role, f, fc - center, bevel, bulge, color, edge_color)
+
+
+## Repère le nombre de sommets de chaque surface (voir warp_since).
+func mark() -> Dictionary:
+	var m := {}
+	for role in _surfaces:
+		m[role] = (_surfaces[role] as Surface).v.size()
+	return m
+
+
+## Déforme tous les sommets ajoutés depuis `since` (résultat de mark()) avec
+## `fn(Vector3) -> Vector3`, puis recalcule leurs normales plates. Sert aux bords
+## de toit relevés : la déformation ne dépend que de la position, donc deux pans
+## qui partagent une arête restent jointifs.
+func warp_since(since: Dictionary, fn: Callable) -> void:
+	for role in _surfaces:
+		var surf: Surface = _surfaces[role]
+		var start: int = since.get(role, 0)
+		var i := start
+		while i + 2 < surf.v.size():
+			var a: Vector3 = fn.call(surf.v[i])
+			var b: Vector3 = fn.call(surf.v[i + 1])
+			var c: Vector3 = fn.call(surf.v[i + 2])
+			surf.v[i] = a
+			surf.v[i + 1] = b
+			surf.v[i + 2] = c
+			# Sommets émis dans le sens horaire vu de devant : normale = (c - a) × (b - a).
+			var nrm := (c - a).cross(b - a)
+			if nrm.length_squared() > 1e-14:
+				nrm = nrm.normalized()
+				if nrm.dot(surf.n[i]) < 0.0:
+					nrm = -nrm
+				surf.n[i] = nrm
+				surf.n[i + 1] = nrm
+				surf.n[i + 2] = nrm
+			i += 3
 
 
 ## Construit l'ArrayMesh final. `materials` associe un rôle à un Material (optionnel).

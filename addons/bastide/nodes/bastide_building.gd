@@ -11,7 +11,7 @@ extends BastideStructure
 ##
 ## En jeu : appelle set_footprint() avec les angles du contour.
 
-enum RoofChoice { STYLE, HIP, GABLE }
+enum RoofChoice { STYLE, HIP, GABLE, IRIMOYA }
 
 ## Nombre d'étages. 0 = celui du style.
 @export_range(0, 6, 1) var floors := 0:
@@ -20,7 +20,8 @@ enum RoofChoice { STYLE, HIP, GABLE }
 		queue_rebuild()
 
 ## Forme du toit. « Style » : celle du style ; « Croupes » : pans de tous côtés ;
-## « Pignons » : les bouts étroits deviennent des murs triangulaires.
+## « Pignons » : les bouts étroits deviennent des murs triangulaires ;
+## « Irimoya » : croupes en bas, petits pignons de bois en haut (toit japonais).
 @export var roof := RoofChoice.STYLE:
 	set(value):
 		roof = value
@@ -81,4 +82,6 @@ func build_spec() -> BastideBuildingSpec:
 			roof_type = BastideRoofStyle.RoofType.HIP
 		RoofChoice.GABLE:
 			roof_type = BastideRoofStyle.RoofType.GABLE
+		RoofChoice.IRIMOYA:
+			roof_type = BastideRoofStyle.RoofType.IRIMOYA
 	return BastideBuildingSpec.from_points(pts, seed, floors, roof_type, door_facade)

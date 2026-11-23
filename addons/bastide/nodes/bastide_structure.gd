@@ -19,6 +19,12 @@ signal rebuilt(stats: Dictionary)
 			style.changed.connect(queue_rebuild)
 		queue_rebuild()
 
+## Dossier des styles prêts à l'emploi, proposés dans la liste « Style prédéfini ».
+## Un .tres de style ajouté ici apparaît automatiquement dans la liste.
+const PRESETS_DIR := "res://addons/bastide/styles/presets/"
+
+static var _presets_cache: Array = []  # [[chemin, nom affiché], …]
+
 ## Graine de variation : même seed = même résultat, au caillou près.
 @export var seed := 1:
 	set(value):
@@ -42,6 +48,61 @@ signal rebuilt(stats: Dictionary)
 @export_group("")
 @export_tool_button("Nouvelle seed", "RandomNumberGenerator") var _new_seed_button := _randomize_seed
 @export_tool_button("Régénérer", "Reload") var _rebuild_button := rebuild
+
+## Changer de style en un clic : liste des styles du dossier PRESETS_DIR, juste
+## sous la propriété `style` dans l'inspecteur. Marche aussi sur plusieurs nœuds
+## sélectionnés à la fois. Rien n'est enregistré en plus : c'est `style` qui change.
+func _get_property_list() -> Array[Dictionary]:
+	var names := PackedStringArray(["Personnalisé"])
+	for p in presets():
+		names.append(p[1])
+	return [{
+		"name": "style_preset",
+		"type": TYPE_INT,
+		"hint": PROPERTY_HINT_ENUM,
+		"hint_string": ",".join(names),
+		"usage": PROPERTY_USAGE_EDITOR,
+	}]
+
+
+func _get(property: StringName) -> Variant:
+	if property == &"style_preset":
+		if style == null:
+			return 0
+		var list := presets()
+		for i in list.size():
+			if list[i][0] == style.resource_path:
+				return i + 1
+		return 0
+	return null
+
+
+func _set(property: StringName, value: Variant) -> bool:
+	if property == &"style_preset":
+		var list := presets()
+		var i := int(value) - 1
+		if i >= 0 and i < list.size():
+			style = load(list[i][0])
+		return true
+	return false
+
+
+## Styles prêts à l'emploi : [[chemin, nom affiché], …], triés par nom.
+static func presets(refresh := false) -> Array:
+	if not _presets_cache.is_empty() and not refresh:
+		return _presets_cache
+	var out: Array = []
+	for file in ResourceLoader.list_directory(PRESETS_DIR):
+		if not (file.ends_with(".tres") or file.ends_with(".res")):
+			continue
+		var path := PRESETS_DIR + file
+		var res := load(path)
+		if res is BastideStyle:
+			out.append([path, (res as BastideStyle).display_name])
+	out.sort_custom(func(a: Array, b: Array) -> bool: return a[1] < b[1])
+	_presets_cache = out
+	return out
+
 
 ## Statistiques de la dernière génération (triangles, durée…).
 var last_stats := {}
@@ -113,12 +174,7 @@ func _start_build() -> void:
 func _prepare_job() -> Callable:
 	var st := get_effective_style()
 	# Volets du style et matériaux créés ici, sur le thread principal.
-	st.get_wall_style()
-	st.get_building_style()
-	st.get_roof_style()
-	st.get_material()
-	st.get_roof_material()
-	st.get_glass_material()
+	st.prepare()
 	return _make_job()
 
 

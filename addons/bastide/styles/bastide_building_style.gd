@@ -4,6 +4,29 @@ extends Resource
 ## Paramètres d'un bâtiment : étages, murs, ouvertures, décor et couleurs.
 ## Les pierres du soubassement et des chaînes d'angle reprennent les couleurs du style de mur.
 
+## Construction des façades : maçonnerie enduite (chaînes d'angle, bandeaux de
+## pierre) ou ossature bois (poteaux et poutres apparents, panneaux d'enduit).
+enum FacadeKind { MASONRY, TIMBER }
+## Fenêtres à la française (vitres, croisillons, volets) ou à claire-voie (lattes
+## de bois verticales devant un écran de papier).
+enum WindowKind { CASEMENT, LATTICE }
+## Porte battante en planches, ou porte coulissante à claire-voie.
+enum DoorKind { PLANK, SLIDING }
+
+@export_group("Construction")
+@export var facade_kind: FacadeKind = FacadeKind.MASONRY:
+	set(value):
+		facade_kind = value
+		emit_changed()
+@export var window_kind: WindowKind = WindowKind.CASEMENT:
+	set(value):
+		window_kind = value
+		emit_changed()
+@export var door_kind: DoorKind = DoorKind.PLANK:
+	set(value):
+		door_kind = value
+		emit_changed()
+
 @export_group("Volumes")
 ## Nombre d'étages par défaut (le nœud peut le remplacer).
 @export_range(1, 6, 1) var floors: int = 2:
@@ -115,6 +138,63 @@ extends Resource
 @export var arched_door: bool = true:
 	set(value):
 		arched_door = value
+		emit_changed()
+@export_group("Ossature bois")
+## Section des poteaux.
+@export_range(0.08, 0.5, 0.01, "suffix:m") var post_width: float = 0.2:
+	set(value):
+		post_width = value
+		emit_changed()
+## Hauteur des poutres horizontales (sablière, poutre d'étage, lisse basse).
+@export_range(0.05, 0.5, 0.01, "suffix:m") var beam_height: float = 0.17:
+	set(value):
+		beam_height = value
+		emit_changed()
+## Bois de l'ossature.
+@export var timber_color: Color = Color(0.3, 0.21, 0.15):
+	set(value):
+		timber_color = value
+		emit_changed()
+## Bardage bas en planches au rez-de-chaussée (0 = aucun).
+@export_range(0.0, 2.0, 0.01, "suffix:m") var wainscot_height: float = 0.0:
+	set(value):
+		wainscot_height = value
+		emit_changed()
+## Couleur du bardage (bois brûlé, sombre).
+@export var wainscot_color: Color = Color(0.2, 0.16, 0.13):
+	set(value):
+		wainscot_color = value
+		emit_changed()
+## Papier des fenêtres à claire-voie.
+@export var paper_color: Color = Color(0.96, 0.93, 0.84):
+	set(value):
+		paper_color = value
+		emit_changed()
+## Écart entre deux lattes d'une claire-voie.
+@export_range(0.04, 0.3, 0.005, "suffix:m") var lattice_spacing: float = 0.1:
+	set(value):
+		lattice_spacing = value
+		emit_changed()
+## Auvent de tuiles entre le rez-de-chaussée et l'étage.
+@export var pent_roof: bool = false:
+	set(value):
+		pent_roof = value
+		emit_changed()
+## Profondeur de l'auvent.
+@export_range(0.3, 2.0, 0.01, "suffix:m") var pent_depth: float = 0.75:
+	set(value):
+		pent_depth = value
+		emit_changed()
+## Pente de l'auvent.
+@export_range(10.0, 45.0, 0.5, "suffix:°") var pent_pitch: float = 24.0:
+	set(value):
+		pent_pitch = value
+		emit_changed()
+## Rideau de tissu (noren) devant la porte, une couleur tirée par bâtiment.
+## Vide : pas de rideau.
+@export var noren_colors: PackedColorArray = PackedColorArray():
+	set(value):
+		noren_colors = value
 		emit_changed()
 @export_group("Couleurs")
 ## Enduit des murs.

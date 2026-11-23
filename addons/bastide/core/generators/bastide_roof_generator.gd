@@ -43,6 +43,12 @@ static func generate(footprint: PackedVector2Array, eave_y: float, rs: BastideRo
 	ones.resize(n)
 	ones.fill(1.0)
 	var weights := ones
+	if roof_type == BastideRoofStyle.RoofType.IRIMOYA:
+		if _irimoya(roof, footprint, rs):
+			roof.bake()
+			_place_chimney(roof, rs, seed)
+			return roof
+		roof.fallback = "croupes"
 	if roof_type == BastideRoofStyle.RoofType.GABLE:
 		weights = gable_weights(footprint)
 	var sk := BastideStraightSkeleton.compute(outline, weights)
@@ -94,11 +100,124 @@ static func generate(footprint: PackedVector2Array, eave_y: float, rs: BastideRo
 			kind = ArcKind.RIDGE
 		elif (a.y < 1e-6 and reflex.has(Vector2(a.x, a.z))) or (b.y < 1e-6 and reflex.has(Vector2(b.x, b.z))):
 			kind = ArcKind.VALLEY
-		roof.arcs.append({"a": a3, "b": b3, "kind": kind, "faces": faces})
+		var entry := {"a": a3, "b": b3, "kind": kind, "faces": faces}
+		for fc in faces:
+			if weights[fc] <= 0.0:
+				entry["gable"] = fc
+		roof.arcs.append(entry)
 
 	roof.bake()
 	_place_chimney(roof, rs, seed)
 	return roof
+
+
+## Irimoya : une croupe basse tout autour (bande entre le contour et le contour
+## rentré de `d`), puis, au-dessus, un toit à pignons calculé sur le contour rentré.
+## Les bouts étroits gardent donc un pan en bas et un petit pignon vertical en haut.
+## Renvoie false si le contour ne s'y prête pas (le toit retombe alors en croupes).
+static func _irimoya(roof: BastideRoofLayout, footprint: PackedVector2Array, rs: BastideRoofStyle) -> bool:
+	var outline := roof.outline
+	var n := outline.size()
+	var gw := gable_weights(footprint)
+	if not gw.has(0.0):
+		return false  # aucun bout étroit (plan carré…) : une croupe suffit
+	var ones := PackedFloat32Array()
+	ones.resize(n)
+	ones.fill(1.0)
+	var hip := BastideStraightSkeleton.compute(outline, ones)
+	if not hip.ok:
+		return false
+	# Hauteur de la croupe : part de la hauteur du toit, réduite tant que le contour
+	# rentré n'est pas propre (une aile étroite disparaîtrait avant).
+	var d := hip.max_time * rs.irimoya_ratio
+	var inner := PackedVector2Array()
+	var upper: BastideStraightSkeleton.Result = null
+	for attempt in 5:
+		inner = BastidePolygon.offset(outline, d, 6.0)
+		if _offset_ok(outline, inner):
+			upper = BastideStraightSkeleton.compute(inner, gw)
+			if upper.ok:
+				break
+		upper = null
+		d *= 0.7
+	if upper == null or d < 0.3:
+		return false
+
+	var y_c := roof.base_y + d * roof.tan_pitch
+	roof.weights = ones
+	roof.irimoya_y = y_c
+	for e in n:
+		var dir := BastidePolygon.edge_dir(outline, e)
+		var nin := Vector2(-dir.y, dir.x)
+		var up_dir := Vector3(nin.x, 0.0, nin.y)
+		var normal := Vector3(-nin.x * roof.tan_pitch, 1.0, -nin.y * roof.tan_pitch).normalized()
+		var j := (e + 1) % n
+		var band := PackedVector3Array([
+			Vector3(outline[e].x, roof.base_y, outline[e].y), Vector3(outline[j].x, roof.base_y, outline[j].y),
+			Vector3(inner[j].x, y_c, inner[j].y), Vector3(inner[e].x, y_c, inner[e].y)])
+		var polys: Array = [band]
+		var up_polys: Array = []
+		for st: PackedVector3Array in upper.strips[e]:
+			var p3 := PackedVector3Array()
+			for p in st:
+				p3.append(Vector3(p.x, y_c + p.y * roof.tan_pitch, p.z))
+			up_polys.append(p3)
+		if gw[e] > 0.0:
+			polys.append_array(up_polys)
+		else:
+			roof.gable_panels.append({"face": e, "out": -up_dir, "polys": up_polys})
+		roof.faces.append({"weight": 1.0, "normal": normal, "up_dir": up_dir,
+			"dir": Vector3(dir.x, 0.0, dir.y), "polys": polys})
+	roof.ridge_y = y_c + upper.max_time * roof.tan_pitch
+
+	# Arcs de la croupe basse : arêtiers (angles saillants) et noues (angles rentrants).
+	for i in n:
+		var a3 := Vector3(outline[i].x, roof.base_y, outline[i].y)
+		var b3 := Vector3(inner[i].x, y_c, inner[i].y)
+		var kind := ArcKind.HIP if BastidePolygon.is_convex_vertex(outline, i) else ArcKind.VALLEY
+		roof.arcs.append({"a": a3, "b": b3, "kind": kind, "faces": PackedInt32Array([posmod(i - 1, n), i])})
+	# Arcs du toit du haut.
+	var reflex := {}
+	for i in n:
+		if not BastidePolygon.is_convex_vertex(inner, i):
+			reflex[inner[i]] = true
+	for arc in upper.arcs:
+		var a: Vector3 = arc.a
+		var b: Vector3 = arc.b
+		var a3 := Vector3(a.x, y_c + a.y * roof.tan_pitch, a.z)
+		var b3 := Vector3(b.x, y_c + b.y * roof.tan_pitch, b.z)
+		var faces: PackedInt32Array = arc.faces
+		var kind := ArcKind.HIP
+		var gable := -1
+		for fc in faces:
+			if gw[fc] <= 0.0:
+				gable = fc
+		if gable >= 0:
+			kind = ArcKind.VERGE
+		elif absf(a3.y - b3.y) < 1e-3:
+			kind = ArcKind.RIDGE
+		elif (a.y < 1e-6 and reflex.has(Vector2(a.x, a.z))) or (b.y < 1e-6 and reflex.has(Vector2(b.x, b.z))):
+			kind = ArcKind.VALLEY
+		var entry := {"a": a3, "b": b3, "kind": kind, "faces": faces}
+		if gable >= 0:
+			entry["gable"] = gable
+		roof.arcs.append(entry)
+	return true
+
+
+## Le contour rentré garde le même nombre de côtés, chacun dans le même sens et
+## d'une longueur raisonnable, sans se recouper.
+static func _offset_ok(outline: PackedVector2Array, inner: PackedVector2Array) -> bool:
+	var n := outline.size()
+	if inner.size() != n or BastidePolygon.signed_area(inner) <= 0.0 or BastidePolygon.self_intersects(inner):
+		return false
+	for i in n:
+		var j := (i + 1) % n
+		var a := outline[j] - outline[i]
+		var b := inner[j] - inner[i]
+		if b.length() < 0.25 or a.dot(b) <= 0.0:
+			return false
+	return true
 
 
 ## Pignons : bouts étroits d'aile (deux angles saillants proches de 90°, côté plus

@@ -2,9 +2,9 @@
 
 **Bastide** est un addon Godot 4 de construction procédurale « toujours belle », inspiré de Tiny Glade : on trace grossièrement, des règles corrigent et décorent.
 
-![Démo de l'étape 3 : le même hameau en médiéval et en japonais](docs/captures/etape3_vue_generale.jpg)
+![Construire en jeu : un hameau de campagne japonais](docs/captures/etape4_ambiance.jpg)
 
-État : **étape 3 terminée** (styles interchangeables : « médiéval pierre » et « japonais traditionnel bois »), après l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaines étapes : décor japonais (torii, sol, plantes, petits murets), puis mode kit. L'architecture complète est décrite dans le document de conception du projet.
+État : **étape 4 terminée** (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), après l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaines étapes : décor japonais (torii, sol, plantes, petits murets), puis mode kit. L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -14,12 +14,61 @@ Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 
 1. Sur GitHub, bouton vert **Code > Download ZIP**, puis décompresse le dossier où tu veux.
 2. Ouvre Godot 4.7.2, clique sur **Importer**, et choisis le fichier `project.godot` du dossier décompressé, puis **Importer et modifier**.
-3. Appuie sur **F5** : la démo des styles (`demos/03_styles/styles_demo.tscn`) se lance, avec le même hameau à gauche en médiéval et à droite en japonais. Les démos précédentes sont dans `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs) : ouvre-les puis **F6**.
+3. Appuie sur **F5** : la démo de construction en jeu (`demos/04_runtime/runtime_demo.tscn`) se lance. Voir « Construire en jeu » juste en dessous.
+4. Les démos précédentes : `demos/03_styles/styles_demo.tscn` (le même hameau en médiéval et en japonais), `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs). Ouvre-les puis **F6**. Leurs commandes :
    - Clic droit maintenu + souris : regarder
    - ZQSD (ou WASD) : se déplacer, A/E : descendre/monter, Maj : plus vite
    - Clic gauche : lancer une boule pour tester les collisions
    - En haut à gauche (démo des styles) : **Côte à côte**, **Tout médiéval**, **Tout japonais**, **Inverser** changent le style de chaque hameau d'un coup ; **Seed** fait varier les deux hameaux pareil
-4. **Dans l'éditeur** : ouvre `styles_demo.tscn` ou `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
+5. **Dans l'éditeur** : ouvre `styles_demo.tscn` ou `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
+
+## Construire en jeu (étape 4)
+
+Au lancement, la caméra descend doucement vers un petit hameau qui sort de terre, maison après maison. Ensuite, c'est toi qui construis.
+
+![Le muret pousse en direct sous forme de fantôme pendant qu'on le dessine](docs/captures/etape4_trace_fantome.jpg)
+
+- **Muret** (touche **1**) : maintiens le clic gauche et dessine un chemin au sol. Le muret pousse en direct, en fantôme, pendant que tu dessines ; ton tracé tremblant est simplifié puis lissé. Relâche : il devient solide, un petit nuage de poussière se soulève et un « toc » de bois se fait entendre. Reviens près du point de départ pour fermer une enceinte.
+- **Maison** (touche **2**) : maintiens le clic et tire un rectangle (dimensions arrondies au demi-mètre, 4 m minimum). **Tire-le par-dessus une maison existante pour l'agrandir** : elle devient une maison en L, en T ou en U, avec son toit recalculé ; le nouveau rectangle s'aligne tout seul sur elle.
+- **Retoucher** : clique sur une structure pour la sélectionner (un liseré doré l'entoure). Des poignées apparaissent : tire un angle de maison (il reste d'équerre quand tu passes près de l'angle droit), tire le milieu d'un côté pour pousser tout le mur, ou tire un point de muret pour le courber. Clic droit sur une poignée : retirer ce point.
+- **Sélection** : **+ / −** (ou Page haut / Page bas) changent le nombre d'étages, **R** tire une autre variation (seed), **Suppr** retire la structure (elle s'enfonce dans le sol). Les boutons du panneau font la même chose.
+- **Style** : les boutons **Japonais / Médiéval** changent le style des prochaines constructions et celui de la structure sélectionnée.
+- **Annuler / rétablir** : **Ctrl+Z / Ctrl+Y** (ou les boutons). Tout s'annule : tracés, agrandissements, retouches, étages, styles, suppressions.
+- **Caméra** : clic droit (ou molette) maintenu + souris pour tourner autour, molette pour zoomer vers ce que vise la souris, **ZQSD** ou les flèches pour glisser, **A / E** pour pivoter, **F** pour recentrer. Plus tu t'approches, plus elle se baisse à hauteur de promeneur. Tous ses mouvements sont amortis.
+- **Divers** : **Ctrl+S / Ctrl+O** enregistrer / recharger le hameau, **M** couper le son, **H** masquer l'interface (pour les belles captures), **Échap** annuler un tracé ou désélectionner.
+
+![Un rectangle tiré par-dessus une maison l'agrandit en L](docs/captures/etape4_agrandir_fantome.jpg)
+
+![Maison sélectionnée et ses poignées : angles et milieux de côtés](docs/captures/etape4_poignees.jpg)
+
+L'ambiance est entièrement procédurale, sans aucune image ni fichier son : lumière dorée de fin d'après-midi, brume légère, prairie dont l'herbe ondule au vent et parsemée de fleurs, collines au loin, cerisiers, bambous et arbres qui respirent dans le vent, un étang, des pétales qui dérivent, un vent doux synthétisé.
+
+### Utiliser la construction en jeu dans ton jeu
+
+Trois nœuds, dans `addons/bastide/runtime/` :
+
+- `BastideBuildSite` : le chantier. Il possède les structures et les décrit par des « records » (de simples dictionnaires : type, points, seed, étages, style). `apply_record(id, record)` crée, modifie ou supprime (record `null`) avec les animations ; `to_data()` / `from_data()` sauvegardent et rechargent (convertible en JSON).
+- `BastideBuildTool` : la souris et le clavier (tracé, fantôme, poignées, sélection, annuler). Donne-lui le chantier (`site`) et la caméra (`camera`). Il émet des signaux (`placed`, `removed`, `edited`, `hint_changed`, `selection_changed`…) pour brancher ton interface et tes sons.
+- `BastideOrbitCamera` : la caméra douce (facultative : l'outil marche avec n'importe quelle `Camera3D`).
+
+```gdscript
+var site := BastideBuildSite.new()
+add_child(site)
+var tool := BastideBuildTool.new()
+tool.site = site
+tool.camera = $Camera3D
+tool.style = load("res://addons/bastide/styles/presets/japanese_wood.tres")
+add_child(tool)
+```
+
+Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
+
+## Les règles « toujours beau » de l'étape 4
+
+- Le tracé à la main est simplifié (les tremblements disparaissent), puis lissé ; un long mur garde un angle franc au lieu d'un grand arrondi.
+- Ce qui est en cours de tracé est un vrai mur ou une vraie maison, générés en direct sur un thread de fond, mais en fantôme : tu vois exactement ce que tu vas obtenir.
+- Une maison a toujours une taille raisonnable (4 à 22 m de côté, au demi-mètre) ; un rectangle tiré sur une maison s'aligne sur elle, et l'union passe par les règles de l'étape 2 (angles redressés, toit calculé).
+- Rien ne saute : apparitions qui poussent du sol, disparitions qui s'enfoncent, tassement après une retouche, caméra et aide qui changent en fondu.
 
 ## Utiliser les murs
 
@@ -98,7 +147,7 @@ Le volet **Garden** (sol, chemins, végétation, couleur des torii) est déjà p
 
 Copie le dossier `addons/bastide/` dans ton projet, puis active **Bastide** dans *Projet > Paramètres du projet > Extensions*. Les dossiers `demos/`, `tests/`, `tools/` et `docs/` ne servent qu'au développement.
 
-Pour construire depuis du code (par exemple pour un futur mode construction en jeu) :
+Pour construire depuis du code (voir aussi « Construire en jeu » plus haut) :
 
 ```gdscript
 var wall := BastideWall.new()
@@ -112,10 +161,16 @@ house.set_footprint(PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vec
 
 ## Tests
 
-Les tests du cœur de l'addon (138 vérifications, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (154 vérifications, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
+```
+
+La construction en jeu a sa propre partie scriptée : elle simule la vraie souris (tracer un muret, tirer une maison, l'agrandir en L, cliquer, tirer une poignée, annuler, rétablir, recharger), vérifie le résultat et prend des captures. Elle a besoin d'une fenêtre :
+
+```
+godot --path . -s tools/runtime_play.gd -- <dossier_des_captures>
 ```
 
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
@@ -126,7 +181,7 @@ Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:
 addons/bastide/
   core/        logique pure, sans nœuds (utilisable sur un thread, en jeu, dans les tests)
     random/      hasard déterministe (seed + position)
-    geometry/    polylignes, polygones, squelette droit pondéré (toits)
+    geometry/    polylignes, polygones, squelette droit pondéré (toits), tracés à main levée
     rules/       assainissement du tracé et du contour, répartition « pile »
     generators/  Spec → Layout : murs, bâtiments, toits
     layout/      les plans sémantiques (mur, bâtiment, toit)
@@ -134,6 +189,7 @@ addons/bastide/
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, base commune BastideStructure)
+  runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
   shaders/     shaders pierre et bois procéduraux (aucune texture)
 demos/         une scène de démo par étape
 tests/         tests headless du core

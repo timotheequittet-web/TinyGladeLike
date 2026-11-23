@@ -80,6 +80,13 @@ var merlons: Array = []       # { run, s0, s1, height, depth }
 
 var coping_thickness := 0.16
 var coping_overhang := 0.07
+## Corps enduit : altitude où l'enduit remplace les pierres (INF = tout en pierre).
+var plaster_from := INF
+var plaster_color := Color.WHITE
+## Petit toit de tuiles au sommet (remplace chaperon et créneaux).
+var cap_roof := false
+var cap_overhang := 0.3
+var cap_tan := 0.5
 
 
 func is_empty() -> bool:

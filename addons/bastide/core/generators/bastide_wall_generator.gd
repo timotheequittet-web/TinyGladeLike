@@ -20,6 +20,16 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 	layout.half_base = ws.thickness * 0.5 + ws.batter
 	layout.coping_thickness = ws.coping_thickness
 	layout.coping_overhang = ws.coping_overhang
+	if ws.body_kind == BastideWallStyle.BodyKind.PLASTER:
+		layout.plaster_from = minf(ws.plinth_height, layout.height - 0.2)
+		layout.plaster_color = ws.plaster_color.lerp(ws.plaster_color_alt, BastideRng.randf_at(spec.seed, "plaster"))
+	if ws.cap_roof:
+		layout.cap_roof = true
+		layout.cap_overhang = ws.cap_overhang
+		layout.cap_tan = tan(deg_to_rad(ws.cap_pitch))
+		# Pour les collisions et les piliers : le petit toit tient lieu de chaperon.
+		layout.coping_overhang = ws.cap_overhang
+		layout.coping_thickness = (layout.half_top + ws.cap_overhang) * layout.cap_tan + 0.2
 
 	var clean := BastidePathSanitizer.sanitize(spec.points, spec.closed, ws.min_segment)
 	var pts: PackedVector3Array = clean.points
@@ -181,6 +191,15 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 	var y_max := layout.height + layout.top_amplitude + 0.05
 	var ci := 0
 	layout.courses.append(y)
+	if is_finite(layout.plaster_from):
+		# Corps enduit : assises de pierre seulement dans le soubassement, la dernière
+		# s'arrêtant pile sous l'enduit.
+		var count := maxi(1, roundi((layout.plaster_from - y) / ws.course_height))
+		for k in count:
+			var t := float(k + 1) / count
+			var jitter := BastideRng.signed_at(spec.seed, "course", k) * 0.12 / count if k < count - 1 else 0.0
+			layout.courses.append(lerpf(layout.footing, layout.plaster_from, clampf(t + jitter, 0.0, 1.0)))
+		y_max = -INF
 	while y < y_max:
 		y += ws.course_height * BastideRng.randf_range_at(spec.seed, "course", ci, 0.78, 1.28)
 		layout.courses.append(y)
@@ -223,7 +242,7 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 					})
 
 	# --- Chaperon ----------------------------------------------------------------
-	if ws.coping_thickness > 0.0:
+	if ws.coping_thickness > 0.0 and not ws.cap_roof:
 		for run in layout.runs:
 			var lengths := BastideDistributor.split_lengths(spec.seed, "coping", run.index, run.length(), 0.55, 0.95)
 			var acc: float = run.s0
@@ -237,7 +256,7 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 				acc += lengths[li]
 
 	# --- Merlons ---------------------------------------------------------------------
-	if ws.crenellations:
+	if ws.crenellations and not ws.cap_roof:
 		for run in layout.runs:
 			var a: float = run.s0
 			var b: float = run.s1
@@ -262,6 +281,8 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 
 	# --- Hauteur des piliers -----------------------------------------------------------
 	var crown := ws.coping_thickness + (ws.merlon_height if ws.crenellations else 0.0)
+	if ws.cap_roof:
+		crown = layout.coping_thickness
 	for p in layout.pillars:
 		var s: float = p.s
 		var h := maxf(layout.height_at(s), maxf(layout.height_at(s - pillar_w), layout.height_at(s + pillar_w)))

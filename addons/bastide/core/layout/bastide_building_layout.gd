@@ -3,7 +3,8 @@ class_name BastideBuildingLayout
 extends RefCounted
 ## Plan sémantique d'un bâtiment : façades, ouvertures, décor, et le plan du toit.
 ## Aucun triangle : le backend procédural le dessine, le futur backend kit y posera
-## des pièces modulaires (une fenêtre du plan = une pièce « fenêtre » du kit).
+## des pièces modulaires (une fenêtre du plan = une pièce « fenêtre » du kit, un
+## poteau = une pièce « poteau »…).
 
 enum OpeningKind { WINDOW, DOOR, ATTIC }
 
@@ -25,6 +26,8 @@ class Facade:
 	var profile := PackedVector2Array()
 	## { kind, u0, u1, y0, y1, arch (rayon, 0 si aucun), floor, shutters, flowers }
 	var openings: Array = []
+	## Ossature bois : abscisses des poteaux intermédiaires (les angles ont toujours le leur).
+	var posts := PackedFloat32Array()
 	var plaster := Color.WHITE
 
 	## Point 3D de la façade : u le long, y altitude, depth vers l'extérieur.
@@ -50,6 +53,11 @@ var wall_thickness := 0.4
 var facades: Array = []  # Array[Facade]
 var roof: BastideRoofLayout
 var shutter_color := Color.WHITE
+## Rideau de porte (noren) ; alpha 0 = pas de rideau.
+var noren_color := Color(0, 0, 0, 0)
+## Ossature bois et auvent (repris du style, pour le backend).
+var timber := false
+var pent_roof := false
 ## Remarques du générateur (« angles redressés »…), utiles dans l'inspecteur.
 var notes := PackedStringArray()
 

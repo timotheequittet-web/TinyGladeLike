@@ -25,8 +25,14 @@ var color := Color(0.66, 0.32, 0.22)
 ## Un pan par côté : { weight, normal (Vector3), up_dir (Vector3 horizontal, vers le haut
 ## de la pente), dir (Vector3 le long de l'égout), polys: Array[PackedVector3Array] }.
 var faces: Array = []
-## { a: Vector3, b: Vector3, kind: ArcKind, faces: PackedInt32Array }
+## { a: Vector3, b: Vector3, kind: ArcKind, faces: PackedInt32Array, gable (option) : int,
+## indice du pan-pignon voisin pour une rive }
 var arcs: Array = []
+## Irimoya : petits pignons verticaux au-dessus de la croupe basse.
+## { face: int, out: Vector3 (vers l'extérieur), polys: Array[PackedVector3Array] }
+var gable_panels: Array = []
+## Irimoya : altitude du pied des petits pignons (-INF sinon).
+var irimoya_y := -INF
 ## Vide ou { pos: Vector2, size: float, y0: float, y1: float }
 var chimney := {}
 

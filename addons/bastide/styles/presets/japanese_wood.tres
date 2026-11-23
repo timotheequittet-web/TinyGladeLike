@@ -1,0 +1,144 @@
+[gd_resource type="Resource" script_class="BastideStyle" format=3]
+
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_style.gd" id="1_style"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_wall_style.gd" id="2_wall"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_building_style.gd" id="3_bld"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_roof_style.gd" id="4_roof"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_garden_style.gd" id="5_gar"]
+[ext_resource type="Shader" path="res://addons/bastide/shaders/bastide_stone.gdshader" id="6_stone"]
+
+[sub_resource type="Resource" id="Resource_wall"]
+script = ExtResource("2_wall")
+body_kind = 1
+thickness = 0.55
+height = 1.9
+batter = 0.02
+top_amplitude = 0.02
+top_wavelength = 9.0
+course_height = 0.3
+stone_length_min = 0.32
+stone_length_max = 0.68
+stone_bevel = 0.06
+stone_bulge_min = 0.02
+stone_bulge_max = 0.06
+plinth_height = 0.75
+plaster_color = Color(0.86, 0.8, 0.67, 1)
+plaster_color_alt = Color(0.93, 0.91, 0.85, 1)
+cap_roof = true
+cap_overhang = 0.32
+cap_pitch = 28.0
+cap_tile_width = 0.24
+cap_color = Color(0.3, 0.32, 0.36, 1)
+cap_wood_color = Color(0.26, 0.19, 0.14, 1)
+crenellations = false
+end_pillars = false
+pillar_angle = 180.0
+stone_color = Color(0.56, 0.55, 0.51, 1)
+stone_color_alt = Color(0.46, 0.46, 0.44, 1)
+quoin_color = Color(0.6, 0.58, 0.53, 1)
+mortar_color = Color(0.3, 0.29, 0.27, 1)
+color_variance = 0.1
+
+[sub_resource type="Resource" id="Resource_bld"]
+script = ExtResource("3_bld")
+facade_kind = 1
+window_kind = 1
+door_kind = 1
+floors = 2
+floor_height = 2.7
+knee_height = 0.25
+wall_thickness = 0.3
+plinth_height = 0.4
+plinth_protrusion = 0.04
+quoins = false
+string_courses = false
+corner_margin = 0.7
+bay_width = 2.3
+window_width = 1.3
+window_height = 0.95
+sill_height = 0.85
+shutter_chance = 0.0
+flower_box_chance = 0.0
+attic_windows = false
+door_width = 1.75
+door_height = 2.0
+arched_door = false
+post_width = 0.2
+beam_height = 0.17
+timber_color = Color(0.27, 0.19, 0.14, 1)
+wainscot_height = 0.75
+wainscot_color = Color(0.17, 0.14, 0.12, 1)
+paper_color = Color(0.96, 0.93, 0.84, 1)
+lattice_spacing = 0.09
+pent_roof = true
+pent_depth = 0.75
+pent_pitch = 24.0
+noren_colors = PackedColorArray(0.16, 0.22, 0.38, 1, 0.55, 0.2, 0.16, 1, 0.2, 0.3, 0.25, 1)
+plaster_color = Color(0.94, 0.92, 0.86, 1)
+plaster_color_alt = Color(0.88, 0.82, 0.7, 1)
+interior_color = Color(0.12, 0.1, 0.09, 1)
+wood_color = Color(0.3, 0.21, 0.15, 1)
+door_color = Color(0.33, 0.23, 0.16, 1)
+
+[sub_resource type="Resource" id="Resource_roof"]
+script = ExtResource("4_roof")
+roof_type = 2
+pitch = 32.0
+overhang = 0.95
+thickness = 0.16
+irimoya_ratio = 0.5
+eave_curve = 0.17
+corner_lift = 0.55
+rafters = true
+tile_kind = 1
+tile_row = 0.45
+tile_width = 0.3
+tile_thickness = 0.0
+ridge_kind = 1
+ridge_height = 0.42
+ridge_color = Color(0.24, 0.25, 0.28, 1)
+gable_color = Color(0.33, 0.23, 0.16, 1)
+chimney_chance = 0.0
+roof_colors = PackedColorArray(0.32, 0.34, 0.38, 1, 0.27, 0.29, 0.33, 1, 0.36, 0.36, 0.37, 1, 0.56, 0.3, 0.21, 1)
+tile_variance = 0.05
+underside_color = Color(0.28, 0.2, 0.15, 1)
+
+[sub_resource type="Resource" id="Resource_gar"]
+script = ExtResource("5_gar")
+ground_color = Color(0.44, 0.54, 0.31, 1)
+path_color = Color(0.72, 0.68, 0.58, 1)
+foliage_colors = PackedColorArray(0.24, 0.4, 0.2, 1, 0.33, 0.47, 0.22, 1, 0.45, 0.5, 0.2, 1)
+blossom_colors = PackedColorArray(0.97, 0.8, 0.84, 1, 0.93, 0.66, 0.74, 1)
+gate_color = Color(0.8, 0.22, 0.12, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_body"]
+render_priority = 0
+shader = ExtResource("6_stone")
+shader_parameter/grain_scale = 9.0
+shader_parameter/grain_strength = 0.1
+shader_parameter/blotch_scale = 1.6
+shader_parameter/blotch_strength = 0.1
+shader_parameter/moss_color = Color(0.36, 0.45, 0.22, 1)
+shader_parameter/moss_amount = 0.2
+shader_parameter/roughness_value = 0.92
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_roof"]
+render_priority = 0
+shader = ExtResource("6_stone")
+shader_parameter/grain_scale = 11.0
+shader_parameter/grain_strength = 0.08
+shader_parameter/blotch_scale = 1.2
+shader_parameter/blotch_strength = 0.12
+shader_parameter/moss_color = Color(0.36, 0.45, 0.22, 1)
+shader_parameter/moss_amount = 0.06
+shader_parameter/roughness_value = 0.55
+
+[resource]
+script = ExtResource("1_style")
+display_name = "Japonais traditionnel bois"
+wall = SubResource("Resource_wall")
+building = SubResource("Resource_bld")
+roof = SubResource("Resource_roof")
+garden = SubResource("Resource_gar")
+material = SubResource("ShaderMaterial_body")
+roof_material = SubResource("ShaderMaterial_roof")

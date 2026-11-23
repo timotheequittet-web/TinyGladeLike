@@ -32,6 +32,13 @@ func _init() -> void:
 	_test_building_determinism()
 	_test_building_degenerate()
 	_test_building_performance()
+	# Étape 3 : styles.
+	_test_presets()
+	_test_irimoya()
+	_test_japanese_building()
+	_test_japanese_wall()
+	_test_style_switch()
+	_test_triangle_budget()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -470,3 +477,140 @@ func _test_building_performance() -> void:
 	var ms := (Time.get_ticks_usec() - t0) / 1000.0
 	print("     manoir en U de 3 étages : %.1f ms, %d triangles" % [ms, (out[1] as BastideBuildResult).stats.triangles])
 	check(ms < 600.0, "manoir en U de 3 étages en moins de 600 ms en headless")
+
+
+# --- Étape 3 ---------------------------------------------------------------------------
+
+const MEDIEVAL_PATH := "res://addons/bastide/styles/presets/medieval_stone.tres"
+const JAPANESE_PATH := "res://addons/bastide/styles/presets/japanese_wood.tres"
+
+
+func _styled(points: Array, st: BastideStyle, seed := 7, floors := 0) -> Array:
+	var pts := PackedVector3Array()
+	for p: Vector2 in points:
+		pts.append(Vector3(p.x, 0, p.y))
+	var spec := BastideBuildingSpec.from_points(pts, seed, floors)
+	var layout := BastideBuildingGenerator.generate(spec, st)
+	var result := BastideBuildingMesher.build(layout, st) if not layout.is_empty() else BastideBuildResult.new()
+	return [layout, result]
+
+
+static func _mesh_ok(result: BastideBuildResult) -> bool:
+	if result.is_empty():
+		return false
+	for i in result.mesh.get_surface_count():
+		for v: Vector3 in result.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+			if not v.is_finite():
+				return false
+	return true
+
+
+func _test_presets() -> void:
+	print("Styles prêts à l'emploi")
+	var med: BastideStyle = load(MEDIEVAL_PATH)
+	var jap: BastideStyle = load(JAPANESE_PATH)
+	check(med != null and med.display_name == "Médiéval pierre", "style médiéval chargé")
+	check(jap != null and jap.display_name == "Japonais traditionnel bois", "style japonais chargé")
+	var names: Array = BastideStructure.presets(true).map(func(p: Array) -> String: return p[1])
+	check(names.has("Médiéval pierre") and names.has("Japonais traditionnel bois"),
+		"liste « Style prédéfini » : %s" % ", ".join(names))
+	check(jap.get_garden_style() != null and jap.get_garden_style().gate_color != Color.BLACK, "volet décor réservé (sol, plantes, torii)")
+
+
+func _test_irimoya() -> void:
+	print("Toits irimoya")
+	var rs := BastideRoofStyle.new()
+	var rect := BastideRoofGenerator.generate(_poly(RECT), 6.0, rs, BastideRoofStyle.RoofType.IRIMOYA, 3)
+	check(rect.fallback == "" and rect.gable_panels.size() == 2, "rectangle : deux petits pignons (%d)" % rect.gable_panels.size())
+	check(not rect.weights.has(0.0), "rectangle : un égout sur les quatre côtés")
+	check(rect.irimoya_y > rect.base_y and rect.irimoya_y < rect.ridge_y, "pignons entre l'égout et le faîte")
+	var verges := rect.arcs.filter(func(a: Dictionary) -> bool: return a.kind == BastideRoofLayout.ArcKind.VERGE)
+	check(verges.size() == 4 and verges.all(func(a: Dictionary) -> bool: return a.has("gable")), "quatre rives, chacune liée à son pignon")
+	check(absf(rect.height_at(Vector2(0.0, 3.0)) - rect.height_at(Vector2(5.0, 0.0))) < 1e-3,
+		"même hauteur sous l'égout partout (murs droits, pas de mur pignon)")
+	var square := BastideRoofGenerator.generate(_poly(SQUARE), 6.0, rs, BastideRoofStyle.RoofType.IRIMOYA, 3)
+	check(square.gable_panels.is_empty() and square.fallback == "croupes", "plan carré : croupes (aucun bout étroit)")
+	var fails := 0
+	var count := 0
+	var panels := 0
+	for it in 400:
+		var poly := _ortho_poly(it, 4.0)
+		if poly.size() < 4:
+			continue
+		count += 1
+		var r := BastideRoofGenerator.generate(poly, 6.0, rs, BastideRoofStyle.RoofType.IRIMOYA, it)
+		# Jamais pire qu'un toit à croupes (qui retombe lui-même en toit plat sur
+		# quelques contours extrêmes une fois le débord ajouté).
+		var worse := r.fallback == "plat" and BastideRoofGenerator.generate(poly, 6.0, rs,
+			BastideRoofStyle.RoofType.HIP, it).fallback != "plat"
+		if r.is_empty() or worse:
+			fails += 1
+		panels += r.gable_panels.size()
+	check(fails == 0, "%d contours orthogonaux aléatoires en irimoya, jamais pire qu'en croupes : %d échec(s), %d petits pignons" % [count, fails, panels])
+
+
+func _test_japanese_building() -> void:
+	print("Bâtiment japonais")
+	var jap: BastideStyle = load(JAPANESE_PATH)
+	for name in ["rectangle", "L", "U", "pentagone"]:
+		var shape: Array = {"rectangle": RECT, "L": L_SHAPE, "U": U_SHAPE, "pentagone": PENTAGON}[name]
+		var out := _styled(shape, jap)
+		var layout: BastideBuildingLayout = out[0]
+		var result: BastideBuildResult = out[1]
+		var posts_ok := true
+		for f: BastideBuildingLayout.Facade in layout.facades:
+			for u in f.posts:
+				for o in f.openings:
+					posts_ok = posts_ok and (u + 0.1 <= o.u0 or u - 0.1 >= o.u1)
+		check(layout.timber and posts_ok, "%s : ossature bois, aucun poteau à travers une ouverture" % name)
+		check(_mesh_ok(result) and layout.count(BastideBuildingLayout.OpeningKind.DOOR) == 1,
+			"%s : mesh valide, une porte (%d triangles, toit %s)" % [name, result.stats.triangles, result.stats.roof])
+	var rect: BastideBuildingLayout = _styled(RECT, jap)[0]
+	check(rect.pent_roof and rect.noren_color.a > 0.0, "auvent entre les étages et noren devant la porte")
+	var one_floor: BastideBuildingLayout = _styled(RECT, jap, 7, 1)[0]
+	check(not one_floor.pent_roof, "pas d'auvent sur une maison d'un seul étage")
+	var a: BastideBuildResult = _styled(L_SHAPE, jap, 4)[1]
+	var b: BastideBuildResult = _styled(L_SHAPE, jap, 4)[1]
+	check(a.stats.triangles == b.stats.triangles, "même seed, même maison japonaise")
+
+
+func _test_japanese_wall() -> void:
+	print("Muret japonais")
+	var jap: BastideStyle = load(JAPANESE_PATH)
+	var spec := BastideWallSpec.from_points(PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 8)]), false, 3)
+	var layout := BastideWallGenerator.generate(spec, jap)
+	var result := BastideWallMesher.build(layout, jap)
+	check(layout.cap_roof and layout.merlons.is_empty() and layout.coping.is_empty(), "petit toit de tuiles, ni créneaux ni chaperon")
+	var below := layout.stones.all(func(st: Dictionary) -> bool: return float(st.y1a) <= layout.plaster_from + 1e-3 and float(st.y1b) <= layout.plaster_from + 1e-3)
+	check(not layout.stones.is_empty() and below, "pierres seulement dans le soubassement (%d pierres)" % layout.stones.size())
+	check(layout.pillars.is_empty(), "pas de pilier de pierre")
+	check(not result.is_empty() and result.collision_faces.size() > 0, "mesh et collisions (%d triangles)" % result.stats.triangles)
+
+
+func _test_style_switch() -> void:
+	print("Changement de style")
+	var med: BastideStyle = load(MEDIEVAL_PATH)
+	var jap: BastideStyle = load(JAPANESE_PATH)
+	var m: Array = _styled(RECT, med, 11)
+	var j: Array = _styled(RECT, jap, 11)
+	var lm: BastideBuildingLayout = m[0]
+	var lj: BastideBuildingLayout = j[0]
+	check((m[1] as BastideBuildResult).stats.roof == "pignons" and (j[1] as BastideBuildResult).stats.roof == "irimoya",
+		"même contour : pignons en médiéval, irimoya en japonais")
+	check(lm.facades.size() == lj.facades.size(), "même contour, même nombre de façades")
+	var roles := []
+	for i in (j[1] as BastideBuildResult).mesh.get_surface_count():
+		roles.append((j[1] as BastideBuildResult).mesh.surface_get_name(i))
+	check(roles.has("wood") and roles.has("paper") and roles.has("roof"), "matériaux par rôle : %s" % ", ".join(roles))
+
+
+func _test_triangle_budget() -> void:
+	print("Budget de triangles")
+	var med: BastideStyle = load(MEDIEVAL_PATH)
+	var jap: BastideStyle = load(JAPANESE_PATH)
+	var mr: int = (_styled(RECT, med)[1] as BastideBuildResult).stats.triangles
+	var jr: int = (_styled(RECT, jap)[1] as BastideBuildResult).stats.triangles
+	var mu: int = (_styled(U_SHAPE, med, 7, 3)[1] as BastideBuildResult).stats.triangles
+	check(mr < 22000, "maison médiévale 10 × 6 m : %d triangles (< 22 000 ; ~33 000 à l'étape 2)" % mr)
+	check(jr < 24000, "maison japonaise 10 × 6 m : %d triangles (< 24 000)" % jr)
+	check(mu < 45000, "manoir en U de 3 étages : %d triangles (< 45 000 ; ~67 000 à l'étape 2)" % mu)

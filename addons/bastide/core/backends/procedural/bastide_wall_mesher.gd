@@ -6,6 +6,8 @@ extends RefCounted
 
 const EndKind := BastideWallLayout.EndKind
 const ROLE_BODY := &"body"
+const ROLE_ROOF := &"roof"
+const ROLE_WOOD := &"wood"
 const SINK := 0.03
 
 
@@ -132,7 +134,16 @@ static func build(layout: BastideWallLayout, style: BastideStyle, with_collision
 		_add_pillar(mb, col, layout, layout.pillars[pi], pi, ws, with_collision)
 
 	timings["pillars"] = Time.get_ticks_usec() - _t; _t = Time.get_ticks_usec()
-	result.mesh = mb.commit({ROLE_BODY: style.get_material()})
+	# --- Petit toit de tuiles ---
+	if layout.cap_roof:
+		for run in layout.runs:
+			_cap_roof(mb, layout, run, ws)
+	timings["cap"] = Time.get_ticks_usec() - _t; _t = Time.get_ticks_usec()
+	result.mesh = mb.commit({
+		ROLE_BODY: style.get_material(),
+		ROLE_ROOF: style.get_roof_material(),
+		ROLE_WOOD: style.get_wood_material(),
+	})
 	timings["commit"] = Time.get_ticks_usec() - _t
 	result.stats = {
 		"stones": layout.stones.size(),
@@ -144,6 +155,83 @@ static func build(layout: BastideWallLayout, style: BastideStyle, with_collision
 		"timings_us": timings,
 	}
 	return result
+
+
+## Petit toit de tuiles rondes à deux pentes le long d'un tronçon : côtes en
+## travers de chaque pente, faîtage maçonné, dessous et planches de rive en bois.
+static func _cap_roof(mb: BastideMeshBuilder, layout: BastideWallLayout, run: BastideWallLayout.Run,
+		ws: BastideWallStyle) -> void:
+	var ho := layout.half_top + layout.cap_overhang
+	var rise := ho * layout.cap_tan
+	var under := ws.cap_wood_color
+	var tile := ws.cap_color
+	var channel := tile.darkened(0.22)
+	var lift := 0.05
+	# Points du toit à l'abscisse s : faîte, et égout de chaque côté.
+	var ridge := func(sv: float) -> Vector3:
+		return layout.lateral_point(run, sv, layout.height_at(sv) + lift + rise, 0.0)
+	var eave := func(sv: float, side: float) -> Vector3:
+		return layout.lateral_point(run, sv, layout.height_at(sv) + lift, side * ho)
+	for i in run.s.size() - 1:
+		var sa := run.s[i]
+		var sb := run.s[i + 1]
+		var ra: Vector3 = ridge.call(sa)
+		var rb: Vector3 = ridge.call(sb)
+		for side in [-1.0, 1.0]:
+			var ea: Vector3 = eave.call(sa, side)
+			var eb: Vector3 = eave.call(sb, side)
+			var hint: Vector3 = run.off[i] * side + Vector3.UP
+			mb.add_quad(ROLE_ROOF, ra, rb, eb, ea, hint, channel, channel, channel.darkened(0.1), channel.darkened(0.1))
+			# Dessous (planche horizontale jusqu'au mur) et planche d'égout.
+			var da := ea - Vector3(0, 0.07, 0)
+			var db := eb - Vector3(0, 0.07, 0)
+			var wa := layout.lateral_point(run, sa, layout.height_at(sa) + lift - 0.07, side * layout.half_top * 0.9)
+			var wb := layout.lateral_point(run, sb, layout.height_at(sb) + lift - 0.07, side * layout.half_top * 0.9)
+			mb.add_quad(ROLE_WOOD, da, db, wb, wa, Vector3.DOWN, under, under, under.darkened(0.2), under.darkened(0.2))
+			mb.add_quad(ROLE_WOOD, ea, eb, db, da, run.off[i] * side, under, under, under, under)
+		BastideRoofMesher.stacked_ridge(mb, ra, rb, layout.cap_tan, tile.darkened(0.08), 0.13, 0.11, false)
+	# Côtes de tuiles rondes en travers des pentes (même profil que les toits).
+	var w := ws.cap_tile_width
+	var count := maxi(1, floori(run.length() / w))
+	var rw := w * BastideRoofMesher.RIB_HALF
+	var h := w * BastideRoofMesher.RIB_HEIGHT
+	var s_start := run.s0 + (run.length() - count * w) * 0.5 + w * 0.5
+	var knots := [-rw, -rw * BastideRoofMesher.RIB_TOP, rw * BastideRoofMesher.RIB_TOP, rw]
+	for k in count:
+		var sc := s_start + k * w
+		var tint := BastideRng.signed_at(layout.seed, "cap_tile", BastideRng.combine(run.index, k)) * 0.06
+		var c := tile.lightened(tint) if tint > 0.0 else tile.darkened(-tint)
+		var dark := c.darkened(0.12)
+		for side in [-1.0, 1.0]:
+			var rc: Vector3 = ridge.call(sc)
+			var ec: Vector3 = eave.call(sc, side)
+			var along := ((ridge.call(sc + rw) as Vector3) - (ridge.call(sc - rw) as Vector3)).normalized()
+			var nrm := along.cross(ec - rc).normalized()
+			if nrm.y < 0.0:
+				nrm = -nrm
+			var rs: Array = []
+			var es: Array = []
+			for kn: float in knots:
+				var u := BastideRoofMesher.rib_profile(absf(kn), rw)
+				rs.append((ridge.call(sc + kn) as Vector3) + nrm * h * u)
+				es.append((eave.call(sc + kn, side) as Vector3) + nrm * h * u)
+			for part in 3:
+				var col := c if part == 1 else dark
+				mb.add_quad(ROLE_ROOF, rs[part], es[part], es[part + 1], rs[part + 1], nrm + along * float(part - 1),
+					col, col, col, col)
+			var cap := c.lightened(0.1)
+			mb.add_quad(ROLE_ROOF, es[0], es[1], es[2], es[3], ec - rc, cap, cap, cap, cap)
+	# Pignons du petit toit aux bouts ouverts.
+	for end in 2:
+		var kind: int = run.start_kind if end == 0 else run.end_kind
+		if kind != EndKind.OPEN:
+			continue
+		var sv: float = run.s0 if end == 0 else run.s1
+		var outward: Vector3 = -run.dir_at(sv) if end == 0 else run.dir_at(sv)
+		var r: Vector3 = ridge.call(sv)
+		var l: Vector3 = eave.call(sv, -1.0)
+		var rr: Vector3 = eave.call(sv, 1.0)
+		mb.add_tri(ROLE_WOOD, l - Vector3(0, 0.07, 0), rr - Vector3(0, 0.07, 0), r, outward, under, under, under.lightened(0.1))
 
 
 ## Point d'une face entre deux repères (u = 0 → début de la pierre, 1 → fin).
@@ -159,6 +247,8 @@ static func _stone_color(ws: BastideWallStyle, tint: float, alt: float, quoin: b
 
 static func _add_backing(mb: BastideMeshBuilder, layout: BastideWallLayout, run: BastideWallLayout.Run, mortar: Color) -> void:
 	var y0 := layout.footing
+	var py := layout.plaster_from
+	var plaster := layout.plaster_color
 	for i in run.s.size() - 1:
 		var sa := run.s[i]
 		var sb := run.s[i + 1]
@@ -166,14 +256,28 @@ static func _add_backing(mb: BastideMeshBuilder, layout: BastideWallLayout, run:
 		var hb := layout.height_at(sb) - 0.02
 		for side in [-1.0, 1.0]:
 			var hint: Vector3 = run.off[i] * side
+			if is_finite(py):
+				# Joints du soubassement, puis enduit affleurant jusqu'au sommet.
+				mb.add_quad(ROLE_BODY,
+					layout.face_point(run, sa, y0, side, -0.03), layout.face_point(run, sb, y0, side, -0.03),
+					layout.face_point(run, sb, py, side, -0.03), layout.face_point(run, sa, py, side, -0.03),
+					hint, mortar, mortar, mortar, mortar)
+				var low := plaster.darkened(0.12)
+				mb.add_quad(ROLE_BODY,
+					layout.face_point(run, sa, py, side), layout.face_point(run, sb, py, side),
+					layout.face_point(run, sb, hb, side), layout.face_point(run, sa, ha, side),
+					hint, low, low, plaster, plaster)
+				continue
 			mb.add_quad(ROLE_BODY,
 				layout.face_point(run, sa, y0, side, -0.03), layout.face_point(run, sb, y0, side, -0.03),
 				layout.face_point(run, sb, hb, side, -0.03), layout.face_point(run, sa, ha, side, -0.03),
 				hint, mortar, mortar, mortar, mortar)
+		var extra := 0.0 if is_finite(py) else -0.03
+		var top := plaster if is_finite(py) else mortar
 		mb.add_quad(ROLE_BODY,
-			layout.face_point(run, sa, ha, -1.0, -0.03), layout.face_point(run, sb, hb, -1.0, -0.03),
-			layout.face_point(run, sb, hb, 1.0, -0.03), layout.face_point(run, sa, ha, 1.0, -0.03),
-			Vector3.UP, mortar, mortar, mortar, mortar)
+			layout.face_point(run, sa, ha, -1.0, extra), layout.face_point(run, sb, hb, -1.0, extra),
+			layout.face_point(run, sb, hb, 1.0, extra), layout.face_point(run, sa, ha, 1.0, extra),
+			Vector3.UP, top, top, top, top)
 
 
 static func _add_end_cap(mb: BastideMeshBuilder, layout: BastideWallLayout, run: BastideWallLayout.Run,
@@ -190,6 +294,13 @@ static func _add_end_cap(mb: BastideMeshBuilder, layout: BastideWallLayout, run:
 		]
 		var color := ws.quoin_color.darkened(BastideRng.randf_at(layout.seed, "cap", row) * 0.08)
 		mb.add_pillow_quad(ROLE_BODY, c, outward, ws.stone_bevel, 0.03, color, ws.mortar_color.lerp(color, 0.3))
+	# Corps enduit : le bout est enduit au-dessus du soubassement.
+	var py := layout.plaster_from
+	if is_finite(py) and h > py:
+		var p := layout.plaster_color
+		mb.add_quad(ROLE_BODY, layout.face_point(run, sv, py, -1.0), layout.face_point(run, sv, py, 1.0),
+			layout.face_point(run, sv, h - 0.02, 1.0), layout.face_point(run, sv, h - 0.02, -1.0),
+			outward, p.darkened(0.12), p.darkened(0.12), p, p)
 
 
 static func _add_pillar(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideWallLayout,

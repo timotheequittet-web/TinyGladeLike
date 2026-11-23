@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_wall_style.gd" id="2_a4gn6"]
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_building_style.gd" id="3_bld01"]
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_roof_style.gd" id="4_rof01"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_garden_style.gd" id="5_gar01"]
 
 [sub_resource type="Resource" id="Resource_esg65"]
 script = ExtResource("2_a4gn6")
@@ -14,8 +15,13 @@ script = ExtResource("3_bld01")
 [sub_resource type="Resource" id="Resource_rof01"]
 script = ExtResource("4_rof01")
 
+[sub_resource type="Resource" id="Resource_gar01"]
+script = ExtResource("5_gar01")
+
 [resource]
 script = ExtResource("1_4i8uw")
+display_name = "Médiéval pierre"
 wall = SubResource("Resource_esg65")
 building = SubResource("Resource_bld01")
 roof = SubResource("Resource_rof01")
+garden = SubResource("Resource_gar01")

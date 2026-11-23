@@ -1,10 +1,18 @@
 @tool
 class_name BastideWallStyle
 extends Resource
-## Paramètres d'un mur : proportions, pierres, créneaux, règles d'angles, couleurs.
+## Paramètres d'un mur : matière, proportions, pierres, couronnement, règles d'angles, couleurs.
 ## Toute modification émet `changed`, ce qui régénère les murs qui utilisent ce style.
 
+## Matière du corps du mur : pierres apparentes partout, ou enduit au-dessus
+## d'un soubassement de pierres (muret japonais, mur de jardin…).
+enum BodyKind { STONE, PLASTER }
+
 @export_group("Corps du mur")
+@export var body_kind: BodyKind = BodyKind.STONE:
+	set(value):
+		body_kind = value
+		emit_changed()
 ## Épaisseur au sommet du mur.
 @export_range(0.2, 4.0, 0.01, "or_greater", "suffix:m") var thickness: float = 0.9:
 	set(value):
@@ -58,6 +66,53 @@ extends Resource
 @export_range(0.0, 0.3, 0.001, "suffix:m") var stone_bulge_max: float = 0.045:
 	set(value):
 		stone_bulge_max = value
+		emit_changed()
+@export_group("Enduit et petit toit")
+## Corps enduit : hauteur du soubassement en pierres.
+@export_range(0.0, 3.0, 0.01, "suffix:m") var plinth_height: float = 0.7:
+	set(value):
+		plinth_height = value
+		emit_changed()
+## Corps enduit : couleur de l'enduit.
+@export var plaster_color: Color = Color(0.92, 0.89, 0.82):
+	set(value):
+		plaster_color = value
+		emit_changed()
+## Seconde teinte d'enduit, mélangée par mur (seed).
+@export var plaster_color_alt: Color = Color(0.86, 0.8, 0.68):
+	set(value):
+		plaster_color_alt = value
+		emit_changed()
+## Couronne le mur d'un petit toit de tuiles à deux pentes
+## (remplace chaperon et créneaux).
+@export var cap_roof: bool = false:
+	set(value):
+		cap_roof = value
+		emit_changed()
+## Débord du petit toit de chaque côté du mur.
+@export_range(0.0, 1.0, 0.01, "suffix:m") var cap_overhang: float = 0.3:
+	set(value):
+		cap_overhang = value
+		emit_changed()
+## Pente du petit toit.
+@export_range(10.0, 50.0, 0.5, "suffix:°") var cap_pitch: float = 27.0:
+	set(value):
+		cap_pitch = value
+		emit_changed()
+## Écart entre deux rangs de tuiles rondes du petit toit.
+@export_range(0.1, 1.0, 0.01, "suffix:m") var cap_tile_width: float = 0.26:
+	set(value):
+		cap_tile_width = value
+		emit_changed()
+## Couleur des tuiles du petit toit.
+@export var cap_color: Color = Color(0.3, 0.32, 0.36):
+	set(value):
+		cap_color = value
+		emit_changed()
+## Bois sous le petit toit (chevrons, poutre).
+@export var cap_wood_color: Color = Color(0.28, 0.2, 0.15):
+	set(value):
+		cap_wood_color = value
 		emit_changed()
 @export_group("Chaperon et créneaux")
 ## Épaisseur des dalles du chaperon (0 = pas de chaperon).

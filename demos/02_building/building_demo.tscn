@@ -1,0 +1,252 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://demos/02_building/building_demo.gd" id="1_5jubq"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_building.gd" id="2_uxuh1"]
+[ext_resource type="Resource" path="res://addons/bastide/styles/presets/medieval_stone.tres" id="3_t0e22"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_wall.gd" id="4_q2n6d"]
+[ext_resource type="Script" path="res://demos/common/free_camera.gd" id="5_ahoik"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_uslvu"]
+sky_top_color = Color(0.36, 0.56, 0.82, 1)
+sky_horizon_color = Color(0.8, 0.84, 0.88, 1)
+ground_bottom_color = Color(0.3, 0.32, 0.28, 1)
+ground_horizon_color = Color(0.7, 0.72, 0.7, 1)
+
+[sub_resource type="Sky" id="Sky_sm242"]
+sky_material = SubResource("ProceduralSkyMaterial_uslvu")
+
+[sub_resource type="Environment" id="Environment_mp4bc"]
+background_mode = 2
+sky = SubResource("Sky_sm242")
+ambient_light_source = 3
+ambient_light_energy = 0.9
+tonemap_mode = 4
+ssao_enabled = true
+ssao_radius = 1.2
+glow_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.75, 0.8, 0.86, 1)
+fog_density = 0.005
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bwjwj"]
+albedo_color = Color(0.42, 0.55, 0.3, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_soaw1"]
+material = SubResource("StandardMaterial3D_bwjwj")
+size = Vector2(800, 800)
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_btvgc"]
+
+[sub_resource type="Curve3D" id="Curve3D_1ojv2"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -5, 0, -3, 0, 0, 0, 0, 0, 0, 5, 0, -3, 0, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0, 0, 0, -5, 0, 3),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_ed3e6"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -3.5, 0, -3.5, 0, 0, 0, 0, 0, 0, 3.5, 0, -3.5, 0, 0, 0, 0, 0, 0, 3.5, 0, 3.5, 0, 0, 0, 0, 0, 0, -3.5, 0, 3.5),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_tkpjs"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -6, 0, -3, 0, 0, 0, 0, 0, 0, 6.2, 0, -2.7, 0, 0, 0, 0, 0, 0, 6, 0, 2.3, 0, 0, 0, 0, 0, 0, 0.3, 0, 2.1, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, -6.2, 0, 8.2),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0, 0)
+}
+point_count = 6
+
+[sub_resource type="Curve3D" id="Curve3D_rm8tl"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -8, 0, -5, 0, 0, 0, 0, 0, 0, 8, 0, -5, 0, 0, 0, 0, 0, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 3, 0, 6, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, -3, 0, 0, 0, 0, 0, 0, 0, 0, -3, 0, 6, 0, 0, 0, 0, 0, 0, -8, 0, 6),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0)
+}
+point_count = 8
+
+[sub_resource type="Curve3D" id="Curve3D_wedv2"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -4, 0, -4, 0, 0, 0, 0, 0, 0, 4.5, 0, -5, 0, 0, 0, 0, 0, 0, 6, 0, 2, 0, 0, 0, 0, 0, 0, 0.5, 0, 5.5, 0, 0, 0, 0, 0, 0, -5, 0, 2),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0)
+}
+point_count = 5
+
+[sub_resource type="Curve3D" id="Curve3D_8bpeb"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -2.4, 0, -2.4, 0, 0, 0, 0, 0, 0, 2.4, 0, -2.4, 0, 0, 0, 0, 0, 0, 2.4, 0, 2.4, 0, 0, 0, 0, 0, 0, -2.4, 0, 2.4),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_t7auj"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -11.4, 0, 22.3, 0, 0, 0, 0, 0, 0, -4.6, 0, 22.3),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[node name="BuildingDemo" type="Node3D" unique_id=2001131190]
+script = ExtResource("1_5jubq")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1580069905]
+environment = SubResource("Environment_mp4bc")
+
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=332977547]
+transform = Transform3D(0.7880108, 0.41195798, -0.45752564, 0, 0.7431448, 0.6691306, 0.6156615, -0.5272821, 0.5856061, 0, 0, 0)
+light_color = Color(1, 0.93, 0.82, 1)
+light_energy = 1.25
+shadow_enabled = true
+directional_shadow_max_distance = 120.0
+
+[node name="Sol" type="StaticBody3D" parent="." unique_id=1002119242]
+
+[node name="Mesh" type="MeshInstance3D" parent="Sol" unique_id=1392780127]
+mesh = SubResource("PlaneMesh_soaw1")
+
+[node name="Shape" type="CollisionShape3D" parent="Sol" unique_id=842281173]
+shape = SubResource("WorldBoundaryShape3D_btvgc")
+
+[node name="Batiments" type="Node3D" parent="." unique_id=1324381516]
+
+[node name="Maison" type="Path3D" parent="Batiments" unique_id=1284869793]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17, 0, -1)
+curve = SubResource("Curve3D_1ojv2")
+script = ExtResource("2_uxuh1")
+style = ExtResource("3_t0e22")
+seed = 3
+metadata/demo_floors = 0
+metadata/demo_roof = 0
+
+[node name="Pavillon" type="Path3D" parent="Batiments" unique_id=2043774786]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, -14)
+curve = SubResource("Curve3D_ed3e6")
+script = ExtResource("2_uxuh1")
+roof = 1
+style = ExtResource("3_t0e22")
+seed = 8
+metadata/demo_floors = 0
+metadata/demo_roof = 1
+
+[node name="FermeEnL" type="Path3D" parent="Batiments" unique_id=1363318188]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, -4)
+curve = SubResource("Curve3D_tkpjs")
+script = ExtResource("2_uxuh1")
+style = ExtResource("3_t0e22")
+seed = 5
+metadata/demo_floors = 0
+metadata/demo_roof = 0
+
+[node name="ManoirEnU" type="Path3D" parent="Batiments" unique_id=1727983846]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 17)
+curve = SubResource("Curve3D_rm8tl")
+script = ExtResource("2_uxuh1")
+floors = 3
+style = ExtResource("3_t0e22")
+seed = 12
+metadata/demo_floors = 3
+metadata/demo_roof = 0
+
+[node name="MaisonBiscornue" type="Path3D" parent="Batiments" unique_id=23637534]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0, 11)
+curve = SubResource("Curve3D_wedv2")
+script = ExtResource("2_uxuh1")
+roof = 1
+style = ExtResource("3_t0e22")
+seed = 21
+metadata/demo_floors = 0
+metadata/demo_roof = 1
+
+[node name="Tour" type="Path3D" parent="Batiments" unique_id=120581013]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0, -10)
+curve = SubResource("Curve3D_8bpeb")
+script = ExtResource("2_uxuh1")
+floors = 4
+roof = 1
+style = ExtResource("3_t0e22")
+seed = 17
+metadata/demo_floors = 4
+metadata/demo_roof = 1
+
+[node name="MurDeCour" type="Path3D" parent="Batiments" unique_id=655466618]
+curve = SubResource("Curve3D_t7auj")
+script = ExtResource("4_q2n6d")
+height = 2.0
+style = ExtResource("3_t0e22")
+seed = 4
+
+[node name="Camera" type="Camera3D" parent="." unique_id=1252764257]
+transform = Transform3D(1, 0, 0, 0, 0.9135454, 0.40673664, 0, -0.40673664, 0.9135454, 2, 19, 44)
+fov = 60.0
+script = ExtResource("5_ahoik")
+
+[node name="Interface" type="CanvasLayer" parent="." unique_id=1349791686]
+
+[node name="Panneau" type="PanelContainer" parent="Interface" unique_id=321381861]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 16.0
+
+[node name="VBox" type="VBoxContainer" parent="Interface/Panneau" unique_id=371450854]
+layout_mode = 2
+
+[node name="Aide" type="Label" parent="Interface/Panneau/VBox" unique_id=1694454683]
+layout_mode = 2
+text = "Clic droit + souris : regarder   ZQSD : bouger   A/E : bas/haut   Maj : vite
+Clic gauche : lancer une boule (collisions)"
+
+[node name="Reglages" type="HBoxContainer" parent="Interface/Panneau/VBox" unique_id=20546858]
+layout_mode = 2
+
+[node name="L0" type="Label" parent="Interface/Panneau/VBox/Reglages" unique_id=1842687200]
+layout_mode = 2
+text = "Seed"
+
+[node name="SeedBox" type="SpinBox" parent="Interface/Panneau/VBox/Reglages" unique_id=2000113857]
+unique_name_in_owner = true
+layout_mode = 2
+max_value = 99999.0
+value = 1.0
+
+[node name="RandomButton" type="Button" parent="Interface/Panneau/VBox/Reglages" unique_id=1846679908]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Seed aléatoire"
+
+[node name="L3" type="Label" parent="Interface/Panneau/VBox/Reglages" unique_id=958605201]
+layout_mode = 2
+text = "  Étages"
+
+[node name="FloorsBox" type="SpinBox" parent="Interface/Panneau/VBox/Reglages" unique_id=769415086]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "0 = étages d'origine de chaque bâtiment"
+max_value = 6.0
+
+[node name="L5" type="Label" parent="Interface/Panneau/VBox/Reglages" unique_id=1629175122]
+layout_mode = 2
+text = "  Toits"
+
+[node name="RoofChoice" type="OptionButton" parent="Interface/Panneau/VBox/Reglages" unique_id=191533527]
+unique_name_in_owner = true
+layout_mode = 2
+selected = 0
+item_count = 3
+popup/item_0/text = "D'origine"
+popup/item_0/id = 0
+popup/item_1/text = "Croupes"
+popup/item_1/id = 1
+popup/item_2/text = "Pignons"
+popup/item_2/id = 2
+
+[node name="Stats" type="Label" parent="Interface/Panneau/VBox" unique_id=628287040]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 13

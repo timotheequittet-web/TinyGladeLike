@@ -2,10 +2,20 @@
 
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_style.gd" id="1_4i8uw"]
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_wall_style.gd" id="2_a4gn6"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_building_style.gd" id="3_bld01"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_roof_style.gd" id="4_rof01"]
 
 [sub_resource type="Resource" id="Resource_esg65"]
 script = ExtResource("2_a4gn6")
 
+[sub_resource type="Resource" id="Resource_bld01"]
+script = ExtResource("3_bld01")
+
+[sub_resource type="Resource" id="Resource_rof01"]
+script = ExtResource("4_rof01")
+
 [resource]
 script = ExtResource("1_4i8uw")
 wall = SubResource("Resource_esg65")
+building = SubResource("Resource_bld01")
+roof = SubResource("Resource_rof01")

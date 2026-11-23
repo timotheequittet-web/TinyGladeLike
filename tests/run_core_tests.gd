@@ -21,6 +21,17 @@ func _init() -> void:
 	_test_seed_changes_wall()
 	_test_degenerate_inputs()
 	_test_performance()
+	# Étape 2 : bâtiments et toits.
+	_test_polygon()
+	_test_skeleton_shapes()
+	_test_skeleton_random()
+	_test_footprint_sanitizer()
+	_test_gables()
+	_test_roof_heights()
+	_test_building_openings()
+	_test_building_determinism()
+	_test_building_degenerate()
+	_test_building_performance()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -192,3 +203,270 @@ func _test_performance() -> void:
 	var layout: BastideWallLayout = out[0]
 	print("     mur de %.1f m : %.1f ms, %d triangles" % [layout.length, ms, (out[1] as BastideBuildResult).stats.triangles])
 	check(ms < 400.0, "génération d'un mur de 40 m en moins de 400 ms en headless")
+
+
+
+# --- Étape 2 ---------------------------------------------------------------------------
+
+func _poly(points: Array) -> PackedVector2Array:
+	return PackedVector2Array(points)
+
+
+const RECT := [Vector2(0, 0), Vector2(10, 0), Vector2(10, 6), Vector2(0, 6)]
+const SQUARE := [Vector2(0, 0), Vector2(8, 0), Vector2(8, 8), Vector2(0, 8)]
+const L_SHAPE := [Vector2(0, 0), Vector2(12, 0), Vector2(12, 5), Vector2(5, 5), Vector2(5, 10), Vector2(0, 10)]
+const U_SHAPE := [Vector2(0, 0), Vector2(14, 0), Vector2(14, 10), Vector2(9, 10), Vector2(9, 5), Vector2(5, 5),
+	Vector2(5, 10), Vector2(0, 10)]
+const T_SHAPE := [Vector2(0, 0), Vector2(14, 0), Vector2(14, 5), Vector2(9.5, 5), Vector2(9.5, 12), Vector2(4.5, 12),
+	Vector2(4.5, 5), Vector2(0, 5)]
+const PLUS := [Vector2(5, 0), Vector2(10, 0), Vector2(10, 5), Vector2(15, 5), Vector2(15, 10), Vector2(10, 10),
+	Vector2(10, 15), Vector2(5, 15), Vector2(5, 10), Vector2(0, 10), Vector2(0, 5), Vector2(5, 5)]
+const PENTAGON := [Vector2(0, 0), Vector2(9, -1), Vector2(11, 6), Vector2(4, 9), Vector2(-2, 5)]
+
+
+func _test_polygon() -> void:
+	print("Polygones")
+	var cw := _poly(RECT.duplicate())
+	cw.reverse()
+	check(BastidePolygon.signed_area(cw) < 0.0 and BastidePolygon.signed_area(BastidePolygon.ensure_direct(cw)) > 0.0, "remise dans le sens direct")
+	var inner := BastidePolygon.offset(_poly(RECT), 1.0)
+	check(is_equal_approx(BastidePolygon.signed_area(inner), 8.0 * 4.0), "décalage vers l'intérieur d'1 m")
+	var outer := BastidePolygon.offset(_poly(L_SHAPE), -0.5)
+	check(BastidePolygon.signed_area(outer) > BastidePolygon.signed_area(_poly(L_SHAPE)), "décalage vers l'extérieur (débord)")
+	check(not BastidePolygon.is_convex_vertex(_poly(L_SHAPE), 3), "angle rentrant du L détecté")
+
+
+func _test_skeleton_shapes() -> void:
+	print("Squelette droit")
+	var r := BastideStraightSkeleton.compute(_poly(RECT))
+	check(r.ok and is_equal_approx(r.max_time, 3.0), "rectangle 10 × 6 : faîtage à mi-largeur (t = %.2f)" % r.max_time)
+	var ridge := false
+	for arc in r.arcs:
+		if absf(arc.a.y - 3.0) < 1e-4 and absf(arc.b.y - 3.0) < 1e-4:
+			ridge = is_equal_approx(Vector2(arc.a.x, arc.a.z).distance_to(Vector2(arc.b.x, arc.b.z)), 4.0)
+	check(ridge, "rectangle : faîtage de 4 m (10 - 6) entre les deux croupes")
+	var sq := BastideStraightSkeleton.compute(_poly(SQUARE))
+	check(sq.ok and sq.arcs.size() == 4 and is_equal_approx(sq.max_time, 4.0), "carré : pyramide à quatre arêtiers")
+	for name in ["L", "U", "T", "croix", "pentagone"]:
+		var shape: Array = {"L": L_SHAPE, "U": U_SHAPE, "T": T_SHAPE, "croix": PLUS, "pentagone": PENTAGON}[name]
+		var res := BastideStraightSkeleton.compute(_poly(shape))
+		check(res.ok, "forme %s : pans qui pavent exactement le contour %s" % [name, res.error])
+	var w := PackedFloat32Array([1, 0, 1, 0])
+	var g := BastideStraightSkeleton.compute(_poly(RECT), w)
+	var through := false
+	for arc in g.arcs:
+		if absf(arc.a.y - 3.0) < 1e-4 and absf(arc.b.y - 3.0) < 1e-4:
+			through = is_equal_approx(absf(arc.a.x - arc.b.x), 10.0)
+	check(g.ok and through, "pignons : le faîtage court d'un pignon à l'autre")
+
+
+static func _ortho_poly(seed: int, cell: float) -> PackedVector2Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var cells := {Vector2i(2, 2): true}
+	var target := rng.randi_range(2, 12)
+	for tries in 200:
+		if cells.size() >= target:
+			break
+		var keys := cells.keys()
+		var c: Vector2i = keys[rng.randi() % keys.size()]
+		var nc: Vector2i = c + [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][rng.randi() % 4]
+		if nc.x >= 0 and nc.y >= 0 and nc.x < 6 and nc.y < 6:
+			cells[nc] = true
+	var edges := {}
+	for c: Vector2i in cells:
+		var p := [c, c + Vector2i(1, 0), c + Vector2i(1, 1), c + Vector2i(0, 1)]
+		for i in 4:
+			var a: Vector2i = p[i]
+			var b: Vector2i = p[(i + 1) % 4]
+			if edges.has([b, a]):
+				edges.erase([b, a])
+			else:
+				edges[[a, b]] = true
+	var nxt := {}
+	for e in edges:
+		if nxt.has(e[0]):
+			return PackedVector2Array()
+		nxt[e[0]] = e[1]
+	var start: Vector2i = edges.keys()[0][0]
+	var loop := [start]
+	var cur: Vector2i = nxt[start]
+	while cur != start and loop.size() < 1000:
+		loop.append(cur)
+		cur = nxt[cur]
+	if loop.size() != edges.size():
+		return PackedVector2Array()  # trou ou plusieurs boucles
+	var pts := PackedVector2Array()
+	for i in loop.size():
+		var a: Vector2i = loop[posmod(i - 1, loop.size())]
+		var b: Vector2i = loop[i]
+		var c: Vector2i = loop[(i + 1) % loop.size()]
+		if (b - a) != (c - b):
+			pts.append(Vector2(b) * cell)
+	return BastidePolygon.ensure_direct(pts)
+
+
+func _test_skeleton_random() -> void:
+	print("Squelette droit : contours aléatoires")
+	var count := 0
+	var fails := 0
+	for it in 600:
+		var poly := _ortho_poly(it, 4.0)
+		if poly.size() < 4:
+			continue
+		count += 1
+		if not BastideStraightSkeleton.compute(poly).ok:
+			fails += 1
+		if not BastideStraightSkeleton.compute(poly, BastideRoofGenerator.gable_weights(poly)).ok:
+			fails += 1
+	check(fails == 0, "%d contours orthogonaux aléatoires (L, U, T, escaliers…), avec et sans pignons : %d échec(s)" % [count, fails])
+	var rng := RandomNumberGenerator.new()
+	fails = 0
+	for it in 300:
+		rng.seed = 1000 + it
+		var n := rng.randi_range(3, 14)
+		var poly := PackedVector2Array()
+		for i in n:
+			var a := TAU * i / n + rng.randf_range(-0.2, 0.2)
+			poly.append(Vector2(cos(a), sin(a)) * rng.randf_range(4.0, 12.0))
+		if not BastideStraightSkeleton.compute(poly).ok:
+			fails += 1
+	check(fails == 0, "300 contours irréguliers en étoile : %d échec(s)" % fails)
+
+
+func _test_footprint_sanitizer() -> void:
+	print("Assainissement du contour")
+	# Un L tracé à la main, un peu de travers et dans le mauvais sens.
+	var sloppy := _poly([Vector2(0, 0), Vector2(0.2, 10), Vector2(5.1, 9.8), Vector2(5, 5.2), Vector2(12, 4.9),
+		Vector2(11.8, 0.1), Vector2(6, 0.05)])
+	var r := BastideFootprintSanitizer.sanitize(sloppy, 1.2, true, 18.0)
+	var pts: PackedVector2Array = r.points
+	check(r.squared and pts.size() == 6, "L redressé : 6 angles (point aligné retiré)")
+	var right := true
+	for i in pts.size():
+		right = right and absf(rad_to_deg(BastidePolygon.turn_angle(pts, i)) - 90.0) < 0.01
+	check(right, "tous les angles sont droits")
+	check(BastidePolygon.signed_area(pts) > 0.0, "contour remis dans le sens direct")
+	var irregular := BastideFootprintSanitizer.sanitize(_poly(PENTAGON), 1.2, true, 18.0)
+	check(not irregular.squared and irregular.points.size() == 5, "contour franchement irrégulier laissé tel quel")
+	var bow := BastideFootprintSanitizer.sanitize(_poly([Vector2(0, 0), Vector2(8, 6), Vector2(8, 0), Vector2(0, 6)]), 1.2, true, 18.0)
+	check(bow.points.size() >= 3 and not BastidePolygon.self_intersects(bow.points), "contour croisé remplacé par un contour valide")
+	var dup := BastideFootprintSanitizer.sanitize(_poly([Vector2(0, 0), Vector2(0.1, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)]), 1.2, true, 18.0)
+	check(dup.points.size() == 4, "points doublés fusionnés")
+
+
+func _test_gables() -> void:
+	print("Pignons")
+	var w := BastideRoofGenerator.gable_weights(_poly(RECT))
+	check(w == PackedFloat32Array([1, 0, 1, 0]), "rectangle : pignons sur les petits côtés")
+	check(not BastideRoofGenerator.gable_weights(_poly(SQUARE)).has(0.0), "carré : pas de pignon (toit en pavillon)")
+	var wl := BastideRoofGenerator.gable_weights(_poly(L_SHAPE))
+	check(wl[1] == 0.0 and wl[4] == 0.0 and wl.count(0.0) == 2, "L : un pignon au bout de chaque aile")
+	var wu := BastideRoofGenerator.gable_weights(_poly(U_SHAPE))
+	check(wu.count(0.0) == 2 and wu[0] == 1.0, "U : pignons au bout des deux ailes, pas sur le fond")
+
+
+func _test_roof_heights() -> void:
+	print("Toit")
+	var rs := BastideRoofStyle.new()
+	var roof := BastideRoofGenerator.generate(_poly(RECT), 6.0, rs, BastideRoofStyle.RoofType.GABLE, 3)
+	check(roof.fallback == "", "pas de repli sur une forme simple")
+	var top := roof.height_at(Vector2(5, 3))
+	check(is_equal_approx(snappedf(top, 0.001), snappedf(roof.ridge_y, 0.001)), "faîtage au milieu (%.2f m)" % top)
+	var wall := roof.height_at(Vector2(5, 0.0))
+	check(absf(wall - (6.0 + rs.thickness)) < 1e-3, "le dessous du toit repose pile sur le haut des murs")
+	check(roof.height_at(Vector2(5, -0.3)) < wall and is_finite(roof.height_at(Vector2(5, -0.3))), "le toit déborde des murs")
+	check(not is_finite(roof.height_at(Vector2(5, -2))), "rien au-delà du débord")
+	var flat := BastideRoofGenerator.generate(_poly(PLUS), 6.0, rs, BastideRoofStyle.RoofType.HIP, 3)
+	check(flat.fallback == "" and flat.arcs.size() > 8, "croix à croupes : faîtages, arêtiers et noues (%d arcs)" % flat.arcs.size())
+
+
+func _building(points: Array, seed := 7, floors := 0) -> Array:
+	var pts := PackedVector3Array()
+	for p: Vector2 in points:
+		pts.append(Vector3(p.x, 0, p.y))
+	var spec := BastideBuildingSpec.from_points(pts, seed, floors)
+	var layout := BastideBuildingGenerator.generate(spec, _style())
+	var result := BastideBuildingMesher.build(layout, _style()) if not layout.is_empty() else BastideBuildResult.new()
+	return [layout, result]
+
+
+func _test_building_openings() -> void:
+	print("Bâtiments : ouvertures")
+	var bs := _style().get_building_style()
+	for name in ["rectangle", "L", "U", "pentagone"]:
+		var shape: Array = {"rectangle": RECT, "L": L_SHAPE, "U": U_SHAPE, "pentagone": PENTAGON}[name]
+		var out := _building(shape)
+		var layout: BastideBuildingLayout = out[0]
+		var result: BastideBuildResult = out[1]
+		check(layout.count(BastideBuildingLayout.OpeningKind.DOOR) == 1, "%s : une seule porte" % name)
+		var ok_margin := true
+		var ok_overlap := true
+		var ok_height := true
+		var ok_aligned := true
+		for f: BastideBuildingLayout.Facade in layout.facades:
+			var by_floor := {}
+			var spans: Array = []
+			for o in f.openings:
+				if o.kind == BastideBuildingLayout.OpeningKind.ATTIC:
+					continue
+				ok_margin = ok_margin and o.u0 >= bs.corner_margin - 1e-3 - 0.2 and o.u1 <= f.length - bs.corner_margin + 1e-3 + 0.2
+				ok_height = ok_height and o.y1 + o.arch <= layout.eave_y - 0.2
+				for sp: Array in spans:
+					if sp[2] == o.floor and o.u0 < sp[1] - 1e-3 and o.u1 > sp[0] + 1e-3:
+						ok_overlap = false
+				spans.append([o.u0, o.u1, o.floor])
+				if not by_floor.has(o.floor):
+					by_floor[o.floor] = []
+				(by_floor[o.floor] as Array).append(snappedf((o.u0 + o.u1) * 0.5, 0.001))
+			var floors := by_floor.keys()
+			for k in range(1, floors.size()):
+				ok_aligned = ok_aligned and by_floor[floors[k]] == by_floor[floors[0]]
+		check(ok_margin and ok_overlap, "%s : ouvertures loin des angles et sans chevauchement" % name)
+		check(ok_aligned, "%s : fenêtres alignées d'un étage à l'autre" % name)
+		check(ok_height, "%s : ouvertures sous l'égout" % name)
+		check(not result.is_empty() and result.collision_faces.size() > 0 and result.collision_faces.size() % 3 == 0,
+			"%s : mesh et collisions (%d triangles)" % [name, result.stats.triangles])
+	var rect: BastideBuildingLayout = _building(RECT)[0]
+	var gables := 0
+	var door_on_gable := false
+	for f: BastideBuildingLayout.Facade in rect.facades:
+		if f.gable:
+			gables += 1
+			door_on_gable = door_on_gable or rect.facades[f.index].openings.any(func(o): return o.kind == BastideBuildingLayout.OpeningKind.DOOR)
+	check(gables == 2 and not door_on_gable, "rectangle : deux murs pignons, porte sur une façade sous égout")
+
+
+func _test_building_determinism() -> void:
+	print("Bâtiments : seed")
+	var a: Array = _building(L_SHAPE, 4)
+	var b: Array = _building(L_SHAPE, 4)
+	var c: Array = _building(L_SHAPE, 5)
+	check((a[1] as BastideBuildResult).stats.triangles == (b[1] as BastideBuildResult).stats.triangles
+		and (a[0] as BastideBuildingLayout).roof.color == (b[0] as BastideBuildingLayout).roof.color, "même seed, même bâtiment")
+	var la: BastideBuildingLayout = a[0]
+	var lc: BastideBuildingLayout = c[0]
+	check(la.facades[0].plaster != lc.facades[0].plaster or la.roof.color != lc.roof.color or la.shutter_color != lc.shutter_color,
+		"seed différente : couleurs différentes")
+	check(la.facades.size() == lc.facades.size() and la.count(BastideBuildingLayout.OpeningKind.WINDOW) == lc.count(BastideBuildingLayout.OpeningKind.WINDOW),
+		"seed différente : même plan de façades (la variation reste bornée)")
+	var three: BastideBuildingLayout = _building(RECT, 7, 3)[0]
+	check(three.floors == 3 and is_equal_approx(three.eave_y, 3 * 2.9 + 0.35), "étages réglables (3 étages)")
+
+
+func _test_building_degenerate() -> void:
+	print("Bâtiments : entrées dégénérées")
+	check((_building([])[0] as BastideBuildingLayout).is_empty(), "contour vide : rien, sans erreur")
+	check((_building([Vector2(0, 0), Vector2(5, 0)])[0] as BastideBuildingLayout).is_empty(), "deux points : rien")
+	check((_building([Vector2(0, 0), Vector2(5, 0), Vector2(10, 0)])[0] as BastideBuildingLayout).is_empty(), "points alignés : rien")
+	var tiny: Array = _building([Vector2(0, 0), Vector2(2.5, 0), Vector2(2.5, 2.5), Vector2(0, 2.5)])
+	check(not (tiny[1] as BastideBuildResult).is_empty(), "cabane de 2,5 m : construite quand même")
+
+
+func _test_building_performance() -> void:
+	print("Bâtiments : performances")
+	var t0 := Time.get_ticks_usec()
+	var out := _building(U_SHAPE, 7, 3)
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0
+	print("     manoir en U de 3 étages : %.1f ms, %d triangles" % [ms, (out[1] as BastideBuildResult).stats.triangles])
+	check(ms < 600.0, "manoir en U de 3 étages en moins de 600 ms en headless")

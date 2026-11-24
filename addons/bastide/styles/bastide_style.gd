@@ -14,6 +14,8 @@ extends Resource
 
 const STONE_SHADER := preload("res://addons/bastide/shaders/bastide_stone.gdshader")
 const WOOD_SHADER := preload("res://addons/bastide/shaders/bastide_wood.gdshader")
+const FOLIAGE_SHADER := preload("res://addons/bastide/shaders/bastide_foliage.gdshader")
+const GRAVEL_SHADER := preload("res://addons/bastide/shaders/bastide_gravel.gdshader")
 
 @export var display_name := "Médiéval pierre"
 
@@ -89,6 +91,9 @@ var _default_roof: Material
 var _default_glass: Material
 var _default_wood: Material
 var _default_paper: Material
+var _default_foliage: Material
+var _default_gravel: Material
+var _default_paint: Material
 
 
 func get_wall_style() -> BastideWallStyle:
@@ -138,6 +143,36 @@ func get_paper_material() -> Material:
 		m.emission_energy_multiplier = 0.18
 		_default_paper = m
 	return _default_paper
+
+
+## Feuillage du décor (plantes, arbres), qui bouge dans le vent.
+func get_foliage_material() -> Material:
+	if _default_foliage == null:
+		var m := ShaderMaterial.new()
+		m.shader = FOLIAGE_SHADER
+		_default_foliage = m
+	return _default_foliage
+
+
+## Sols du décor : gravier ratissé, galets.
+func get_gravel_material() -> Material:
+	if _default_gravel == null:
+		var m := ShaderMaterial.new()
+		m.shader = GRAVEL_SHADER
+		_default_gravel = m
+	return _default_gravel
+
+
+## Bois laqué (torii) : couleur unie, satinée.
+func get_paint_material() -> Material:
+	if _default_paint == null:
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.vertex_color_is_srgb = true
+		m.roughness = 0.5
+		m.metallic_specular = 0.45
+		_default_paint = m
+	return _default_paint
 
 
 ## Matériau des toits : le matériau du style s'il est donné, sinon le shader pierre
@@ -204,3 +239,6 @@ func prepare() -> void:
 	get_glass_material()
 	get_wood_material()
 	get_paper_material()
+	get_foliage_material()
+	get_gravel_material()
+	get_paint_material()

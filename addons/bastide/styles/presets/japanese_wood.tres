@@ -110,6 +110,17 @@ path_color = Color(0.72, 0.68, 0.58, 1)
 foliage_colors = PackedColorArray(0.24, 0.4, 0.2, 1, 0.33, 0.47, 0.22, 1, 0.45, 0.5, 0.2, 1)
 blossom_colors = PackedColorArray(0.97, 0.8, 0.84, 1, 0.93, 0.66, 0.74, 1)
 gate_color = Color(0.8, 0.22, 0.12, 1)
+gate_top_color = Color(0.1, 0.09, 0.09, 1)
+path_width = 1.5
+stepping_stone_color = Color(0.56, 0.55, 0.52, 1)
+edging_color = Color(0.48, 0.47, 0.44, 1)
+pebble_color = Color(0.33, 0.33, 0.34, 1)
+fence_stone_color = Color(0.53, 0.52, 0.48, 1)
+bamboo_color = Color(0.76, 0.68, 0.44, 1)
+flower_colors = PackedColorArray(0.42, 0.52, 0.85, 1, 0.6, 0.48, 0.82, 1, 0.88, 0.6, 0.76, 1)
+maple_colors = PackedColorArray(0.8, 0.2, 0.12, 1, 0.88, 0.38, 0.14, 1, 0.66, 0.13, 0.12, 1)
+grass_colors = PackedColorArray(0.56, 0.64, 0.26, 1, 0.7, 0.68, 0.3, 1)
+lantern_color = Color(0.6, 0.59, 0.55, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_body"]
 render_priority = 0

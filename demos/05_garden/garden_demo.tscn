@@ -1,0 +1,251 @@
+[gd_scene format=3]
+
+[ext_resource type="Shader" path="res://demos/04_runtime/ground.gdshader" id="1_16tq6"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_building.gd" id="2_0y2yq"]
+[ext_resource type="Resource" path="res://addons/bastide/styles/presets/japanese_wood.tres" id="3_u1row"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_path.gd" id="4_horqv"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_torii.gd" id="5_02kba"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_fence.gd" id="6_7w8ir"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_planting.gd" id="7_e2iop"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_garden.gd" id="8_n5bpe"]
+[ext_resource type="Script" path="res://demos/common/free_camera.gd" id="9_sbmug"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_vv87d"]
+sky_top_color = Color(0.42, 0.6, 0.84, 1)
+sky_horizon_color = Color(0.93, 0.86, 0.78, 1)
+sky_curve = 0.12
+ground_bottom_color = Color(0.35, 0.38, 0.3, 1)
+ground_horizon_color = Color(0.86, 0.8, 0.7, 1)
+
+[sub_resource type="Sky" id="Sky_diyns"]
+sky_material = SubResource("ProceduralSkyMaterial_vv87d")
+
+[sub_resource type="Environment" id="Environment_phln8"]
+background_mode = 2
+sky = SubResource("Sky_diyns")
+ambient_light_source = 3
+ambient_light_energy = 0.85
+tonemap_mode = 4
+tonemap_exposure = 1.05
+ssao_enabled = true
+ssao_radius = 1.4
+glow_enabled = true
+glow_intensity = 0.5
+glow_hdr_threshold = 1.1
+fog_enabled = true
+fog_light_color = Color(0.9, 0.84, 0.76, 1)
+fog_density = 0.004
+adjustment_enabled = true
+adjustment_saturation = 1.08
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_pf42l"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ij4h1"]
+render_priority = 0
+shader = ExtResource("1_16tq6")
+shader_parameter/grass_a = null
+shader_parameter/grass_b = null
+shader_parameter/dry = null
+shader_parameter/path_color = null
+shader_parameter/wind_speed = null
+shader_parameter/painted_path = null
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_va3he"]
+material = SubResource("ShaderMaterial_ij4h1")
+size = Vector2(400, 400)
+
+[sub_resource type="Curve3D" id="Curve3D_rbpsn"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -5, 0, -3, 0, 0, 0, 0, 0, 0, 5, 0, -3, 0, 0, 0, 0, 0, 0, 5, 0, 3, 0, 0, 0, 0, 0, 0, -5, 0, 3),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_tmu7i"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -3, 0, -2.5, 0, 0, 0, 0, 0, 0, 3, 0, -2.5, 0, 0, 0, 0, 0, 0, 3, 0, 2.5, 0, 0, 0, 0, 0, 0, -3, 0, 2.5),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_detcb"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 1, 0, 22, 0, 0, 0, 0, 0, 0, 1, 0, 18, 0, 0, 0, 0, 0, 0, -1, 0, 10, 0, 0, 0, 0, 0, 0, 0.2, 0, 2.2),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_xdc5t"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -0.6, 0, 8.5, 0, 0, 0, 0, 0, 0, 3, 0, 5.5, 0, 0, 0, 0, 0, 0, 5.2, 0, 2.6),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_hvolw"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -1.5, 0, 0.37, 0, 0, 0, 0, 0, 0, 1.5, 0, -0.37),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[sub_resource type="Curve3D" id="Curve3D_br5hk"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 4, 0, -7, 0, 0, 0, 0, 0, 0, 4.3, 0, 1, 0, 0, 0, 0, 0, 0, 3.8, 0, 10),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_yo4fv"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -8.5, 0, -6, 0, 0, 0, 0, 0, 0, -10, 0, 4, 0, 0, 0, 0, 0, 0, -9, 0, 12, 0, 0, 0, 0, 0, 0, -5, 0, 16),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
+[sub_resource type="Curve3D" id="Curve3D_b00yk"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -6.5, 0, 9, 0, 0, 0, 0, 0, 0, -5, 0, 11.5, 0, 0, 0, 0, 0, 0, -3, 0, 13),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_kbsoh"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 6.5, 0, 10),
+"tilts": PackedFloat32Array(0)
+}
+point_count = 1
+
+[sub_resource type="Curve3D" id="Curve3D_wxkf0"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -7, 0, 1.5),
+"tilts": PackedFloat32Array(0)
+}
+point_count = 1
+
+[sub_resource type="Curve3D" id="Curve3D_5tx8l"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 13, 0, -6),
+"tilts": PackedFloat32Array(0)
+}
+point_count = 1
+
+[node name="JardinDemo" type="Node3D" unique_id=744179473]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1783261081]
+environment = SubResource("Environment_phln8")
+
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=231705159]
+transform = Transform3D(0.7880108, 0.3170891, -0.5277249, 0, 0.8571673, 0.5150381, 0.6156615, -0.40585557, 0.67545706, 0, 0, 0)
+light_color = Color(1, 0.87, 0.7, 1)
+light_energy = 1.5
+shadow_enabled = true
+shadow_blur = 1.5
+directional_shadow_max_distance = 120.0
+
+[node name="Sol" type="StaticBody3D" parent="." unique_id=681651391]
+
+[node name="Shape" type="CollisionShape3D" parent="Sol" unique_id=2036191642]
+shape = SubResource("WorldBoundaryShape3D_pf42l")
+
+[node name="Prairie" type="MeshInstance3D" parent="Sol" unique_id=536457933]
+mesh = SubResource("PlaneMesh_va3he")
+
+[node name="Hameau" type="Node3D" parent="." unique_id=248914864]
+
+[node name="Maison" type="Path3D" parent="Hameau" unique_id=1012571050]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
+curve = SubResource("Curve3D_rbpsn")
+script = ExtResource("2_0y2yq")
+floors = 2
+door_facade = 2
+style = ExtResource("3_u1row")
+seed = 12
+
+[node name="Annexe" type="Path3D" parent="Hameau" unique_id=1969279503]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 2)
+curve = SubResource("Curve3D_tmu7i")
+script = ExtResource("2_0y2yq")
+floors = 1
+door_facade = 3
+style = ExtResource("3_u1row")
+seed = 31
+
+[node name="CheminPrincipal" type="Path3D" parent="Hameau" unique_id=458575662]
+curve = SubResource("Curve3D_detcb")
+script = ExtResource("4_horqv")
+style = ExtResource("3_u1row")
+seed = 5
+
+[node name="CheminAnnexe" type="Path3D" parent="Hameau" unique_id=827322893]
+curve = SubResource("Curve3D_xdc5t")
+script = ExtResource("4_horqv")
+style = ExtResource("3_u1row")
+seed = 6
+
+[node name="Torii" type="Path3D" parent="Hameau" unique_id=1822221047]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, 0, 13)
+curve = SubResource("Curve3D_hvolw")
+script = ExtResource("5_02kba")
+style = ExtResource("3_u1row")
+seed = 2
+
+[node name="ClotureBambou" type="Path3D" parent="Hameau" unique_id=994681690]
+curve = SubResource("Curve3D_br5hk")
+script = ExtResource("6_7w8ir")
+variant = 1
+style = ExtResource("3_u1row")
+seed = 3
+
+[node name="MuretPierres" type="Path3D" parent="Hameau" unique_id=1221755589]
+curve = SubResource("Curve3D_yo4fv")
+script = ExtResource("6_7w8ir")
+style = ExtResource("3_u1row")
+seed = 9
+
+[node name="Massif" type="Path3D" parent="Hameau" unique_id=998244327]
+curve = SubResource("Curve3D_b00yk")
+script = ExtResource("7_e2iop")
+style = ExtResource("3_u1row")
+seed = 21
+
+[node name="Erable" type="Path3D" parent="Hameau" unique_id=2013031933]
+curve = SubResource("Curve3D_kbsoh")
+script = ExtResource("7_e2iop")
+style = ExtResource("3_u1row")
+seed = 14
+
+[node name="Pin" type="Path3D" parent="Hameau" unique_id=1708769779]
+curve = SubResource("Curve3D_wxkf0")
+script = ExtResource("7_e2iop")
+style = ExtResource("3_u1row")
+seed = 3
+
+[node name="Cerisier" type="Path3D" parent="Hameau" unique_id=1432618771]
+curve = SubResource("Curve3D_5tx8l")
+script = ExtResource("7_e2iop")
+style = ExtResource("3_u1row")
+seed = 8
+
+[node name="Jardin" type="Path3D" parent="Hameau" unique_id=358972554]
+script = ExtResource("8_n5bpe")
+style = ExtResource("3_u1row")
+seed = 7
+
+[node name="Camera" type="Camera3D" parent="." unique_id=576910065]
+transform = Transform3D(1, 0, 0, 0, 0.95105654, 0.309017, 0, -0.309017, 0.95105654, 2, 11, 30)
+fov = 55.0
+script = ExtResource("9_sbmug")
+
+[node name="Interface" type="CanvasLayer" parent="." unique_id=1740272755]
+
+[node name="Aide" type="Label" parent="Interface" unique_id=1225557878]
+offset_left = 18.0
+offset_top = 14.0
+offset_right = 18.0
+offset_bottom = 14.0
+text = "Jardin japonais (étape 5) : ouvre cette scène dans l'éditeur et déplace les points des chemins,
+clôtures et massifs. Clic droit + souris : regarder   ZQSD : bouger   A/E : bas/haut   Maj : vite"

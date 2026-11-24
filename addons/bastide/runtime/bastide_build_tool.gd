@@ -7,6 +7,13 @@ extends Node3D
 ##   départ ferme l'enceinte.
 ## - Mode MAISON : maintiens le clic et tire un rectangle. Si le rectangle chevauche
 ##   une maison existante, il s'y ajoute (maison en L, en T, en U…).
+## - Mode CHEMIN : dessine un chemin ; près d'une porte il la rejoint, près d'un
+##   autre chemin il s'y raccorde.
+## - Mode TORII : un torii fantôme suit la souris et se cale sur les chemins ; clic
+##   pour le poser.
+## - Mode PLANTES : dessine un massif, ou clique pour planter un arbre.
+## - Variantes du mode MUR (touche V) : muret à petit toit, muret de pierres sèches,
+##   clôture de bambou.
 ## - Clic sur une structure : la sélectionne. Des poignées apparaissent : on tire
 ##   un angle, un côté de maison ou un point de mur pour retoucher ; clic droit sur
 ##   une poignée de mur : retire ce point.
@@ -19,9 +26,12 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS }
+## Variantes du mode MUR.
+enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
 signal mode_changed(mode: Mode)
+signal variant_changed(variant: WallVariant)
 signal selection_changed(id: int)
 ## Une structure vient d'être posée ou retirée (pour jouer un son, par exemple).
 signal placed(kind: String)
@@ -42,6 +52,15 @@ signal history_changed(can_undo: bool, can_redo: bool)
 		mode_changed.emit(mode)
 		_emit_hint()
 @export var style: BastideStyle
+## Variante des murs tracés en mode MUR.
+@export var wall_variant := WallVariant.ROOFED:
+	set(value):
+		if wall_variant == value:
+			return
+		cancel_draft()
+		wall_variant = value
+		variant_changed.emit(wall_variant)
+		_emit_hint()
 ## Hauteur des murets posés (0 = celle du style).
 @export var wall_height := 1.9
 ## Hauteur du sol (plan de construction).
@@ -93,6 +112,7 @@ var _cursor: MeshInstance3D
 var _mat_hover: ShaderMaterial
 var _mat_selected: ShaderMaterial
 var _ghost_overlay: ShaderMaterial
+var _torii_snapped := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -270,6 +290,12 @@ func clear_all() -> void:
 		removed.emit("all")
 
 
+## Variante suivante du mode MUR (et passe en mode MUR).
+func cycle_wall_variant() -> void:
+	mode = Mode.WALL
+	wall_variant = ((int(wall_variant) + 1) % 3) as WallVariant
+
+
 func cancel_draft() -> void:
 	if _draft:
 		_draft.queue_free()
@@ -338,10 +364,19 @@ func _on_key(k: InputEventKey) -> void:
 				mode = Mode.WALL
 			KEY_2, KEY_KP_2:
 				mode = Mode.HOUSE
+			KEY_3, KEY_KP_3:
+				mode = Mode.PATH
+			KEY_4, KEY_KP_4:
+				mode = Mode.TORII
+			KEY_5, KEY_KP_5:
+				mode = Mode.PLANTS
 			_:
-				handled = k.keycode == KEY_R
-				if handled:
+				if k.keycode == KEY_R:
 					reroll_selected()
+				elif k.keycode == KEY_V:
+					cycle_wall_variant()
+				else:
+					handled = false
 	if handled:
 		get_viewport().set_input_as_handled()
 
@@ -364,8 +399,16 @@ func _on_motion(screen: Vector2) -> void:
 		_State.IDLE:
 			_update_hover(screen)
 			_update_cursor(g)
+			if mode == Mode.TORII:
+				if g != null and _hover < 0 and _hover_handle < 0:
+					_torii_preview(g)
+				elif _draft:
+					cancel_draft()
 		_State.PRESSING:
-			if screen.distance_to(_press_screen) > DRAG_THRESHOLD and g != null:
+			if mode == Mode.TORII:
+				if g != null:
+					_torii_preview(g)
+			elif screen.distance_to(_press_screen) > DRAG_THRESHOLD and g != null:
 				_start_draw()
 				_continue_draw(g)
 		_State.DRAWING:
@@ -379,10 +422,15 @@ func _on_motion(screen: Vector2) -> void:
 func _on_release(screen: Vector2) -> void:
 	match _state:
 		_State.PRESSING:
-			# Simple clic : sélection.
 			_state = _State.IDLE
 			_update_hover(screen)
-			select(_hover)
+			if _hover < 0 and mode == Mode.TORII and _draft:
+				_place_draft()
+			elif _hover < 0 and mode == Mode.PLANTS:
+				_plant_tree(_press_ground)
+			else:
+				# Simple clic : sélection.
+				select(_hover)
 		_State.DRAWING:
 			_finish_draw()
 		_State.DRAGGING:
@@ -398,24 +446,45 @@ func _start_draw() -> void:
 	_set_hover(-1)
 	_cursor.visible = false
 	_raw = PackedVector3Array([_press_ground])
-	_draft_rec = {
-		"kind": "wall" if mode == Mode.WALL else "house",
-		"points": PackedVector3Array(),
-		"closed": false,
-		"seed": _rng.randi_range(1, 99999),
-		"floors": 0,
-		"height": wall_height if mode == Mode.WALL else 0.0,
-		"style": style.resource_path,
-	}
+	_draft_rec = _new_record(_draw_kind())
 	_merge_id = -1
 	_emit_hint()
 
 
+## Genre de structure tracée dans le mode courant.
+func _draw_kind() -> String:
+	match mode:
+		Mode.HOUSE:
+			return "house"
+		Mode.PATH:
+			return "path"
+		Mode.TORII:
+			return "torii"
+		Mode.PLANTS:
+			return "plants"
+	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
+
+
+func _new_record(kind: String) -> Dictionary:
+	var rec := {
+		"kind": kind,
+		"points": PackedVector3Array(),
+		"closed": false,
+		"seed": _rng.randi_range(1, 99999),
+		"floors": 0,
+		"height": wall_height if kind == "wall" else 0.0,
+		"style": style.resource_path,
+	}
+	if kind == "fence":
+		rec["variant"] = 1 if wall_variant == WallVariant.BAMBOO else 0
+	return rec
+
+
 func _continue_draw(g: Vector3) -> void:
-	if _draft_rec["kind"] == "wall":
-		_draw_wall(g)
-	else:
+	if _draft_rec["kind"] == "house":
 		_draw_house(g)
+	else:
+		_draw_wall(g)
 
 
 func _draw_wall(g: Vector3) -> void:
@@ -426,8 +495,9 @@ func _draw_wall(g: Vector3) -> void:
 		pts.append(g)
 	var control := BastideStroke.simplify(pts, 0.28)
 	var total := BastideStroke.length(control)
-	# Revenir près du départ ferme l'enceinte.
-	var closed := total > 10.0 and g.distance_to(_raw[0]) < 1.6 and control.size() >= 4
+	# Revenir près du départ ferme l'enceinte (murs et clôtures seulement).
+	var closable: bool = _draft_rec["kind"] == "wall" or _draft_rec["kind"] == "fence"
+	var closed := closable and total > 10.0 and g.distance_to(_raw[0]) < 1.6 and control.size() >= 4
 	if closed:
 		control.remove_at(control.size() - 1)
 	_draft_rec["points"] = control
@@ -496,6 +566,8 @@ func _update_draft() -> void:
 	if _draft == null:
 		_draft = site.make_node(_draft_rec)
 		_draft.name = "Fantome"
+		# Un fantôme voit ses voisins (il se raccorde aux portes…) mais eux l'ignorent.
+		_draft.context_enabled = false
 		_draft.mesh_transparency = ghost_transparency
 		_draft.mesh_overlay = _ghost_overlay
 		_draft.mesh_casts_shadow = false
@@ -509,7 +581,7 @@ func _finish_draw() -> void:
 	var rec := _draft_rec
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
 	var ok := _draft != null and pts.size() >= 2
-	if rec.get("kind") == "wall" and BastideStroke.length(pts, rec["closed"]) < wall_min_length:
+	if rec.get("kind") != "house" and BastideStroke.length(pts, rec["closed"]) < wall_min_length:
 		ok = false
 	if not ok:
 		cancel_draft()
@@ -532,13 +604,49 @@ func _finish_draw() -> void:
 				draft.queue_free(), CONNECT_ONE_SHOT)
 		placed.emit("house")
 	else:
-		var id := site.new_id()
-		site.adopt(id, _draft, rec)
-		_draft = null
-		# Déjà posé : l'action n'est pas rejouée maintenant, seulement à l'annulation.
-		_commit("Construire", [[id, null, rec]], false)
-		placed.emit(rec["kind"])
+		_place_draft()
+		return
+	_emit_hint()
+
+
+## Le fantôme devient une vraie structure (sans régénération).
+func _place_draft() -> void:
+	var rec := _draft_rec
+	var id := site.new_id()
+	site.adopt(id, _draft, rec)
+	_draft = null
+	# Déjà posé : l'action n'est pas rejouée maintenant, seulement à l'annulation.
+	_commit("Construire", [[id, null, rec]], false)
+	placed.emit(rec["kind"])
+	if mode == Mode.TORII:
+		# On enchaîne : le prochain torii suit déjà la souris.
+		_emit_hint()
+	else:
 		select(id)
+	_emit_hint()
+
+
+## Torii fantôme sous la souris, calé sur le chemin le plus proche.
+func _torii_preview(g: Vector3) -> void:
+	var gs := style.get_garden_style()
+	var res := BastideGardenRules.place_torii(g, site.context(), gs.path_width, camera.global_transform.basis.x)
+	if _draft != null and _draft_rec.get("kind") != "torii":
+		cancel_draft()
+	if _draft == null:
+		_draft_rec = _new_record("torii")
+	_draft_rec["points"] = res["points"]
+	_torii_snapped = res["snapped"]
+	_update_draft()
+	_emit_hint()
+
+
+## Clic en mode PLANTES : un arbre.
+func _plant_tree(g: Vector3) -> void:
+	var rec := _new_record("plants")
+	rec["points"] = PackedVector3Array([g])
+	var id := site.new_id()
+	_commit("Planter un arbre", [[id, null, rec]], true)
+	placed.emit("plants")
 	_emit_hint()
 
 
@@ -634,6 +742,8 @@ func _continue_handle_drag(g: Vector3) -> void:
 			var push := snappedf((g - _drag_start_ground).dot(normal), house_snap * 0.5)
 			pts[i] = a + normal * push
 			pts[(i + 1) % pts.size()] = b + normal * push
+	if rec["kind"] == "torii" and pts.size() >= 2:
+		pts = BastideGardenRules.fit_torii(pts[0], pts[1])
 	rec["points"] = pts
 	site.apply_record(selected, rec, false)
 	_rebuild_handles()
@@ -682,7 +792,14 @@ func _delete_handle_point(h: Dictionary) -> void:
 		return
 	var before: Dictionary = site.get_record(selected)
 	var pts: PackedVector3Array = before["points"]
-	var min_pts := 4 if before["kind"] == "house" else 2
+	var min_pts := 2
+	match String(before["kind"]):
+		"house":
+			min_pts = 4
+		"torii":
+			return
+		"plants":
+			min_pts = 1
 	if pts.size() <= min_pts:
 		return
 	var after := before.duplicate(true)
@@ -745,8 +862,9 @@ func _update_cursor(g: Variant) -> void:
 	_cursor.visible = g != null and _hover < 0 and _hover_handle < 0
 	if g != null:
 		_cursor.global_position = (g as Vector3) + Vector3(0, 0.03, 0)
-		var s := 1.0 if mode == Mode.WALL else 1.6
-		_cursor.scale = Vector3(s, 0.15, s)
+		var s := 1.6 if mode == Mode.HOUSE else (0.0 if mode == Mode.TORII else 1.0)
+		_cursor.scale = Vector3(maxf(s, 0.01), 0.15, maxf(s, 0.01))
+		_cursor.visible = _cursor.visible and mode != Mode.TORII
 
 
 func _ground(screen: Vector2) -> Variant:
@@ -827,10 +945,14 @@ func _emit_hint() -> void:
 func current_hint() -> String:
 	match _state:
 		_State.DRAWING:
+			if mode == Mode.PATH:
+				return "Dessine le chemin  ·  près d'une porte, il la rejoint tout seul"
+			if mode == Mode.PLANTS:
+				return "Dessine le massif, relâche pour le planter"
 			if mode == Mode.WALL:
 				if _draft_rec.get("closed", false):
 					return "Relâche pour fermer l'enceinte"
-				return "Dessine le chemin du muret, relâche pour le poser"
+				return "Dessine le tracé, relâche pour le poser"
 			if _merge_id >= 0:
 				return "Relâche pour agrandir la maison"
 			return "Tire pour donner sa taille à la maison"
@@ -843,6 +965,10 @@ func current_hint() -> String:
 		if h["kind"] == "point":
 			return "Tire ce point pour courber le muret  ·  clic droit : le retirer"
 		return "Tire cet angle  ·  clic droit : le retirer"
+	if mode == Mode.TORII and _draft and _hover < 0:
+		if _torii_snapped:
+			return "Clic : poser le torii sur le chemin"
+		return "Clic : poser le torii  ·  approche-le d'un chemin pour l'y aligner"
 	if selected >= 0 and site.has(selected):
 		var kind: String = site.get_record(selected)["kind"]
 		if kind == "house":
@@ -850,6 +976,14 @@ func current_hint() -> String:
 		return "Poignées : retoucher  ·  R : autre variation  ·  Suppr : retirer"
 	if _hover >= 0:
 		return "Clic : sélectionner"
-	if mode == Mode.WALL:
-		return "Maintiens le clic et dessine un chemin au sol"
+	match mode:
+		Mode.WALL:
+			var names := ["muret à petit toit", "muret de pierres sèches", "clôture de bambou"]
+			return "Maintiens le clic et dessine un %s  ·  V : changer" % names[int(wall_variant)]
+		Mode.PATH:
+			return "Maintiens le clic et dessine un chemin  ·  pars d'une porte ou d'un autre chemin"
+		Mode.TORII:
+			return "Approche la souris d'un chemin pour y poser un torii"
+		Mode.PLANTS:
+			return "Dessine un massif  ·  ou clique pour planter un arbre"
 	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"

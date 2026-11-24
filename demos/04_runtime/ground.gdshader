@@ -8,6 +8,8 @@ uniform vec3 grass_b : source_color = vec3(0.56, 0.64, 0.31);
 uniform vec3 dry : source_color = vec3(0.66, 0.64, 0.4);
 uniform vec3 path_color : source_color = vec3(0.7, 0.63, 0.5);
 uniform float wind_speed = 0.35;
+// Ancien sentier peint dans l'herbe (remplacé par les vrais chemins de l'étape 5).
+uniform float painted_path = 0.0;
 
 varying vec3 wp;
 
@@ -49,7 +51,7 @@ void fragment() {
 	// Sentier de terre qui serpente vers le hameau.
 	float path_x = sin(wp.z * 0.045) * 7.0 + 3.0;
 	float d = abs(wp.x - path_x);
-	float on_path = (1.0 - smoothstep(0.9, 1.6 + mid * 0.6, d)) * smoothstep(14.0, 24.0, wp.z);
+	float on_path = (1.0 - smoothstep(0.9, 1.6 + mid * 0.6, d)) * smoothstep(14.0, 24.0, wp.z) * painted_path;
 	col = mix(col, path_color * (0.92 + fine * 0.12), on_path);
 	ALBEDO = col;
 	ROUGHNESS = 0.95;

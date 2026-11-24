@@ -137,11 +137,98 @@ func _apply_look() -> void:
 
 ## Statistiques de la dernière génération (triangles, durée…).
 var last_stats := {}
+## Points remarquables de la dernière génération (portes…), espace local.
+var last_anchors := {}
+
+# --- Voisinage ------------------------------------------------------------------
+# Les structures se voient entre elles : un chemin rejoint la porte d'une maison,
+# une clôture s'ouvre là où passe un chemin, des plantes poussent au pied des murs.
+# Chaque structure a un « niveau » : quand elle change, seules celles de niveau
+# supérieur qui lisent le voisinage sont régénérées (jamais de boucle).
+#   0 : murs, maisons · 1 : chemins, torii · 2 : clôtures, massifs · 3 : jardin
+
+const GROUP := &"bastide_structures"
+
+## Faux pour un aperçu (fantôme) : les autres structures l'ignorent.
+var context_enabled := true:
+	set(value):
+		if context_enabled == value:
+			return
+		context_enabled = value
+		_notify_dependents()
+
+
+## Niveau dans le voisinage (voir plus haut). À surcharger.
+func context_level() -> int:
+	return 0
+
+
+## Vrai si la génération lit le voisinage. À surcharger.
+func uses_context() -> bool:
+	return false
+
+
+## Description de la structure pour ses voisins, en coordonnées monde (à surcharger).
+## Clés reconnues : kind, points / footprint (PackedVector3Array), doors
+## ([{pos, out, width}]), width, thickness, closed, variant.
+func describe() -> Dictionary:
+	return {}
+
+
+## Voisinage vu depuis ce nœud : descriptions des autres structures, ramenées dans
+## l'espace local de ce nœud. À appeler sur le thread principal (dans _make_job).
+func gather_context() -> BastideGardenContext:
+	var entries: Array = []
+	if is_inside_tree():
+		var to_local := global_transform.affine_inverse()
+		for n in get_tree().get_nodes_in_group(GROUP):
+			if n == self or not n is BastideStructure:
+				continue
+			var s := n as BastideStructure
+			if not s.context_enabled or s.is_queued_for_deletion() or not s.is_inside_tree():
+				continue
+			var d := s.describe()
+			if d.is_empty():
+				continue
+			entries.append(BastideGardenContext.transform_entry(d, to_local))
+	return BastideGardenContext.from_entries(entries)
+
+
+func _notify_dependents() -> void:
+	if not is_inside_tree() or not context_enabled:
+		return
+	var lvl := context_level()
+	for n in get_tree().get_nodes_in_group(GROUP):
+		if n != self and n is BastideStructure:
+			var s := n as BastideStructure
+			if s.uses_context() and s.context_level() > lvl:
+				s.queue_rebuild()
+
+
+## Points en coordonnées monde.
+func _to_world(points: PackedVector3Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var xf := global_transform
+	for p in points:
+		out.append(xf * p)
+	return out
 
 var _queued := false
 var _task_id := -1
 var _dirty_while_running := false
 var _fallback_style: BastideStyle
+
+
+func _enter_tree() -> void:
+	add_to_group(GROUP)
+	if Engine.is_editor_hint():
+		# Déplacer le nœud dans l'éditeur prévient aussi les voisins (chemins, jardin).
+		set_notify_transform(true)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSFORM_CHANGED:
+		_notify_dependents()
 
 
 func _ready() -> void:
@@ -157,6 +244,12 @@ func _exit_tree() -> void:
 	if _task_id >= 0:
 		WorkerThreadPool.wait_for_task_completion(_task_id)
 		_task_id = -1
+	# Les voisins se recalculent sans nous (à la frame suivante, nous serons partis).
+	if context_enabled and is_inside_tree():
+		var lvl := context_level()
+		for n in get_tree().get_nodes_in_group(GROUP):
+			if n != self and n is BastideStructure and n.uses_context() and n.context_level() > lvl:
+				(n as BastideStructure).queue_rebuild()
 
 
 ## Courbe créée quand on ajoute le nœud sans en donner une.
@@ -233,11 +326,15 @@ func _apply(result: BastideBuildResult) -> void:
 	if result.is_empty():
 		BastideResultApplier.clear(self)
 		last_stats = {}
+		last_anchors = {}
+		_notify_dependents()
 		return
 	BastideResultApplier.apply(self, result, generate_collision, collision_layer)
 	_apply_look()
 	last_stats = result.stats
+	last_anchors = result.anchors
 	rebuilt.emit(last_stats)
+	_notify_dependents()
 
 
 func get_effective_style() -> BastideStyle:

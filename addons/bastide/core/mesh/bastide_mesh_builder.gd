@@ -20,6 +20,12 @@ class Surface:
 		n.append(nrm); n.append(nrm); n.append(nrm)
 		c.append(ca); c.append(cb); c.append(ccol)
 
+	func push_smooth(a: Vector3, b: Vector3, cc: Vector3, na: Vector3, nb: Vector3, nc: Vector3,
+			ca: Color, cb: Color, ccol: Color) -> void:
+		v.append(a); v.append(b); v.append(cc)
+		n.append(na); n.append(nb); n.append(nc)
+		c.append(ca); c.append(cb); c.append(ccol)
+
 
 ## En dessous de ce biseau, une face « bombée » est dessinée plate : le biseau
 ## ferait moins d'un pixel à distance normale de jeu.
@@ -60,6 +66,29 @@ func add_tri(role: StringName, a: Vector3, b: Vector3, c: Vector3, hint: Vector3
 	else:
 		surf.push(a, b, c, -nrm.normalized(), ca, cb, cc)
 	triangle_count += 1
+
+
+## Triangle à normales lissées (feuillages, troncs) : chaque sommet a sa normale.
+## L'orientation suit la moyenne des normales.
+func add_tri_smooth(role: StringName, a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3,
+		ca: Color, cb: Color, cc: Color) -> void:
+	var nrm := (b - a).cross(c - a)
+	if nrm.length_squared() < 1e-14:
+		return
+	var surf := _surface(role)
+	if nrm.dot(na + nb + nc) >= 0.0:
+		surf.push_smooth(a, c, b, na, nc, nb, ca, cc, cb)
+	else:
+		surf.push_smooth(a, b, c, na, nb, nc, ca, cb, cc)
+	triangle_count += 1
+
+
+## Triangle visible des deux côtés (feuilles, brins d'herbe, papier fin).
+## `nrm` : normale lissée commune, retournée pour la face arrière.
+func add_tri_2s(role: StringName, a: Vector3, b: Vector3, c: Vector3, nrm: Vector3,
+		ca: Color, cb: Color, cc: Color) -> void:
+	add_tri_smooth(role, a, b, c, nrm, nrm, nrm, ca, cb, cc)
+	add_tri_smooth(role, a, b, c, -nrm, -nrm, -nrm, ca, cb, cc)
 
 
 ## Quadrilatère a-b-c-d (dans l'ordre du contour).

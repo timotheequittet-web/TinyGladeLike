@@ -2,9 +2,9 @@
 
 **Bastide** est un addon Godot 4 de construction procédurale « toujours belle », inspiré de Tiny Glade : on trace grossièrement, des règles corrigent et décorent.
 
-![Construire en jeu : un hameau de campagne japonais](docs/captures/etape4_ambiance.jpg)
+![Un hameau de campagne japonais : chemin de pas japonais, torii, érables et murets](docs/captures/etape5_torii.jpg)
 
-État : **étape 4 terminée** (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), après l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaines étapes : décor japonais (torii, sol, plantes, petits murets), puis mode kit. L'architecture complète est décrite dans le document de conception du projet.
+État : **étape 5 terminée** (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), après l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -15,12 +15,13 @@ Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 1. Sur GitHub, bouton vert **Code > Download ZIP**, puis décompresse le dossier où tu veux.
 2. Ouvre Godot 4.7.2, clique sur **Importer**, et choisis le fichier `project.godot` du dossier décompressé, puis **Importer et modifier**.
 3. Appuie sur **F5** : la démo de construction en jeu (`demos/04_runtime/runtime_demo.tscn`) se lance. Voir « Construire en jeu » juste en dessous.
-4. Les démos précédentes : `demos/03_styles/styles_demo.tscn` (le même hameau en médiéval et en japonais), `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs). Ouvre-les puis **F6**. Leurs commandes :
+4. Le jardin japonais dans l'éditeur : `demos/05_garden/garden_demo.tscn` (ouvre-le, **F6** pour s'y promener, ou sélectionne un chemin, une clôture ou un massif et déplace ses points : tout se recalcule, plantes comprises).
+5. Les démos précédentes : `demos/03_styles/styles_demo.tscn` (le même hameau en médiéval et en japonais), `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs). Ouvre-les puis **F6**. Leurs commandes :
    - Clic droit maintenu + souris : regarder
    - ZQSD (ou WASD) : se déplacer, A/E : descendre/monter, Maj : plus vite
    - Clic gauche : lancer une boule pour tester les collisions
    - En haut à gauche (démo des styles) : **Côte à côte**, **Tout médiéval**, **Tout japonais**, **Inverser** changent le style de chaque hameau d'un coup ; **Seed** fait varier les deux hameaux pareil
-5. **Dans l'éditeur** : ouvre `styles_demo.tscn` ou `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
+6. **Dans l'éditeur** : ouvre `styles_demo.tscn` ou `building_demo.tscn`, sélectionne un bâtiment (par exemple `Batiments/FermeEnL`), puis déplace ses points avec les outils de Path3D dans la barre du viewport. Murs, fenêtres et toit se recalculent en direct.
 
 ## Construire en jeu (étape 4)
 
@@ -62,6 +63,45 @@ add_child(tool)
 ```
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
+
+## Le jardin japonais (étape 5)
+
+![Vue d'ensemble : deux maisons, leurs chemins, la clôture de bambou ouverte pour le passage](docs/captures/etape5_vue_generale.jpg)
+
+Dans la démo de construction en jeu, cinq outils (touches **1 à 5**, ou les boutons de la barre) :
+
+- **Muret** (1) : trois variantes, avec **V** ou les boutons qui apparaissent au-dessus de la barre : *muret à petit toit* (celui de l'étape 4), *pierres sèches* (muret bas de pierres rondes, moussu sur le dessus), *bambou* (clôture à claire-voie, liens de corde noire).
+- **Maison** (2) : comme avant.
+- **Chemin** (3) : dessine-le au sol. Pars d'une porte (ou finis près d'elle) : il la rejoint tout seul, de face, sur une grande pierre de seuil, et une lanterne de pierre t'accueille. Finis près d'un autre chemin : il s'y raccorde.
+- **Torii** (4) : un torii fantôme suit la souris ; approche-le d'un chemin, il se met en travers, centré, à la bonne largeur. Clic : il est posé (on peut en poser plusieurs à la suite).
+- **Plantes** (5) : dessine un massif (buissons taillés, hortensias, fougères, herbes, un petit arbre de temps en temps) ou **clique** pour planter un arbre (érable rouge, cerisier ou pin taillé, selon la variation ; **R** en tire un autre).
+
+Et sans rien faire : **le jardin pousse tout seul**. Bande de galets au pied des maisons, grosses touffes aux angles, petit érable ou bambous dans les angles rentrants, plantes basses le long des façades, herbes et fougères au pied des murs et des clôtures, touffes au bord des chemins. Il suit chaque retouche.
+
+![Le chemin rejoint la porte sur une pierre de seuil, une lanterne à côté](docs/captures/etape5_porte.jpg)
+
+### Dans l'éditeur
+
+Cinq nouveaux nœuds (ils héritent de `Path3D`, comme les murs) :
+
+- `BastidePath` : chemin sur sa courbe. `width` (0 = style).
+- `BastideTorii` : les deux points de la courbe sont les pieds des piliers. Bouton **Aligner sur le chemin**.
+- `BastideFence` : clôture basse, `variant` = pierres sèches ou bambou ; coche `closed` sur la courbe pour une enceinte.
+- `BastidePlanting` : massif le long de la courbe ; une courbe d'un seul point = un arbre.
+- `BastideGarden` : ajoute-le une fois dans la scène ; il décore toutes les structures autour de lui.
+
+Ils se voient entre eux : déplace une maison, son chemin la suit jusqu'à la porte, la clôture se rouvre au bon endroit, les plantes s'écartent. Couleurs, largeur des chemins, pas japonais, lanternes, hauteur des clôtures, densité des plantes et espèces d'arbres : volet **Garden** du style. En style médiéval, le même tracé donne un chemin de terre sans lanterne, une clôture de bois et un portique de bois brun.
+
+En jeu, le chantier (`BastideBuildSite`) crée son jardin tout seul (`auto_garden`, style `garden_style`). Nouveaux records : `"path"`, `"torii"` (deux points), `"fence"` (`variant` 0 ou 1), `"plants"` (un point = un arbre), et `door` (facultatif) sur une maison pour choisir le côté de la porte.
+
+## Les règles « toujours beau » de l'étape 5
+
+- Un chemin qui finit à moins de 3,6 m d'une porte la rejoint : il arrive droit sur elle sur les 2,6 derniers mètres et s'arrête sur une pierre de seuil. Près d'un autre chemin (2,2 m), il s'y raccorde ; les deux graviers se fondent (grain calculé en coordonnées monde, chaque chemin à sa hauteur au demi-centimètre près).
+- Un chemin serpente doucement (bruit borné, jamais dans l'approche d'une porte), ses bords ondulent un peu, ses pas japonais vont en quinconce à un pas tranquille, sa bordure de petites pierres s'interrompt aux croisements et devant les portes.
+- Une lanterne à chaque arrivée sur une porte (ou une au départ), du côté où elle ne gêne rien.
+- Un torii posé à moins de 3,5 m d'un chemin s'y centre, en travers ; sa largeur suit celle du chemin (2,2 à 7 m), sa hauteur et l'épaisseur de ses piliers suivent sa largeur.
+- Une clôture s'ouvre là où un chemin la traverse, assez large même en biais, avec deux poteaux (ou deux grandes pierres dressées) pour encadrer le passage. Poteaux en nombre entier sur chaque tronçon.
+- Aucune plante sur un chemin, dans une maison, devant une porte, contre un pilier de torii ou à cheval sur un mur. Les plantes vont par groupes, pas en rang d'oignons, et chacune tire son allure de sa position : retoucher une maison ne fait pas repousser tout le jardin autrement.
 
 ## Les règles « toujours beau » de l'étape 4
 
@@ -112,7 +152,7 @@ Les deux styles livrés :
 | Porte | porte en planches cintrée à claveaux | porte coulissante à deux vantaux, pierre de seuil, noren (rideau) selon la seed |
 | Toit | tuiles plates, pignons, cheminée | irimoya (croupe en bas, petit pignon de bois en haut), tuiles rondes, bords relevés, faîtage maçonné à épis, chevrons apparents, auvent entre les étages |
 
-Le volet **Garden** (sol, chemins, végétation, couleur des torii) est déjà prévu dans chaque style ; il servira à l'étape décor.
+Le volet **Garden** (chemins, clôtures, végétation, torii, lanternes) habille les abords : voir l'étape 5.
 
 ## Les règles « toujours beau » de l'étape 3
 
@@ -157,11 +197,18 @@ wall.set_points(PackedVector3Array([Vector3(0, 0, 0), Vector3(8, 0, 0), Vector3(
 var house := BastideBuilding.new()
 add_child(house)
 house.set_footprint(PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)]))
+
+var path := BastidePath.new()      # rejoint la porte de la maison tout seul
+add_child(path)
+path.set_points(PackedVector3Array([Vector3(5, 0, 18), Vector3(5, 0, 8)]))
+
+var garden := BastideGarden.new()  # galets et plantes autour de tout
+add_child(garden)
 ```
 
 ## Tests
 
-Les tests du cœur de l'addon (154 vérifications, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (200 vérifications, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -173,6 +220,12 @@ La construction en jeu a sa propre partie scriptée : elle simule la vraie souri
 godot --path . -s tools/runtime_play.gd -- <dossier_des_captures>
 ```
 
+Le décor de l'étape 5 a la sienne (chemin tracé jusqu'à une porte, torii aimanté, clôture ouverte, massif, arbre, annulations) :
+
+```
+godot --path . -s tools/garden_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -182,15 +235,17 @@ addons/bastide/
   core/        logique pure, sans nœuds (utilisable sur un thread, en jeu, dans les tests)
     random/      hasard déterministe (seed + position)
     geometry/    polylignes, polygones, squelette droit pondéré (toits), tracés à main levée
-    rules/       assainissement du tracé et du contour, répartition « pile »
+    rules/       assainissement du tracé et du contour, répartition « pile », règles du jardin
+    garden/      le voisinage vu par le décor (portes, chemins, murs…)
     generators/  Spec → Layout : murs, bâtiments, toits
     layout/      les plans sémantiques (mur, bâtiment, toit)
-    backends/    plan → géométrie (procedural/ aujourd'hui, kit/ à l'étape 6)
+    backends/    plan → géométrie (procedural/ : murs, bâtiments, toits, chemins, torii, clôtures, plantes ; kit/ à l'étape 6)
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
-  nodes/       nœuds @tool (BastideWall, BastideBuilding, base commune BastideStructure)
+  nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
+               BastidePlanting, BastideGarden, base commune BastideStructure)
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
-  shaders/     shaders pierre et bois procéduraux (aucune texture)
+  shaders/     shaders pierre, bois, gravier ratissé et feuillage procéduraux (aucune texture)
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)

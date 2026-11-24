@@ -44,6 +44,14 @@ func _init() -> void:
 	_test_stroke_smooth_resample()
 	_test_stroke_rectangle()
 	_test_stroke_union()
+	# Étape 5 : décor japonais (chemins, torii, clôtures, plantes).
+	_test_path_joins_door()
+	_test_path_joins_path()
+	_test_fence_opens_for_path()
+	_test_torii_on_path()
+	_test_plants_keep_clear()
+	_test_garden_determinism()
+	_test_garden_meshes()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -691,3 +699,183 @@ func _test_stroke_union() -> void:
 		pts.append(p)
 	var layout := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(pts, 3), load(JAPANESE_PATH))
 	check(not layout.is_empty(), "la maison en L se génère")
+
+
+# --- Étape 5 : décor ------------------------------------------------------------------
+
+## Maison 10 × 6 m au style japonais et sa description pour le voisinage.
+func _garden_house() -> Dictionary:
+	var st: BastideStyle = load(JAPANESE_PATH)
+	var pts := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])
+	var layout := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(pts, 5), st)
+	var anchors := BastideBuildingMesher.anchors(layout)
+	var fp := PackedVector3Array()
+	for p: Vector2 in anchors["footprint"]:
+		fp.append(Vector3(p.x, 0, p.y))
+	return {"kind": "house", "footprint": fp, "doors": anchors["doors"], "overhang": anchors["overhang"]}
+
+
+func _test_path_joins_door() -> void:
+	print("Décor : un chemin rejoint la porte")
+	var house := _garden_house()
+	var doors: Array = house["doors"]
+	check(doors.size() == 1, "la maison a une porte (%d)" % doors.size())
+	if doors.is_empty():
+		return
+	var door: Dictionary = doors[0]
+	var dpos: Vector3 = door["pos"]
+	var dout: Vector3 = door["out"]
+	var ctx := BastideGardenContext.from_entries([house])
+	# Un tracé qui arrive en biais, à 2 m de la porte.
+	var side := Vector3(-dout.z, 0, dout.x)
+	var far := dpos + dout * 12.0 + side * 4.0
+	var near := dpos + dout * 2.6 + side * 1.4
+	var res := BastideGardenRules.snap_path_ends(PackedVector3Array([far, far.lerp(near, 0.5), near]), ctx)
+	var pts: PackedVector3Array = res["points"]
+	var last := pts[pts.size() - 1]
+	check(not (res["door_end"] as Dictionary).is_empty(), "le bout du chemin est raccroché à la porte")
+	check(last.distance_to(dpos + dout * BastideGardenRules.DOOR_GAP) < 0.01, "il s'arrête juste devant le seuil")
+	var approach := BastidePolyline.flat_dir(pts[pts.size() - 2], last)
+	check(approach.dot(-dout) > 0.99, "il arrive bien de face (%.3f)" % approach.dot(-dout))
+	# Un bout loin de toute porte ne bouge pas.
+	var res2 := BastideGardenRules.snap_path_ends(PackedVector3Array([far, far + side * 5.0]), ctx)
+	check((res2["points"] as PackedVector3Array)[1] == far + side * 5.0, "un bout loin des portes reste en place")
+	# Le serpentement ne touche pas à l'approche de la porte.
+	var m := BastideGardenRules.meander(pts, 3, 0.3, 0.0, 1.8)
+	check(m[m.size() - 1].distance_to(last) < 0.01, "le serpentement garde le bout du chemin")
+	var r := BastidePathMesher.build(PackedVector3Array([far, near]), 4, load(JAPANESE_PATH), ctx)
+	check(_mesh_ok(r) and r.stats.get("doors", 0) == 1, "le chemin se génère et rejoint la porte")
+	check(r.stats.get("lanterns", 0) >= 1, "une lanterne accueille à la porte (%d)" % r.stats.get("lanterns", 0))
+
+
+func _test_path_joins_path() -> void:
+	print("Décor : un chemin se raccorde à un autre")
+	var main := {"kind": "path", "points": PackedVector3Array([Vector3(-10, 0, 0), Vector3(10, 0, 0)]), "width": 1.5}
+	var ctx := BastideGardenContext.from_entries([main])
+	var res := BastideGardenRules.snap_path_ends(PackedVector3Array([Vector3(2, 0, 12), Vector3(2.5, 0, 1.6)]), ctx)
+	var end: Vector3 = (res["points"] as PackedVector3Array)[1]
+	check(absf(end.z) < 0.01 and absf(end.x - 2.5) < 0.05, "le bout rejoint l'axe de l'autre chemin (%s)" % end)
+	check(res["join_end"], "le raccord est signalé")
+	var near := ctx.nearest_path(Vector2(0, 3))
+	check(near["index"] == 0 and absf(near["dist"] - 3.0) < 0.01 and absf(near["clearance"] - 2.25) < 0.01,
+			"distance au chemin et à son bord")
+
+
+func _test_fence_opens_for_path() -> void:
+	print("Décor : une clôture s'ouvre pour laisser passer un chemin")
+	var path := {"kind": "path", "points": PackedVector3Array([Vector3(0, 0, -6), Vector3(0, 0, 6)]), "width": 1.5}
+	var ctx := BastideGardenContext.from_entries([path])
+	var fence := PackedVector3Array()
+	for i in 21:
+		fence.append(Vector3(-5.0 + i * 0.5, 0, 1.0))
+	var spans := BastideGardenRules.fence_openings(fence, false, ctx)
+	check(spans.size() == 1, "une ouverture (%d)" % spans.size())
+	if spans.size() == 1:
+		check(spans[0].y - spans[0].x >= 1.5 + 0.8 and absf((spans[0].x + spans[0].y) * 0.5 - 5.0) < 0.01,
+				"centrée sur le chemin, plus large que lui (%s)" % spans[0])
+	for variant in [BastideGardenStyle.FenceKind.STONE, BastideGardenStyle.FenceKind.BAMBOO]:
+		var r := BastideFenceMesher.build(fence, false, variant, 3, load(JAPANESE_PATH), ctx)
+		check(_mesh_ok(r) and r.stats.get("runs", 0) == 2, "clôture %d : deux tronçons de part et d'autre" % variant)
+	var none := BastideGardenRules.fence_openings(fence, false, BastideGardenContext.new())
+	check(none.is_empty(), "sans chemin, pas d'ouverture")
+	var loop := PackedVector3Array([Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)])
+	var rl := BastideFenceMesher.build(BastideStroke.resample(loop, 0.5, true), true, 0, 3, load(JAPANESE_PATH), ctx)
+	check(_mesh_ok(rl) and rl.stats.get("openings", 0) == 2, "une enceinte traversée a deux ouvertures (%d)" % rl.stats.get("openings", 0))
+
+
+func _test_torii_on_path() -> void:
+	print("Décor : un torii se centre sur le chemin")
+	var path := {"kind": "path", "points": PackedVector3Array([Vector3(0, 0, -8), Vector3(0, 0, 8)]), "width": 1.5}
+	var ctx := BastideGardenContext.from_entries([path])
+	var res := BastideGardenRules.place_torii(Vector3(1.8, 0, 2.0), ctx, 1.5, Vector3(0.3, 0, 1))
+	var pts: PackedVector3Array = res["points"]
+	check(res["snapped"], "aimanté par le chemin")
+	var c := (pts[0] + pts[1]) * 0.5
+	check(absf(c.x) < 0.01 and absf(c.z - 2.0) < 0.01, "centré sur l'axe (%s)" % c)
+	check(absf((pts[1] - pts[0]).normalized().dot(Vector3(0, 0, 1))) < 0.01, "piliers en travers du chemin")
+	check(absf(pts[0].distance_to(pts[1]) - BastideGardenRules.torii_width(1.5)) < 0.01, "largeur adaptée au chemin")
+	var lone := BastideGardenRules.place_torii(Vector3(20, 0, 0), ctx, 1.5, Vector3.RIGHT)
+	check(not lone["snapped"], "loin d'un chemin, posé tel quel")
+	var fit := BastideGardenRules.fit_torii(Vector3(0, 0, 0), Vector3(0.5, 0, 0))
+	check(absf(fit[0].distance_to(fit[1]) - 2.2) < 0.01, "jamais plus étroit que 2,2 m")
+	var r := BastideToriiMesher.build(pts[0], pts[1], 3, load(JAPANESE_PATH))
+	check(_mesh_ok(r) and not r.collision_faces.is_empty(), "le torii se génère, avec collisions")
+
+
+func _test_plants_keep_clear() -> void:
+	print("Décor : les plantes laissent la place")
+	var house := _garden_house()
+	var door: Dictionary = (house["doors"] as Array)[0]
+	var dpos: Vector3 = door["pos"]
+	var dout: Vector3 = door["out"]
+	var path := {"kind": "path", "points": PackedVector3Array([dpos + dout * 1.15, dpos + dout * 12.0]), "width": 1.5}
+	var wall := {"kind": "wall", "points": PackedVector3Array([Vector3(-4, 0, -3), Vector3(16, 0, -3)]), "thickness": 0.55}
+	var ctx := BastideGardenContext.from_entries([house, path, wall])
+	var plan := BastidePlantingMesher.plan_garden(ctx, 7, (load(JAPANESE_PATH) as BastideStyle).get_garden_style())
+	var items: Array = plan["items"]
+	check(items.size() > 10, "le jardin fait pousser des plantes (%d)" % items.size())
+	var bad := 0
+	var by_wall := 0
+	for it: Dictionary in items:
+		var p: Vector3 = it["pos"]
+		var p2 := Vector2(p.x, p.z)
+		var r := BastidePlantingMesher.footprint(it)
+		if ctx.path_clearance(p2) < r or ctx.house_clearance(p2) < 0.0 or ctx.near_door(p2, 1.8) \
+				or ctx.wall_clearance(p2) < 0.0:
+			bad += 1
+		if absf(p.z + 3.0) < 1.2:
+			by_wall += 1
+	check(bad == 0, "aucune plante sur le chemin, dans la maison, devant la porte ou dans le mur (%d)" % bad)
+	check(by_wall > 3, "des plantes au pied du mur (%d)" % by_wall)
+	check((plan["bands"] as Array).size() == 1, "une bande de galets au pied de la maison")
+	var massif := BastidePlantingMesher.plan_planting(PackedVector3Array([dpos + dout * 6.0 + Vector3(-6, 0, 0),
+		dpos + dout * 6.0 + Vector3(6, 0, 0)]), 3, (load(JAPANESE_PATH) as BastideStyle).get_garden_style(), ctx)
+	var on_path := 0
+	for it: Dictionary in massif:
+		var p: Vector3 = it["pos"]
+		if ctx.path_clearance(Vector2(p.x, p.z)) < BastidePlantingMesher.footprint(it):
+			on_path += 1
+	check(massif.size() > 5 and on_path == 0, "un massif tracé en travers du chemin le laisse libre (%d plantes)" % massif.size())
+	var tree := BastidePlantingMesher.plan_planting(PackedVector3Array([Vector3(30, 0, 30)]), 9,
+			(load(JAPANESE_PATH) as BastideStyle).get_garden_style(), ctx)
+	check(not tree.is_empty() and BastidePlantingMesher.TREES.has(tree[0]["type"]), "un seul point : un arbre (%s)" % (tree[0]["type"] if tree.size() > 0 else "rien"))
+
+
+func _test_garden_determinism() -> void:
+	print("Décor : même seed, même jardin ; une retouche ailleurs ne rebrasse rien")
+	var house := _garden_house()
+	var gs := (load(JAPANESE_PATH) as BastideStyle).get_garden_style()
+	var a := BastidePlantingMesher.plan_garden(BastideGardenContext.from_entries([house]), 7, gs)
+	var b := BastidePlantingMesher.plan_garden(BastideGardenContext.from_entries([house]), 7, gs)
+	check(str(a["items"]) == str(b["items"]), "deux calculs identiques")
+	var wall := {"kind": "wall", "points": PackedVector3Array([Vector3(40, 0, 0), Vector3(50, 0, 0)]), "thickness": 0.55}
+	var c := BastidePlantingMesher.plan_garden(BastideGardenContext.from_entries([house, wall]), 7, gs)
+	var kept := 0
+	for it: Dictionary in a["items"]:
+		if str(c["items"]).contains(str(it)):
+			kept += 1
+	check(kept == (a["items"] as Array).size(), "un mur lointain ajouté ne change pas les plantes de la maison (%d/%d)" % [kept, (a["items"] as Array).size()])
+
+
+func _test_garden_meshes() -> void:
+	print("Décor : maillages et budget")
+	var st: BastideStyle = load(JAPANESE_PATH)
+	var house := _garden_house()
+	var ctx := BastideGardenContext.from_entries([house])
+	var t0 := Time.get_ticks_msec()
+	var g := BastidePlantingMesher.build_garden(ctx, 3, st)
+	var ms := Time.get_ticks_msec() - t0
+	check(_mesh_ok(g), "le jardin d'une maison se génère (%d triangles, %d ms)" % [g.stats.get("triangles", 0), ms])
+	check(g.stats.get("triangles", 0) < 60000, "budget du jardin raisonnable")
+	for type in ["bush", "hydrangea", "fern", "grass", "rock", "maple", "sakura", "pine", "bamboo"]:
+		var mb := BastideMeshBuilder.new()
+		BastidePlantingMesher.draw_items(mb, [{"type": type, "pos": Vector3.ZERO, "size": 3.5 if type in ["maple", "sakura", "pine"] else 0.6,
+			"key": 11, "bloom": true}], st.get_garden_style())
+		check(mb.triangle_count > 20 and mb.triangle_count < 6000, "%s : %d triangles" % [type, mb.triangle_count])
+	var mb2 := BastideMeshBuilder.new()
+	BastideGardenMesher.lantern(mb2, Vector3.ZERO, 0.0, 1.0, Color(0.6, 0.6, 0.55), 3)
+	check(mb2.triangle_count > 50, "lanterne : %d triangles" % mb2.triangle_count)
+	var path := BastidePathMesher.build(PackedVector3Array([Vector3(-10, 0, 20), Vector3(0, 0, 22), Vector3(10, 0, 20)]), 2, st, ctx)
+	check(_mesh_ok(path) and path.stats.get("stones", 0) > 15, "un chemin de 20 m : %d pas japonais, %d triangles" % [path.stats.get("stones", 0), path.stats.get("triangles", 0)])
+	var med := BastidePathMesher.build(PackedVector3Array([Vector3(-10, 0, 20), Vector3(10, 0, 20)]), 2, load(MEDIEVAL_PATH), ctx)
+	check(_mesh_ok(med) and med.stats.get("stones", 0) == 0 and med.stats.get("lanterns", 0) == 0, "médiéval : chemin de terre, sans pas japonais ni lanterne")

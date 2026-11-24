@@ -74,6 +74,7 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		ROLE_WOOD: style.get_wood_material(),
 		ROLE_PAPER: style.get_paper_material(),
 	})
+	result.anchors = anchors(layout)
 	result.stats = {
 		"facades": layout.facades.size(),
 		"windows": layout.count(Kind.WINDOW) + layout.count(Kind.ATTIC),
@@ -85,6 +86,18 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		"timings_us": {"walls": t_walls, "total": Time.get_ticks_usec() - t0},
 	}
 	return result
+
+
+## Portes (milieu du seuil au sol, normale vers l'extérieur, largeur) et contour,
+## pour le décor : chemins qui rejoignent les portes, galets au pied des murs.
+static func anchors(layout: BastideBuildingLayout) -> Dictionary:
+	var doors: Array = []
+	for f: BastideBuildingLayout.Facade in layout.facades:
+		for o in f.openings:
+			if o.kind == Kind.DOOR and o.floor == 0:
+				doors.append({"pos": f.point((o.u0 + o.u1) * 0.5, layout.base_y), "out": f.out3(), "width": o.u1 - o.u0})
+	return {"doors": doors, "footprint": layout.footprint, "base_y": layout.base_y,
+		"overhang": layout.roof.overhang if layout.roof else 0.5}
 
 
 static func _roof_name(roof: BastideRoofLayout) -> String:
@@ -449,7 +462,7 @@ static func _shutters(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: 
 	var y0: float = o.y0 + 0.02
 	var y1: float = o.y1 - 0.02
 	var base := layout.shutter_color
-	for side in [-1.0, 1.0]:
+	for side: float in [-1.0, 1.0]:
 		var inner: float = o.u0 - jw - 0.02 if side < 0.0 else o.u1 + jw + 0.02
 		var outer: float = inner + w * side
 		var a := minf(inner, outer)

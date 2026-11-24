@@ -29,12 +29,13 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST }
 ## Variantes du mode MUR.
 enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
 signal mode_changed(mode: Mode)
 signal variant_changed(variant: WallVariant)
+signal forest_kind_changed(kind: int)
 signal selection_changed(id: int)
 ## Une structure vient d'être posée ou retirée (pour jouer un son, par exemple).
 signal placed(kind: String)
@@ -64,6 +65,17 @@ signal history_changed(can_undo: bool, can_redo: bool)
 		wall_variant = value
 		variant_changed.emit(wall_variant)
 		_emit_hint()
+## Sorte des forêts tracées en mode FORÊT (essences, voir BastideForestBuilder.Kind).
+@export var forest_kind := BastideForestBuilder.Kind.MIXED:
+	set(value):
+		if forest_kind == value:
+			return
+		cancel_draft()
+		forest_kind = value
+		forest_kind_changed.emit(int(forest_kind))
+		_emit_hint()
+## Surface minimale d'une forêt (m²).
+@export var forest_min_area := 60.0
 ## Hauteur des murets posés (0 = celle du style).
 @export var wall_height := 1.9
 ## Hauteur du sol (plan de construction).
@@ -302,6 +314,12 @@ func clear_all() -> void:
 		removed.emit("all")
 
 
+## Sorte de forêt suivante (et passe en mode FORÊT).
+func cycle_forest_kind() -> void:
+	mode = Mode.FOREST
+	forest_kind = ((int(forest_kind) + 1) % BastideForestBuilder.Kind.size()) as BastideForestBuilder.Kind
+
+
 ## Variante suivante du mode MUR (et passe en mode MUR).
 func cycle_wall_variant() -> void:
 	mode = Mode.WALL
@@ -385,10 +403,15 @@ func _on_key(k: InputEventKey) -> void:
 			_:
 				if k.keycode == KEY_T:
 					mode = Mode.TERRACE
+				elif k.keycode == KEY_B:
+					mode = Mode.FOREST
 				elif k.keycode == KEY_R:
 					reroll_selected()
 				elif k.keycode == KEY_V:
-					cycle_wall_variant()
+					if mode == Mode.FOREST:
+						cycle_forest_kind()
+					else:
+						cycle_wall_variant()
 				else:
 					handled = false
 	if handled:
@@ -480,6 +503,8 @@ func _draw_kind() -> String:
 			return "plants"
 		Mode.TERRACE:
 			return "terrace"
+		Mode.FOREST:
+			return "forest"
 	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
 
 
@@ -497,6 +522,9 @@ func _new_record(kind: String) -> Dictionary:
 		rec["variant"] = 1 if wall_variant == WallVariant.BAMBOO else 0
 	if kind == "terrace":
 		rec["entry"] = -1
+	if kind == "forest":
+		rec["forest_kind"] = int(forest_kind)
+		rec["closed"] = true
 	return rec
 
 
@@ -525,6 +553,13 @@ func _draw_wall(g: Vector3) -> void:
 	var closed := closable and total > 10.0 and g.distance_to(_raw[0]) < 1.6 and control.size() >= 4
 	if closed:
 		control.remove_at(control.size() - 1)
+	if _draft_rec["kind"] == "forest":
+		# Une forêt est toujours une zone : le contour se referme tout seul. Elle
+		# n'apparaît qu'au relâcher (des centaines d'arbres : pas de fantôme en direct).
+		_draft_rec["points"] = control
+		_draft_rec["closed"] = true
+		_draw_ink(BastideStroke.wall_path(control, control.size() >= 3, 0.6), control.size() >= 3)
+		return
 	_draft_rec["points"] = control
 	_draft_rec["closed"] = closed
 	_draw_ink(BastideStroke.wall_path(control, closed, 0.4), closed)
@@ -687,6 +722,19 @@ func _finish_draw() -> void:
 	_ink_mesh.clear_surfaces()
 	var rec := _draft_rec
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
+	if rec.get("kind") == "forest":
+		if pts.size() >= 3 and absf(BastideStroke.signed_area(pts)) >= forest_min_area:
+			rec["points"] = BastideStroke.ensure_direct(pts)
+			_update_draft()
+			_draft.mesh_transparency = 0.0
+			_draft.mesh_overlay = null
+			_draft.mesh_casts_shadow = true
+			_draft.context_enabled = true
+			_place_draft()
+		else:
+			cancel_draft()
+		_emit_hint()
+		return
 	var ok := _draft != null and pts.size() >= 2
 	if rec.get("kind") != "house" and BastideStroke.length(pts, rec["closed"]) < wall_min_length:
 		ok = false
@@ -1070,6 +1118,8 @@ func current_hint() -> String:
 				if _draft_rec.get("closed", false):
 					return "Relâche pour fermer l'enceinte"
 				return "Dessine le tracé, relâche pour le poser"
+			if mode == Mode.FOREST:
+				return "Fais le tour de la forêt, relâche pour la planter"
 			if mode == Mode.TERRACE:
 				if _terrace_engawa:
 					return "Relâche : un engawa le long de la façade"
@@ -1109,4 +1159,7 @@ func current_hint() -> String:
 			return "Dessine un massif  ·  ou clique pour planter un arbre"
 		Mode.TERRACE:
 			return "Maintiens le clic et tire une terrasse  ·  contre une maison : un engawa"
+		Mode.FOREST:
+			var fnames := ["forêt mêlée", "forêt de cèdres", "chênaie", "érables d'automne", "cerisiers", "pinède"]
+			return "Maintiens le clic et fais le tour d'une %s  ·  V : changer" % fnames[int(forest_kind)]
 	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"

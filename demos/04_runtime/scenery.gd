@@ -97,22 +97,13 @@ func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
 
 
 func _groves() -> void:
-	# Mêmes essences que le hameau (addon) : pins taillés, feuillus en dôme,
-	# cerisiers, bambous et quelques érables rouges. Tout est fusionné en quelques
-	# maillages par secteur, pour rester léger et laisser la caméra les écarter.
-	var style: BastideStyle = load("res://addons/bastide/styles/presets/japanese_wood.tres")
-	var gs: BastideGardenStyle = style.get_garden_style()
-	var green := gs.duplicate() as BastideGardenStyle
-	green.maple_colors = PackedColorArray([Color(0.3, 0.46, 0.2), Color(0.36, 0.5, 0.22), Color(0.27, 0.41, 0.2), Color(0.42, 0.52, 0.24)])
-	var sectors := 8
-	var red_items: Array = []
-	var green_items: Array = []
-	for i in sectors:
-		red_items.append([])
-		green_items.append([])
+	# Les mêmes arbres que les forêts (kit nature, couronnes peintes d'Onsen) :
+	# feuillus, cèdres, pins taillés, cerisiers, quelques érables rouges et des bambous.
+	# Une instance par arbre, regroupées par modèle ; au loin, la version à peu de cartes.
+	var groups := {}
 	var placed: Array[Vector2] = []
 	var tries := 0
-	while placed.size() < 85 and tries < 3000:
+	while placed.size() < 80 and tries < 3000:
 		tries += 1
 		var a := _rng.randf() * TAU
 		var r := clearing_radius + 4.0 + pow(_rng.randf(), 1.6) * 60.0
@@ -122,48 +113,59 @@ func _groves() -> void:
 			continue
 		if p.distance_to(Vector2(-27, 16)) < 12.0:
 			continue
+		# La forêt du hameau occupe le nord.
+		if p.y < -10.0 and p.y > -58.0 and absf(p.x) < 44.0:
+			continue
 		var too_close := false
 		for q in placed:
-			if q.distance_to(p) < 4.6:
+			if q.distance_to(p) < 6.0:
 				too_close = true
 				break
 		if too_close:
 			continue
 		placed.append(p)
-		var sec := int(posmod(atan2(p.y, p.x), TAU) / TAU * sectors) % sectors
-		var pos := Vector3(p.x, 0, p.y)
-		var key := _rng.randi()
 		var roll := _rng.randf()
-		# Plus loin, plus grand : l'œil lit mieux les silhouettes dans la brume.
-		var far := clampf((r - clearing_radius) / 60.0, 0.0, 1.0)
-		var grow := lerpf(1.25, 1.7, far) * _rng.randf_range(0.9, 1.15)
-		if roll < 0.16:
-			green_items[sec].append({"type": "bamboo", "pos": pos, "size": _rng.randf_range(1.4, 1.9), "key": key})
-		elif roll < 0.34:
-			green_items[sec].append({"type": "sakura", "pos": pos, "size": 4.3 * grow, "key": key})
-		elif roll < 0.6:
-			green_items[sec].append({"type": "pine", "pos": pos, "size": 3.4 * grow, "key": key})
-		elif roll < 0.92:
-			green_items[sec].append({"type": "maple", "pos": pos, "size": 4.0 * grow, "key": key})
-		elif roll < 0.955:
-			red_items[sec].append({"type": "maple", "pos": pos, "size": 3.8 * grow, "key": key})
-		else:
-			_rock(pos, _rng.randf_range(0.8, 1.8))
-	# Quelques arbres isolés plus près, pour donner de la profondeur au hameau.
-	green_items[7].append({"type": "sakura", "pos": Vector3(31, 0, -10), "size": 5.6, "key": 11})
-	green_items[3].append({"type": "pine", "pos": Vector3(-33, 0, -14), "size": 4.6, "key": 12})
-	green_items[0].append({"type": "bamboo", "pos": Vector3(28, 0, 14), "size": 1.8, "key": 13})
-	var mats := BastideGardenMesher.materials(style)
-	for i in sectors:
-		var mb := BastideMeshBuilder.new()
-		BastidePlantingMesher.draw_items(mb, green_items[i], green)
-		BastidePlantingMesher.draw_items(mb, red_items[i], gs)
-		if mb.triangle_count == 0:
+		var pos := Vector3(p.x, 0, p.y)
+		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
+		if roll < 0.14:
+			_add_to(groups, "bamboo", BastideKitNature.plant("bamboo"), xf.scaled_local(Vector3.ONE * _rng.randf_range(0.8, 1.1)))
 			continue
-		var mi := MeshInstance3D.new()
-		mi.name = "Bosquet%d" % i
-		mi.mesh = mb.commit(mats)
-		add_child(mi)
+		if roll > 0.96:
+			_rock(pos, _rng.randf_range(0.8, 1.8))
+			continue
+		var sp := "sakura" if roll < 0.3 else ("cedre" if roll < 0.45 else ("matsu" if roll < 0.55 else ("momiji" if roll < 0.62 else ("chene" if roll < 0.8 else "hetre"))))
+		var size := {"sakura": 1.4, "cedre": 1.6, "matsu": 1.1, "momiji": 1.4, "chene": 1.3, "hetre": 1.3}[sp] as float
+		var variant := _rng.randi_range(0, 3)
+		var far := r > clearing_radius + 30.0
+		var tr := BastideKitNature.tree(sp, variant, size, far)
+		var key := "%s%d%s" % [sp, variant, "f" if far else ""]
+		_add_to(groups, "t" + key, {"mesh": tr["trunk"], "mat": BastideKitNature.trunk_material()}, xf)
+		_add_to(groups, "c" + key, {"mesh": tr["crown"], "mat": tr["crown_mat"]}, xf)
+		_add_to(groups, "s" + key, {"mesh": tr["shadow"], "mat": BastideKitNature.trunk_material(), "shadow": true}, xf)
+	for k: String in groups:
+		var g: Dictionary = groups[k]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = g["mesh"]
+		var xfs: Array = g["xf"]
+		mm.instance_count = xfs.size()
+		for i in xfs.size():
+			mm.set_instance_transform(i, xfs[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Bosquet_" + k
+		mmi.multimesh = mm
+		mmi.material_override = g["mat"]
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if g.get("shadow", false) \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+
+
+func _add_to(groups: Dictionary, key: String, item: Dictionary, xf: Transform3D) -> void:
+	if item.is_empty() or item.get("mesh") == null:
+		return
+	if not groups.has(key):
+		groups[key] = {"mesh": item["mesh"], "mat": item["mat"], "xf": [], "shadow": item.get("shadow", false)}
+	(groups[key]["xf"] as Array).append(xf)
 
 
 func _rock(pos: Vector3, size: float) -> void:

@@ -126,13 +126,20 @@ func get_mesh_instance() -> MeshInstance3D:
 
 
 func _apply_look() -> void:
-	var mi := get_mesh_instance()
-	if mi == null:
-		return
-	mi.transparency = mesh_transparency
-	mi.material_overlay = mesh_overlay
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh_casts_shadow and mesh_transparency < 0.5 \
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for gi in BastideResultApplier.geometry(self):
+		gi.transparency = mesh_transparency
+		gi.material_overlay = mesh_overlay
+		var cast := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh_casts_shadow and mesh_transparency < 0.5 \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if gi is MultiMeshInstance3D:
+			# Les groupes gardent leur réglage (couronnes sans ombre, silhouettes d'ombre seules),
+			# sauf pour un fantôme : rien ne porte d'ombre.
+			if cast == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				gi.cast_shadow = cast
+			elif gi.has_meta(&"cast"):
+				gi.cast_shadow = gi.get_meta(&"cast")
+		else:
+			gi.cast_shadow = cast
 
 
 ## Statistiques de la dernière génération (triangles, durée…).

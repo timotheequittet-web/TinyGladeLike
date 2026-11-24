@@ -115,6 +115,13 @@ enum FenceKind { STONE, BAMBOO }
 		tree_weights = value
 		emit_changed()
 
+## Arbres et plantes du kit nature (modèles d'Onsen à couronnes peintes) à la place
+## des arbres, hortensias et fougères dessinés par l'addon.
+@export var kit_plants := true:
+	set(value):
+		kit_plants = value
+		emit_changed()
+
 @export_group("Édifices")
 ## Torii, portiques : couleur principale (vermillon au Japon).
 @export var gate_color: Color = Color(0.78, 0.24, 0.14):

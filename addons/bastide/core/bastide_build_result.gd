@@ -14,10 +14,35 @@ var stats := {}
 ## chemin…), dans l'espace local du nœud. Lus par le décor (chemins qui rejoignent
 ## les portes, plantes qui évitent les seuils…).
 var anchors := {}
+## Maillages posés en grand nombre (arbres et plantes d'une forêt) : chaque entrée
+## {mesh, material, transforms: Array[Transform3D], shadow (ShadowCastingSetting),
+## vis_begin, vis_end (m, 0 = sans limite)} devient un MultiMeshInstance3D.
+var instances: Array = []
 
 
 func is_empty() -> bool:
-	return mesh == null or mesh.get_surface_count() == 0
+	return (mesh == null or mesh.get_surface_count() == 0) and instances.is_empty()
+
+
+## Ajoute un groupe d'instances (voir `instances`).
+func add_instances(m: Mesh, material: Material, transforms: Array, shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
+		vis_begin := 0.0, vis_end := 0.0) -> void:
+	if m == null or transforms.is_empty():
+		return
+	instances.append({"mesh": m, "material": material, "transforms": transforms, "shadow": shadow,
+		"vis_begin": vis_begin, "vis_end": vis_end})
+
+
+## Ajoute un prisme vertical à `sides` pans (tronc d'arbre) aux triangles de collision.
+func add_prism(center: Vector3, radius: float, height: float, sides := 8) -> void:
+	for i in sides:
+		var a0 := TAU * i / sides
+		var a1 := TAU * (i + 1) / sides
+		var p0 := center + Vector3(cos(a0), 0, sin(a0)) * radius
+		var p1 := center + Vector3(cos(a1), 0, sin(a1)) * radius
+		var up := Vector3(0, height, 0)
+		collision_faces.append(p0); collision_faces.append(p1); collision_faces.append(p1 + up)
+		collision_faces.append(p0); collision_faces.append(p1 + up); collision_faces.append(p0 + up)
 
 
 ## Ajoute les 12 triangles d'un bloc à 8 coins (0-3 dessous, 4-7 dessus).

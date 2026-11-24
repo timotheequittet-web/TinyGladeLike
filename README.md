@@ -4,7 +4,7 @@
 
 ![Le chemin traverse le muret : un portail couvert de tuiles s'y ouvre tout seul, vantaux grands ouverts](docs/captures/etape6_portail.jpg)
 
-État : **étape 6 terminée** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
+État : **forêts et arbres d'Onsen** (grands arbres à couronnes peintes, outil Forêt, sous-bois), après l'**étape 6** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -63,6 +63,23 @@ add_child(tool)
 ```
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
+
+## Forêts et arbres d'Onsen
+
+![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)
+
+Les arbres et plantes viennent du projet « L'onsen de la colline » (même auteur) : des modèles faits par script dans Blender (couleurs par sommet), habillés comme dans Onsen. Chaque arbre garde son tronc, et sa couronne est refaite en **cartes face caméra** posées sur les boules de feuillage du modèle, texturées de touffes peintes. Elle s'éclaire en deux tons francs, avec la lumière qui traverse le bord à contre-jour. Une silhouette légère porte l'ombre.
+
+- **Forêt** (touche **B**) : maintiens le clic et fais le tour d'une zone. Relâche : la forêt pousse. **V** change la sorte : mêlée, cèdres, chênaie, érables d'automne, cerisiers, pinède.
+- Les grands arbres (chênes, hêtres, cèdres, camphriers) font **15 à 20 m**, et les érables, cerisiers et pins 10 à 12 m. On circule entre les troncs, qui ont des collisions.
+- **Lisière festonnée** : plus claire au bord, plus dense au cœur.
+- **Sous-bois** : fougères et buissons à l'ombre des couronnes, fleurs des champs, azalées, hortensias et iris dans les trouées.
+- La forêt évite d'elle-même les maisons, terrasses, chemins, murs et portes.
+- **Massifs et jardin** : leurs arbres isolés (érable, cerisier, pin taillé), leurs hortensias et leurs fougères sont maintenant ceux d'Onsen (style japonais, `kit_plants` dans le volet Garden).
+- Au loin, les couronnes passent à une version à peu de cartes, et les plantes du sous-bois s'effacent.
+- Dans l'éditeur : nœud **BastideForest** (contour fermé). Réglages : `forest_kind`, `tree_scale` (2 = géants de 35 m), `density`, `undergrowth`.
+
+Les sources d'Onsen gardées pour référence (le script Blender `japan.py` qui génère les arbres, les scripts et shaders d'origine) sont dans `docs/onsen_ref/`. Les touffes peintes ont été générées avec Gemini puis détourées. Les modèles Meshy d'Onsen n'ont pas été repris.
 
 ## Terrasses et portails (étape 6)
 
@@ -244,7 +261,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (248 vérifications, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (276 vérifications, dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -268,6 +285,12 @@ Et celui de l'étape 6 (engawa tiré contre une maison, terrasse isolée, chemin
 godot --path . -s tools/terrace_play.gd -- <dossier_des_captures>
 ```
 
+Et celle des forêts (forêt du hameau, vues au cœur de la forêt, forêt d'érables tracée à la souris, autres sortes, annulation) :
+
+```
+godot --path . -s tools/forest_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -281,14 +304,17 @@ addons/bastide/
     garden/      le voisinage vu par le décor (portes, chemins, murs…)
     generators/  Spec → Layout : murs, bâtiments, toits
     layout/      les plans sémantiques (mur, bâtiment, toit)
-    backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses ; kit/ plus tard)
+    backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses)
+    kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
-               BastidePlanting, BastideTerrace, BastideGarden, base commune BastideStructure)
+               BastidePlanting, BastideTerrace, BastideForest, BastideGarden, base commune BastideStructure)
+  kit/nature/  modèles .glb des arbres et plantes d'Onsen, touffes peintes
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
-  shaders/     shaders pierre, bois, gravier ratissé et feuillage procéduraux (aucune texture)
+  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce et couronnes peintes
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)
+docs/onsen_ref/ sources d'Onsen gardées pour référence (ignorées par Godot)
 ```

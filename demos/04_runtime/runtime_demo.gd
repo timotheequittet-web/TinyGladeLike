@@ -23,6 +23,8 @@ var _hint_tween: Tween
 var _mode_buttons := {}
 var _variant_buttons := {}
 var _variant_panel: PanelContainer
+var _forest_buttons := {}
+var _forest_panel: PanelContainer
 var _style_buttons := {}
 var _undo_btn: Button
 var _redo_btn: Button
@@ -67,6 +69,9 @@ func _starting_village() -> Array:
 			"points": [[-22.8, 0, 13.8], [-18.8, 0, 13.8], [-18.8, 0, 16.8], [-22.8, 0, 16.8]]},
 		{"kind": "path", "seed": 19, "style": j,
 			"points": [[0.3, 0, 20], [-6, 0, 20.8], [-12, 0, 19.2], [-16.8, 0, 16.4]]},
+		# La forêt mêlée qui ferme le hameau au nord (arbres d'Onsen) : on peut s'y promener.
+		{"kind": "forest", "seed": 41, "style": j, "closed": true, "forest_kind": 0,
+			"points": [[-34, 0, -16], [-12, 0, -15], [4, 0, -17], [22, 0, -16], [36, 0, -20], [38, 0, -44], [10, 0, -52], [-20, 0, -50], [-38, 0, -38]]},
 	]
 
 
@@ -77,6 +82,7 @@ func _ready() -> void:
 	tool.hint_changed.connect(_show_hint)
 	tool.mode_changed.connect(func(_m: int) -> void: _refresh_mode())
 	tool.variant_changed.connect(func(_v: int) -> void: _refresh_mode())
+	tool.forest_kind_changed.connect(func(_k: int) -> void: _refresh_mode())
 	tool.selection_changed.connect(func(_id: int) -> void: _refresh_selection())
 	tool.history_changed.connect(func(u: bool, r: bool) -> void:
 		_undo_btn.disabled = not u
@@ -238,6 +244,7 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.TORII] = _button(hb, "Torii  4", func() -> void: tool.mode = BastideBuildTool.Mode.TORII, true)
 	_mode_buttons[BastideBuildTool.Mode.PLANTS] = _button(hb, "Plantes  5", func() -> void: tool.mode = BastideBuildTool.Mode.PLANTS, true)
 	_mode_buttons[BastideBuildTool.Mode.TERRACE] = _button(hb, "Terrasse  T", func() -> void: tool.mode = BastideBuildTool.Mode.TERRACE, true)
+	_mode_buttons[BastideBuildTool.Mode.FOREST] = _button(hb, "Forêt  B", func() -> void: tool.mode = BastideBuildTool.Mode.FOREST, true)
 	_sep(hb)
 	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
 	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
@@ -260,6 +267,19 @@ func _build_ui() -> void:
 			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.DRY_STONE, true)
 	_variant_buttons[BastideBuildTool.WallVariant.BAMBOO] = _button(vhb, "Bambou",
 			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.BAMBOO, true)
+
+	# Sortes de forêt (touche V en mode Forêt), au même endroit.
+	_forest_panel = PanelContainer.new()
+	_forest_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
+	_forest_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_forest_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(_forest_panel)
+	var fhb := HBoxContainer.new()
+	fhb.add_theme_constant_override("separation", 4)
+	_forest_panel.add_child(fhb)
+	var fnames := ["Mêlée", "Cèdres", "Chênaie", "Érables", "Cerisiers", "Pinède"]
+	for k in fnames.size():
+		_forest_buttons[k] = _button(fhb, fnames[k], func() -> void: tool.forest_kind = k as BastideForestBuilder.Kind, true)
 
 	# Panneau de la structure sélectionnée, juste au-dessus.
 	_sel_panel = PanelContainer.new()
@@ -303,7 +323,7 @@ func _build_ui() -> void:
 	root.add_child(title)
 	var keys := Label.new()
 	keys.position = Vector2(28, 54)
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T : outils   ·   V : variante du muret\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
@@ -346,6 +366,8 @@ func _refresh_mode() -> void:
 		(_mode_buttons[m] as Button).set_pressed_no_signal(m == tool.mode)
 	for v: int in _variant_buttons:
 		(_variant_buttons[v] as Button).set_pressed_no_signal(v == tool.wall_variant)
+	for k: int in _forest_buttons:
+		(_forest_buttons[k] as Button).set_pressed_no_signal(k == int(tool.forest_kind))
 	_refresh_style_buttons()
 	_refresh_selection()
 
@@ -359,6 +381,12 @@ func _refresh_selection() -> void:
 	_variant_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_variants else Control.MOUSE_FILTER_IGNORE
 	for b in _variant_panel.find_children("*", "Button", true, false):
 		(b as Button).disabled = not show_variants
+	var show_forests := tool.mode == BastideBuildTool.Mode.FOREST and not has
+	var tf := create_tween()
+	tf.tween_property(_forest_panel, "modulate:a", 1.0 if show_forests else 0.0, 0.25)
+	_forest_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_forests else Control.MOUSE_FILTER_IGNORE
+	for b in _forest_panel.find_children("*", "Button", true, false):
+		(b as Button).disabled = not show_forests
 	var tw := create_tween()
 	tw.tween_property(_sel_panel, "modulate:a", 1.0 if has else 0.0, 0.25)
 	_sel_panel.mouse_filter = Control.MOUSE_FILTER_STOP if has else Control.MOUSE_FILTER_IGNORE

@@ -35,6 +35,7 @@ lanterns = false
 terrace_color = Color(0.56, 0.42, 0.29, 1)
 terrace_frame_color = Color(0.3, 0.22, 0.16, 1)
 giboshi = false
+kit_plants = false
 terrace_details = false
 
 [resource]

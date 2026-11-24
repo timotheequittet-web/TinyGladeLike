@@ -198,6 +198,9 @@ func make_node(rec: Dictionary) -> BastideStructure:
 		"terrace":
 			node = BastideTerrace.new()
 			node.name = "Terrasse"
+		"forest":
+			node = BastideForest.new()
+			node.name = "Foret"
 		_:
 			node = BastideWall.new()
 			node.name = "Mur"
@@ -254,6 +257,12 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		if t.entry_side != e:
 			t.entry_side = e
 		t.set_footprint(local)
+	elif node is BastideForest:
+		var fo := node as BastideForest
+		var fk := int(rec.get("forest_kind", 0))
+		if int(fo.forest_kind) != fk:
+			fo.forest_kind = fk
+		fo.set_footprint(local)
 	elif node is BastidePlanting:
 		(node as BastidePlanting).set_points(local if local.size() < 2 else BastideStroke.wall_path(local, false, 0.5))
 
@@ -368,7 +377,7 @@ func _puff(rec: Dictionary) -> void:
 		pts = PackedVector3Array([pts[0] + Vector3(-0.8, 0, 0), pts[0] + Vector3(0.8, 0, 0)])
 	if pts.size() < 2:
 		return
-	var closed: bool = rec.get("kind", "") in ["house", "terrace"] or bool(rec.get("closed", false))
+	var closed: bool = rec.get("kind", "") in ["house", "terrace", "forest"] or bool(rec.get("closed", false))
 	var emit_pts := PackedVector3Array()
 	var path := BastideStroke.resample(pts, 0.6, closed)
 	for p in path:

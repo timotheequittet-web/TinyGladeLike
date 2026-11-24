@@ -60,6 +60,8 @@ func _init() -> void:
 	_test_terrace_engawa_snap()
 	_test_terrace_build()
 	_test_terrace_neighbours()
+	_test_kit_trees()
+	_test_forest()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1128,4 +1130,61 @@ func _test_terrace_neighbours() -> void:
 		if ctx.terrace_clearance(Vector2(p.x, p.z)) < 0.0:
 			under += 1
 	check(under == 0, "aucune plante sous la terrasse (%d)" % under)
+
+
+func _test_kit_trees() -> void:
+	print("Kit nature : arbres d'Onsen à couronnes peintes")
+	for sp: String in BastideKitNature.SPECIES:
+		var tr := BastideKitNature.tree(sp, 0, 1.0)
+		var ok: bool = tr["crown"] != null and (tr["crown"] as ArrayMesh).get_surface_count() == 1 and tr["shadow"] != null
+		check(ok, "%s : couronne en cartes et silhouette d'ombre" % sp)
+	var small := BastideKitNature.tree("chene", 0, 1.0)
+	var big := BastideKitNature.tree("chene", 0, 1.5)
+	check(absf((big["box"] as AABB).size.y / (small["box"] as AABB).size.y - 1.5) < 0.02, "l'échelle agrandit l'arbre entier")
+	check(BastideKitNature.tree("chene", 0, 1.5) == big, "un même arbre n'est calculé qu'une fois (cache)")
+	var far := BastideKitNature.tree("chene", 0, 1.5, true)
+	var n_near := (big["crown"] as ArrayMesh).surface_get_array_len(0)
+	var n_far := (far["crown"] as ArrayMesh).surface_get_array_len(0)
+	check(n_far * 3 < n_near, "la version lointaine a bien moins de cartes (%d / %d)" % [n_far, n_near])
+	for model in ["fern", "iris", "hydrangea_blue", "azalea_red", "bush_1", "bamboo", "flowers_meadow"]:
+		var pl := BastideKitNature.plant(model)
+		check(pl.get("mesh") != null, "plante %s" % model)
+	check(not BastideKitNature.tuft("fern").is_empty() and not BastideKitNature.tuft("meadow").is_empty(), "touffes peintes de fougère et de fleurs")
+
+
+func _test_forest() -> void:
+	print("Forêts : grands arbres espacés, sous-bois, voisins évités")
+	var zone := PackedVector3Array([Vector3(-30, 0, -20), Vector3(30, 0, -20), Vector3(30, 0, 20), Vector3(-30, 0, 20)])
+	var poly := PackedVector2Array()
+	for p in zone:
+		poly.append(Vector2(p.x, p.z))
+	var house := {"kind": "house", "footprint": PackedVector3Array([Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)]), "doors": []}
+	var path := {"kind": "path", "points": PackedVector3Array([Vector3(-40, 0, 12), Vector3(40, 0, 12)]), "width": 1.6}
+	var ctx := BastideGardenContext.from_entries([house, path])
+	for kind in BastideForestBuilder.Kind.values():
+		var pl := BastideForestBuilder.plan(zone, 5, kind, 1.0, 1.0, 1.0, ctx)
+		var trees: Array = pl["trees"]
+		var inside := true
+		var clear := true
+		var min_gap := INF
+		for i in trees.size():
+			var t: Dictionary = trees[i]
+			var q := Vector2((t["pos"] as Vector3).x, (t["pos"] as Vector3).z)
+			inside = inside and Geometry2D.is_point_in_polygon(q, poly)
+			clear = clear and ctx.house_clearance(q) > 1.0 and ctx.path_clearance(q) > 1.0
+			for j in range(i + 1, trees.size()):
+				var u: Dictionary = trees[j]
+				min_gap = minf(min_gap, q.distance_to(Vector2((u["pos"] as Vector3).x, (u["pos"] as Vector3).z)))
+		check(trees.size() >= 6 and inside and clear and min_gap > 3.0,
+				"forêt %s : %d arbres dans la zone, hors maison et chemin, troncs à ≥ %.1f m" % [BastideForestBuilder.Kind.keys()[kind], trees.size(), min_gap])
+	var r := BastideForestBuilder.build(zone, 5, BastideForestBuilder.Kind.MIXED, 1.0, 1.0, 1.0, ctx, true)
+	check(r.stats["plants"] > 50 and not r.instances.is_empty(), "sous-bois et instances (%d plantes, %d groupes)" % [r.stats["plants"], r.instances.size()])
+	check(r.collision_faces.size() == r.stats["trees"] * 8 * 6, "chaque tronc a sa collision")
+	var heights := []
+	for t: Dictionary in BastideForestBuilder.plan(zone, 5, BastideForestBuilder.Kind.OAKS, 1.0, 1.0, 0.0, ctx)["trees"]:
+		heights.append(float(BastideKitNature.SPECIES[t["species"]]["height"]) * float(t["size"]))
+	heights.sort()
+	check(heights[heights.size() - 1] >= 15.0 and heights[heights.size() - 1] <= 21.0, "chênaie : les grands arbres font 15 à 20 m (%.1f m)" % heights[heights.size() - 1])
+	var r0 := BastideForestBuilder.build(zone, 5, BastideForestBuilder.Kind.MIXED, 1.0, 1.0, 0.0, ctx, false)
+	check(r0.stats["plants"] == 0 and r0.collision_faces.is_empty(), "sans sous-bois ni collisions sur demande")
 

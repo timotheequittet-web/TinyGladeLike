@@ -86,6 +86,8 @@ const HANDLE_SHADER := preload("res://addons/bastide/runtime/bastide_handle.gdsh
 const HIGHLIGHT_SHADER := preload("res://addons/bastide/runtime/bastide_highlight.gdshader")
 const INK_SHADER := preload("res://addons/bastide/runtime/bastide_ground_ink.gdshader")
 const DRAG_THRESHOLD := 6.0
+## Distance (le long du tracé) au-delà de laquelle un muret tracé ne bouge plus.
+const FREEZE_DIST := 4.0
 const HANDLE_PICK_RADIUS := 17.0
 
 enum _State { IDLE, PRESSING, DRAWING, DRAGGING }
@@ -98,6 +100,10 @@ var _undo := UndoRedo.new()
 var _draft: BastideStructure
 var _draft_rec := {}
 var _raw := PackedVector3Array()
+# Début du tracé déjà figé (points de contrôle qui ne bougent plus) et l'indice
+# du point brut où reprend la partie encore libre.
+var _frozen := PackedVector3Array()
+var _frozen_at := 0
 var _merge_id := -1
 
 # Sélection, survol, poignées.
@@ -454,6 +460,8 @@ func _start_draw() -> void:
 	_set_hover(-1)
 	_cursor.visible = false
 	_raw = PackedVector3Array([_press_ground])
+	_frozen = PackedVector3Array()
+	_frozen_at = 0
 	_draft_rec = _new_record(_draw_kind())
 	_merge_id = -1
 	_emit_hint()
@@ -504,10 +512,13 @@ func _continue_draw(g: Vector3) -> void:
 func _draw_wall(g: Vector3) -> void:
 	if _raw[_raw.size() - 1].distance_to(g) > 0.3:
 		_raw.append(g)
-	var pts := _raw.duplicate()
-	if pts[pts.size() - 1].distance_to(g) > 0.05:
-		pts.append(g)
-	var control := BastideStroke.simplify(pts, 0.28)
+	# Seule la fin du tracé (les derniers mètres) est re-simplifiée à chaque
+	# mouvement : ce qui est loin derrière la souris est figé et ne tremble plus.
+	var simple := _simplified_tail(g)
+	if _freeze_behind(simple):
+		simple = _simplified_tail(g)
+	var control := _frozen.slice(0, maxi(_frozen.size() - 1, 0))
+	control.append_array(simple)
 	var total := BastideStroke.length(control)
 	# Revenir près du départ ferme l'enceinte (murs et clôtures seulement).
 	var closable: bool = _draft_rec["kind"] == "wall" or _draft_rec["kind"] == "fence"
@@ -519,6 +530,41 @@ func _draw_wall(g: Vector3) -> void:
 	_draw_ink(BastideStroke.wall_path(control, closed, 0.4), closed)
 	if total >= wall_min_length:
 		_update_draft()
+
+
+func _simplified_tail(g: Vector3) -> PackedVector3Array:
+	var tail := _raw.slice(_frozen_at)
+	if tail[tail.size() - 1].distance_to(g) > 0.05:
+		tail.append(g)
+	return BastideStroke.simplify(tail, 0.28)
+
+
+## Fige les points de contrôle intérieurs de la partie libre qui sont à plus de
+## FREEZE_DIST mètres (le long du tracé) derrière la souris. Vrai si un point a été figé.
+func _freeze_behind(simple: PackedVector3Array) -> bool:
+	if simple.size() < 3:
+		return false
+	var n := _raw.size()
+	var remain := PackedFloat32Array()
+	remain.resize(n)
+	var acc := 0.0
+	for i in range(n - 1, -1, -1):
+		if i < n - 1:
+			acc += _raw[i].distance_to(_raw[i + 1])
+		remain[i] = acc
+	var changed := false
+	var j := _frozen_at
+	for k in range(1, simple.size() - 1):
+		while j < n and _raw[j] != simple[k]:
+			j += 1
+		if j >= n or remain[j] < FREEZE_DIST:
+			break
+		if _frozen.is_empty():
+			_frozen.append(simple[0])
+		_frozen.append(simple[k])
+		_frozen_at = j
+		changed = true
+	return changed
 
 
 func _draw_house(g: Vector3) -> void:

@@ -202,27 +202,41 @@ func mark() -> Dictionary:
 ## de toit relevés : la déformation ne dépend que de la position, donc deux pans
 ## qui partagent une arête restent jointifs.
 func warp_since(since: Dictionary, fn: Callable) -> void:
+	# Chaque sommet est partagé par plusieurs triangles : on ne calcule sa
+	# déformation qu'une fois (c'est l'essentiel du temps d'un toit relevé).
+	var cache := {}
 	for role in _surfaces:
 		var surf: Surface = _surfaces[role]
 		var start: int = since.get(role, 0)
+		var v := surf.v
+		var n := surf.n
+		var count := v.size()
+		if start + 2 >= count:
+			continue
+		for k in range(start, count):
+			var p := v[k]
+			var q: Variant = cache.get(p)
+			if q == null:
+				q = fn.call(p)
+				cache[p] = q
+			v[k] = q
 		var i := start
-		while i + 2 < surf.v.size():
-			var a: Vector3 = fn.call(surf.v[i])
-			var b: Vector3 = fn.call(surf.v[i + 1])
-			var c: Vector3 = fn.call(surf.v[i + 2])
-			surf.v[i] = a
-			surf.v[i + 1] = b
-			surf.v[i + 2] = c
+		while i + 2 < count:
+			var a := v[i]
+			var b := v[i + 1]
+			var c := v[i + 2]
 			# Sommets émis dans le sens horaire vu de devant : normale = (c - a) × (b - a).
 			var nrm := (c - a).cross(b - a)
 			if nrm.length_squared() > 1e-14:
 				nrm = nrm.normalized()
-				if nrm.dot(surf.n[i]) < 0.0:
+				if nrm.dot(n[i]) < 0.0:
 					nrm = -nrm
-				surf.n[i] = nrm
-				surf.n[i + 1] = nrm
-				surf.n[i + 2] = nrm
+				n[i] = nrm
+				n[i + 1] = nrm
+				n[i + 2] = nrm
 			i += 3
+		surf.v = v
+		surf.n = n
 
 
 ## Construit l'ArrayMesh final. `materials` associe un rôle à un Material (optionnel).

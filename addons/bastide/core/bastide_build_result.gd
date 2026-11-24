@@ -10,6 +10,10 @@ var mesh: ArrayMesh
 var collision_faces := PackedVector3Array()
 ## Informations de debug : nombre de pierres, triangles, temps de génération…
 var stats := {}
+## Points remarquables pour les autres structures (portes d'une maison, axe d'un
+## chemin…), dans l'espace local du nœud. Lus par le décor (chemins qui rejoignent
+## les portes, plantes qui évitent les seuils…).
+var anchors := {}
 
 
 func is_empty() -> bool:

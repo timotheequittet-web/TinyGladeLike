@@ -1,11 +1,14 @@
 @tool
 class_name BastideGardenStyle
 extends Resource
-## Abords et décor d'un style : sol, chemins, végétation, petits édifices (torii…).
+## Abords et décor d'un style : sol, chemins, clôtures, végétation, torii, lanternes.
 ##
-## Réservé à l'étape « décor » : seules les couleurs de sol servent déjà (scènes de
-## démo). Les futurs nœuds de décor (torii, lanternes, plantes, dallages) liront
-## leurs couleurs et proportions ici, pour qu'un changement de style les suive aussi.
+## Les nœuds de décor (BastidePath, BastideTorii, BastideFence, BastidePlanting,
+## BastideGarden) lisent leurs couleurs et proportions ici : changer de style change
+## aussi le jardin (pas japonais et lanternes de pierre, ou chemin de terre et
+## clôture de bois).
+
+enum FenceKind { STONE, BAMBOO }
 
 @export_group("Sol")
 @export var ground_color: Color = Color(0.42, 0.55, 0.3):
@@ -17,6 +20,62 @@ extends Resource
 	set(value):
 		path_color = value
 		emit_changed()
+## Largeur d'un chemin.
+@export_range(0.6, 4.0, 0.05, "suffix:m") var path_width: float = 1.5:
+	set(value):
+		path_width = value
+		emit_changed()
+## Pas japonais (tobi-ishi) : grandes pierres plates posées dans le gravier.
+@export var stepping_stones := true:
+	set(value):
+		stepping_stones = value
+		emit_changed()
+@export var stepping_stone_color: Color = Color(0.55, 0.54, 0.5):
+	set(value):
+		stepping_stone_color = value
+		emit_changed()
+## Bordure de petites pierres rondes de chaque côté des chemins.
+@export var path_edging := true:
+	set(value):
+		path_edging = value
+		emit_changed()
+@export var edging_color: Color = Color(0.5, 0.49, 0.45):
+	set(value):
+		edging_color = value
+		emit_changed()
+## Bande de galets au pied des maisons (là où tombe la pluie du toit).
+@export var drip_edge := true:
+	set(value):
+		drip_edge = value
+		emit_changed()
+@export var pebble_color: Color = Color(0.36, 0.36, 0.36):
+	set(value):
+		pebble_color = value
+		emit_changed()
+
+@export_group("Clôtures")
+@export_range(0.3, 1.5, 0.05, "suffix:m") var stone_fence_height: float = 0.65:
+	set(value):
+		stone_fence_height = value
+		emit_changed()
+@export var fence_stone_color: Color = Color(0.55, 0.53, 0.48):
+	set(value):
+		fence_stone_color = value
+		emit_changed()
+@export_range(0.5, 2.5, 0.05, "suffix:m") var bamboo_fence_height: float = 1.1:
+	set(value):
+		bamboo_fence_height = value
+		emit_changed()
+@export var bamboo_color: Color = Color(0.74, 0.66, 0.42):
+	set(value):
+		bamboo_color = value
+		emit_changed()
+## Liens de corde noire aux croisements.
+@export var cord_color: Color = Color(0.1, 0.09, 0.08):
+	set(value):
+		cord_color = value
+		emit_changed()
+
 @export_group("Végétation")
 @export var foliage_colors: PackedColorArray = PackedColorArray([Color(0.3, 0.45, 0.22), Color(0.38, 0.5, 0.25)]):
 	set(value):
@@ -26,9 +85,53 @@ extends Resource
 	set(value):
 		blossom_colors = value
 		emit_changed()
+## Têtes d'hortensias, fleurs des massifs.
+@export var flower_colors: PackedColorArray = PackedColorArray([Color(0.45, 0.55, 0.85), Color(0.62, 0.5, 0.82), Color(0.9, 0.62, 0.75)]):
+	set(value):
+		flower_colors = value
+		emit_changed()
+## Érables (momiji).
+@export var maple_colors: PackedColorArray = PackedColorArray([Color(0.78, 0.2, 0.12), Color(0.86, 0.36, 0.14), Color(0.68, 0.14, 0.12)]):
+	set(value):
+		maple_colors = value
+		emit_changed()
+## Herbes (hakone) et fougères.
+@export var grass_colors: PackedColorArray = PackedColorArray([Color(0.55, 0.62, 0.27), Color(0.68, 0.66, 0.3)]):
+	set(value):
+		grass_colors = value
+		emit_changed()
+@export var trunk_color: Color = Color(0.3, 0.24, 0.2):
+	set(value):
+		trunk_color = value
+		emit_changed()
+## Plantes qui poussent toutes seules au pied des murs, des maisons et des clôtures.
+@export_range(0.0, 2.0, 0.05) var plant_density: float = 1.0:
+	set(value):
+		plant_density = value
+		emit_changed()
+## Espèces d'arbres proposées (poids) : érable, cerisier, pin taillé.
+@export var tree_weights := Vector3(0.45, 0.3, 0.25):
+	set(value):
+		tree_weights = value
+		emit_changed()
+
 @export_group("Édifices")
 ## Torii, portiques : couleur principale (vermillon au Japon).
 @export var gate_color: Color = Color(0.78, 0.24, 0.14):
 	set(value):
 		gate_color = value
+		emit_changed()
+## Poutre du haut et bas des piliers.
+@export var gate_top_color: Color = Color(0.11, 0.1, 0.1):
+	set(value):
+		gate_top_color = value
+		emit_changed()
+## Lanternes de pierre (tōrō) aux bouts des chemins.
+@export var lanterns := true:
+	set(value):
+		lanterns = value
+		emit_changed()
+@export var lantern_color: Color = Color(0.6, 0.59, 0.55):
+	set(value):
+		lantern_color = value
 		emit_changed()

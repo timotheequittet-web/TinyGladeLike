@@ -1,8 +1,10 @@
 extends Node3D
-## Démo de l'étape 4 : construire soi-même, en jeu, à la souris.
+## Démo des étapes 4 et 5 : construire soi-même, en jeu, à la souris.
 ##
 ## Le hameau de départ sort de terre au lancement ; ensuite, à toi : dessine des
-## murets, tire des maisons, agrandis-les en L, retouche avec les poignées.
+## murets, tire des maisons, agrandis-les en L, trace des chemins, pose des torii,
+## plante des massifs et des arbres, retouche avec les poignées. Le jardin
+## (galets, plantes au pied des murs) pousse tout seul.
 ## L'interface est construite ici, en code, pour rester légère et discrète.
 
 const JAPANESE := preload("res://addons/bastide/styles/presets/japanese_wood.tres")
@@ -18,6 +20,8 @@ var _ui: CanvasLayer
 var _hint: Label
 var _hint_tween: Tween
 var _mode_buttons := {}
+var _variant_buttons := {}
+var _variant_panel: PanelContainer
 var _style_buttons := {}
 var _undo_btn: Button
 var _redo_btn: Button
@@ -31,22 +35,40 @@ var _ui_visible := true
 func _starting_village() -> Array:
 	var j := JAPANESE.resource_path
 	return [
-		{"kind": "house", "seed": 12, "floors": 2, "style": j,
+		{"kind": "house", "seed": 12, "floors": 2, "style": j, "door": 2,
 			"points": [[-9, 0, -6], [1, 0, -6], [1, 0, 0], [-9, 0, 0]]},
-		{"kind": "house", "seed": 31, "floors": 1, "style": j,
+		{"kind": "house", "seed": 31, "floors": 1, "style": j, "door": 2,
 			"points": [[6, 0, -11], [14, 0, -11], [14, 0, 3], [9, 0, 3], [9, 0, -5], [6, 0, -5]]},
 		{"kind": "wall", "seed": 4, "height": 1.9, "style": j, "closed": false,
 			"points": [[-13, 0, -1], [-13.5, 0, 5], [-10, 0, 8.5], [-4, 0, 9]]},
 		{"kind": "wall", "seed": 8, "height": 1.9, "style": j, "closed": false,
 			"points": [[2, 0, 9], [7, 0, 8.4], [10.5, 0, 6.5]]},
+		# Le chemin qui monte vers le hameau, et sa branche vers la seconde maison.
+		{"kind": "path", "seed": 5, "style": j,
+			"points": [[-1, 0, 26], [0.5, 0, 18], [-0.6, 0, 11], [-2.2, 0, 5], [-4, 0, 2.6]]},
+		{"kind": "path", "seed": 6, "style": j,
+			"points": [[-1.6, 0, 6.6], [3, 0, 6.4], [8, 0, 5.6], [11.5, 0, 4.8]]},
+		{"kind": "torii", "seed": 2, "style": j, "points": [[-1.7, 0, 15.3], [1.35, 0, 14.6]]},
+		# Clôture de bambou entre les deux maisons : elle s'ouvre pour le chemin.
+		{"kind": "fence", "seed": 3, "variant": 1, "style": j, "closed": false,
+			"points": [[3.6, 0, -9], [3.4, 0, -2], [3.8, 0, 3], [3.4, 0, 8.6]]},
+		# Muret de pierres sèches au bord du pré.
+		{"kind": "fence", "seed": 9, "variant": 0, "style": j, "closed": false,
+			"points": [[-5, 0, 17], [-10, 0, 15.5], [-14.5, 0, 12], [-17, 0, 7]]},
+		{"kind": "plants", "seed": 21, "style": j, "points": [[5, 0, 12.5], [8.5, 0, 11.5], [12, 0, 9]]},
+		{"kind": "plants", "seed": 14, "style": j, "points": [[-6.8, 0, 6.2]]},
+		{"kind": "plants", "seed": 27, "style": j, "points": [[4.2, 0, 16.5]]},
+		{"kind": "plants", "seed": 33, "style": j, "points": [[-11.5, 0, -4.5]]},
 	]
 
 
 func _ready() -> void:
 	_build_ui()
 	tool.style = JAPANESE
+	site.garden_style = JAPANESE
 	tool.hint_changed.connect(_show_hint)
 	tool.mode_changed.connect(func(_m: int) -> void: _refresh_mode())
+	tool.variant_changed.connect(func(_v: int) -> void: _refresh_mode())
 	tool.selection_changed.connect(func(_id: int) -> void: _refresh_selection())
 	tool.history_changed.connect(func(u: bool, r: bool) -> void:
 		_undo_btn.disabled = not u
@@ -66,7 +88,7 @@ func _ready() -> void:
 		var data := _starting_village()
 		for i in data.size():
 			data[i]["id"] = i + 1
-		site.from_data(data, true, 0.45))
+		site.from_data(data, true, 0.3))
 	_show_hint(tool.current_hint())
 
 
@@ -204,12 +226,31 @@ func _build_ui() -> void:
 	bar.add_child(hb)
 	_mode_buttons[BastideBuildTool.Mode.WALL] = _button(hb, "Muret  1", func() -> void: tool.mode = BastideBuildTool.Mode.WALL, true)
 	_mode_buttons[BastideBuildTool.Mode.HOUSE] = _button(hb, "Maison  2", func() -> void: tool.mode = BastideBuildTool.Mode.HOUSE, true)
+	_mode_buttons[BastideBuildTool.Mode.PATH] = _button(hb, "Chemin  3", func() -> void: tool.mode = BastideBuildTool.Mode.PATH, true)
+	_mode_buttons[BastideBuildTool.Mode.TORII] = _button(hb, "Torii  4", func() -> void: tool.mode = BastideBuildTool.Mode.TORII, true)
+	_mode_buttons[BastideBuildTool.Mode.PLANTS] = _button(hb, "Plantes  5", func() -> void: tool.mode = BastideBuildTool.Mode.PLANTS, true)
 	_sep(hb)
 	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
 	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
 	_sep(hb)
 	_undo_btn = _button(hb, "Annuler", tool.undo)
 	_redo_btn = _button(hb, "Rétablir", tool.redo)
+
+	# Variantes du muret (touche V), juste au-dessus quand le mode Muret est actif.
+	_variant_panel = PanelContainer.new()
+	_variant_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
+	_variant_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_variant_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(_variant_panel)
+	var vhb := HBoxContainer.new()
+	vhb.add_theme_constant_override("separation", 4)
+	_variant_panel.add_child(vhb)
+	_variant_buttons[BastideBuildTool.WallVariant.ROOFED] = _button(vhb, "Muret à petit toit",
+			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.ROOFED, true)
+	_variant_buttons[BastideBuildTool.WallVariant.DRY_STONE] = _button(vhb, "Pierres sèches",
+			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.DRY_STONE, true)
+	_variant_buttons[BastideBuildTool.WallVariant.BAMBOO] = _button(vhb, "Bambou",
+			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.BAMBOO, true)
 
 	# Panneau de la structure sélectionnée, juste au-dessus.
 	_sel_panel = PanelContainer.new()
@@ -253,7 +294,7 @@ func _build_ui() -> void:
 	root.add_child(title)
 	var keys := Label.new()
 	keys.position = Vector2(28, 54)
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5 : outils   ·   V : variante du muret\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
@@ -294,11 +335,21 @@ func _refresh_style_buttons() -> void:
 func _refresh_mode() -> void:
 	for m: int in _mode_buttons:
 		(_mode_buttons[m] as Button).set_pressed_no_signal(m == tool.mode)
+	for v: int in _variant_buttons:
+		(_variant_buttons[v] as Button).set_pressed_no_signal(v == tool.wall_variant)
 	_refresh_style_buttons()
+	_refresh_selection()
 
 
 func _refresh_selection() -> void:
 	var has := tool.selected >= 0 and site.has(tool.selected)
+	# Le panneau des variantes cède la place à celui de la sélection.
+	var show_variants := tool.mode == BastideBuildTool.Mode.WALL and not has
+	var tv := create_tween()
+	tv.tween_property(_variant_panel, "modulate:a", 1.0 if show_variants else 0.0, 0.25)
+	_variant_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_variants else Control.MOUSE_FILTER_IGNORE
+	for b in _variant_panel.find_children("*", "Button", true, false):
+		(b as Button).disabled = not show_variants
 	var tw := create_tween()
 	tw.tween_property(_sel_panel, "modulate:a", 1.0 if has else 0.0, 0.25)
 	_sel_panel.mouse_filter = Control.MOUSE_FILTER_STOP if has else Control.MOUSE_FILTER_IGNORE

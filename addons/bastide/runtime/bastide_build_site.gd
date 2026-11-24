@@ -9,13 +9,16 @@ extends Node3D
 ## (to_data / from_data ne manipulent que des records).
 ##
 ## Format d'un record :
-##   kind    : "wall" ou "house"
+##   kind    : "wall", "house", "path" (chemin), "torii", "fence" (clôture basse)
+##             ou "plants" (massif ; un seul point = un arbre)
 ##   points  : PackedVector3Array, en coordonnées du chantier (points de contrôle
 ##             du mur, angles de la maison). Chantier à l'origine = coordonnées monde.
 ##   closed  : bool (murs : enceinte fermée)
 ##   seed    : int
 ##   floors  : int (maisons ; 0 = style)
+##   door    : int (maisons, facultatif : côté de la porte, -1 = automatique)
 ##   height  : float (murs ; 0 = style)
+##   variant : int (clôtures : 0 pierres sèches, 1 bambou)
 ##   style   : chemin du .tres de style
 
 signal structure_added(id: int)
@@ -30,12 +33,47 @@ signal structure_removed(id: int)
 ## Petits nuages de poussière quand une structure sort de terre ou y retourne.
 @export var dust := true
 @export var dust_color := Color(0.78, 0.71, 0.58, 0.3)
+## Jardin automatique : galets, plantes au pied des murs et des maisons, touffes au
+## bord des chemins. Il suit tout seul chaque changement du chantier.
+@export var auto_garden := true
+## Style du jardin automatique (vide : style par défaut).
+@export var garden_style: BastideStyle:
+	set(value):
+		garden_style = value
+		if garden:
+			garden.style = value
+
+## Le jardin automatique (null si auto_garden est faux).
+var garden: BastideGarden
 
 var _nodes := {}    # id -> BastideStructure
 var _records := {}  # id -> Dictionary
 var _next_id := 1
 var _style_cache := {}
 var _dust_texture: Texture2D
+
+
+func _ready() -> void:
+	if auto_garden and garden == null:
+		garden = BastideGarden.new()
+		garden.name = "Jardin"
+		garden.style = garden_style
+		garden.generate_collision = false
+		add_child(garden)
+
+
+## Voisinage de tout le chantier (pour placer un torii, par exemple), en
+## coordonnées du chantier.
+func context() -> BastideGardenContext:
+	var entries: Array = []
+	var to_local := global_transform.affine_inverse() if is_inside_tree() else Transform3D.IDENTITY
+	for id in _nodes:
+		var node: BastideStructure = _nodes[id]
+		if node and node.context_enabled and node.is_inside_tree():
+			var d := node.describe()
+			if not d.is_empty():
+				entries.append(BastideGardenContext.transform_entry(d, to_local))
+	return BastideGardenContext.from_entries(entries)
 
 
 func new_id() -> int:
@@ -122,6 +160,7 @@ func adopt(id: int, node: BastideStructure, rec: Dictionary) -> void:
 	node.generate_collision = true
 	node.collision_layer = structure_layer
 	node.mesh_overlay = null
+	node.context_enabled = true
 	var tw := node.create_tween().set_parallel()
 	tw.tween_property(node, "mesh_transparency", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func() -> void: node.mesh_casts_shadow = true).set_delay(0.12)
@@ -138,11 +177,25 @@ func clear(animate := false) -> void:
 ## Nouveau nœud (pas encore dans l'arbre) pour un record.
 func make_node(rec: Dictionary) -> BastideStructure:
 	var node: BastideStructure
-	if rec.get("kind", "wall") == "house":
-		node = BastideBuilding.new()
-	else:
-		node = BastideWall.new()
-	node.name = "Maison" if node is BastideBuilding else "Mur"
+	match String(rec.get("kind", "wall")):
+		"house":
+			node = BastideBuilding.new()
+			node.name = "Maison"
+		"path":
+			node = BastidePath.new()
+			node.name = "Chemin"
+		"torii":
+			node = BastideTorii.new()
+			node.name = "Torii"
+		"fence":
+			node = BastideFence.new()
+			node.name = "Cloture"
+		"plants":
+			node = BastidePlanting.new()
+			node.name = "Massif"
+		_:
+			node = BastideWall.new()
+			node.name = "Mur"
 	node.generate_collision = false
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
 	if pts.size() > 0:
@@ -167,6 +220,9 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		var f := int(rec.get("floors", 0))
 		if b.floors != f:
 			b.floors = f
+		var door := int(rec.get("door", -1))
+		if b.door_facade != door:
+			b.door_facade = door
 		b.set_footprint(local)
 	elif node is BastideWall:
 		var w := node as BastideWall
@@ -175,6 +231,20 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 			w.height = h
 		var closed := bool(rec.get("closed", false))
 		w.set_points(BastideStroke.wall_path(local, closed, st.get_wall_style().station_spacing), closed)
+	elif node is BastidePath:
+		(node as BastidePath).set_points(BastideStroke.wall_path(local, false, 0.4))
+	elif node is BastideFence:
+		var fe := node as BastideFence
+		var closed := bool(rec.get("closed", false))
+		var v := int(rec.get("variant", 0))
+		if int(fe.variant) != v:
+			fe.variant = v
+		fe.set_points(BastideStroke.wall_path(local, closed, 0.45), closed)
+	elif node is BastideTorii:
+		if local.size() >= 2:
+			(node as BastideTorii).set_points(BastideGardenRules.fit_torii(local[0], local[1]))
+	elif node is BastidePlanting:
+		(node as BastidePlanting).set_points(local if local.size() < 2 else BastideStroke.wall_path(local, false, 0.5))
 
 
 func style_of(rec: Dictionary) -> BastideStyle:
@@ -240,6 +310,8 @@ func _remove(id: int, animate: bool) -> void:
 	if node == null:
 		return
 	structure_removed.emit(id)
+	# Les voisins (jardin, clôtures, chemins) l'oublient tout de suite.
+	node.context_enabled = false
 	if not animate or not node.is_inside_tree():
 		node.queue_free()
 		return
@@ -281,6 +353,8 @@ func _puff(rec: Dictionary) -> void:
 	if not dust or not is_inside_tree():
 		return
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
+	if pts.size() == 1:
+		pts = PackedVector3Array([pts[0] + Vector3(-0.8, 0, 0), pts[0] + Vector3(0.8, 0, 0)])
 	if pts.size() < 2:
 		return
 	var closed: bool = rec.get("kind", "") == "house" or bool(rec.get("closed", false))

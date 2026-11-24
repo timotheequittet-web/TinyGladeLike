@@ -29,13 +29,14 @@ func _run() -> void:
 	# glow transforme en taches : on le coupe pour les captures seulement.
 	if DisplayServer.get_name() != "headless":
 		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
+	var n0: int = scene.call("_starting_village").size()
 	var t0 := Time.get_ticks_msec()
-	while site.ids().size() < 4 and Time.get_ticks_msec() - t0 < 60000:
+	while site.ids().size() < n0 and Time.get_ticks_msec() - t0 < 60000:
 		await process_frame
 	while absf(cam.get("distance") - 30.0) > 0.2 and Time.get_ticks_msec() - t0 < 60000:
 		await process_frame
 	await _wait(1.0)
-	check(site.ids().size() == 4, "le hameau de départ compte 4 structures (%d)" % site.ids().size())
+	check(site.ids().size() == n0, "le hameau de départ compte %d structures (%d)" % [n0, site.ids().size()])
 	await _shot("etape4_hameau")
 
 	# 1. Un muret dessiné à main levée, capture pendant le tracé (fantôme).
@@ -46,7 +47,7 @@ func _run() -> void:
 		path.append(Vector3(-14 + t * 24.0, 0, 12.5 + sin(t * PI * 1.5) * 2.0))
 	await _drag(path, "etape4_trace_fantome")
 	await _wait(1.5)
-	check(site.ids().size() == 5, "le muret est posé (%d structures)" % site.ids().size())
+	check(site.ids().size() == n0 + 1, "le muret est posé (%d structures)" % site.ids().size())
 	var wall_id := tool.selected
 	check(wall_id >= 0 and site.get_record(wall_id)["kind"] == "wall", "le muret posé est sélectionné")
 	await _shot("etape4_muret_pose")
@@ -55,20 +56,20 @@ func _run() -> void:
 	tool.mode = BastideBuildTool.Mode.HOUSE
 	await _drag([Vector3(-26, 0, -20), Vector3(-20, 0, -15), Vector3(-17, 0, -13)], "etape4_maison_fantome")
 	await _wait(1.5)
-	check(site.ids().size() == 6, "la maison est posée (%d structures)" % site.ids().size())
+	check(site.ids().size() == n0 + 2, "la maison est posée (%d structures)" % site.ids().size())
 	var house_id := tool.selected
 
 	# 3. Un rectangle par-dessus la première maison : elle s'agrandit en L.
 	var before_pts: int = site.get_record(1)["points"].size()
 	await _drag([Vector3(-2, 0, -3), Vector3(-1, 0, 3), Vector3(-0.5, 0, 5.5)], "etape4_agrandir_fantome")
 	await _wait(1.5)
-	check(site.ids().size() == 6, "agrandir ne crée pas de nouvelle structure")
+	check(site.ids().size() == n0 + 2, "agrandir ne crée pas de nouvelle structure")
 	var after_pts: int = site.get_record(1)["points"].size()
 	check(after_pts > before_pts, "la maison 1 a gagné des angles (%d → %d)" % [before_pts, after_pts])
 	var n1 := site.node_of(1)
 	var ghosts := 0
 	for c in site.get_children():
-		if c is BastideStructure and site.id_of(c) < 0:
+		if c is BastideStructure and site.id_of(c) < 0 and c != site.garden:
 			ghosts += 1
 	check(n1.visible and n1.mesh_transparency == 0.0 and ghosts == 0,
 			"la maison agrandie est solide, aucun fantôme ne traîne (visible %s, transparence %.2f, fantômes %d)" % [n1.visible, n1.mesh_transparency, ghosts])
@@ -101,12 +102,12 @@ func _run() -> void:
 	for i in 7:
 		tool.undo()
 	await _wait(1.5)
-	check(site.ids().size() == 4, "7 annulations ramènent le hameau de départ (%d)" % site.ids().size())
+	check(site.ids().size() == n0, "7 annulations ramènent le hameau de départ (%d)" % site.ids().size())
 	check(site.get_record(1)["points"].size() == before_pts, "la maison 1 a retrouvé sa forme")
 	for i in 7:
 		tool.redo()
 	await _wait(1.5)
-	check(site.ids().size() == 6, "7 rétablissements redonnent tout (%d)" % site.ids().size())
+	check(site.ids().size() == n0 + 2, "7 rétablissements redonnent tout (%d)" % site.ids().size())
 
 	# 7. Sauvegarde / rechargement.
 	var data := site.to_data()

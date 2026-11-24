@@ -74,6 +74,28 @@ static func compute(spec: BastideBuildingSpec, st: BastideStyle, with_collision:
 	return BastideBuildingMesher.build(layout, st, with_collision)
 
 
+## Pour les voisins : contour (celui de la dernière génération, redressé) et portes.
+func describe() -> Dictionary:
+	var fp := PackedVector3Array()
+	var y := 0.0
+	if last_anchors.has("footprint"):
+		y = last_anchors.get("base_y", 0.0)
+		for p: Vector2 in last_anchors["footprint"]:
+			fp.append(Vector3(p.x, y, p.y))
+	else:
+		for p: Vector2 in build_spec().footprint:
+			fp.append(Vector3(p.x, 0.0, p.y))
+	if fp.size() < 3:
+		return {}
+	var xf := global_transform
+	var doors: Array = []
+	for d: Dictionary in last_anchors.get("doors", []):
+		doors.append({"pos": xf * (d["pos"] as Vector3), "out": (xf.basis * (d["out"] as Vector3)).normalized(),
+			"width": d["width"]})
+	return {"kind": "house", "footprint": _to_world(fp), "doors": doors,
+		"overhang": last_anchors.get("overhang", 0.6)}
+
+
 func build_spec() -> BastideBuildingSpec:
 	var pts := _points_override if _use_override else BastideBuildingSpec.points_from_curve(curve)
 	var roof_type := -1

@@ -51,6 +51,14 @@ static func compute(spec: BastideWallSpec, st: BastideStyle, with_collision: boo
 	return BastideWallMesher.build(layout, st, with_collision)
 
 
+func describe() -> Dictionary:
+	var spec := build_spec()
+	if spec.points.size() < 2:
+		return {}
+	return {"kind": "wall", "points": _to_world(spec.points), "closed": spec.closed,
+		"thickness": get_effective_style().get_wall_style().thickness}
+
+
 func build_spec() -> BastideWallSpec:
 	var st := get_effective_style()
 	var pts: PackedVector3Array

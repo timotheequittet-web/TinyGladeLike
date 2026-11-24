@@ -4,7 +4,6 @@ extends Node3D
 ## d'image ni modèle, et reste hors de la zone de construction.
 
 const GROUND_SHADER := preload("res://demos/04_runtime/ground.gdshader")
-const FOLIAGE_SHADER := preload("res://demos/04_runtime/foliage.gdshader")
 const WATER_SHADER := preload("res://demos/04_runtime/water.gdshader")
 
 ## Rayon de la clairière laissée libre pour construire.
@@ -14,19 +13,12 @@ const WATER_SHADER := preload("res://demos/04_runtime/water.gdshader")
 @export var follow: Node3D
 
 var _rng := RandomNumberGenerator.new()
-var _foliage_mat: ShaderMaterial
-var _trunk_mat: StandardMaterial3D
 var _rock_mat: StandardMaterial3D
 var _petals: CPUParticles3D
 
 
 func _ready() -> void:
 	_rng.seed = decor_seed
-	_foliage_mat = ShaderMaterial.new()
-	_foliage_mat.shader = FOLIAGE_SHADER
-	_trunk_mat = StandardMaterial3D.new()
-	_trunk_mat.albedo_color = Color(0.33, 0.25, 0.2)
-	_trunk_mat.roughness = 0.95
 	_rock_mat = StandardMaterial3D.new()
 	_rock_mat.albedo_color = Color(0.56, 0.55, 0.5)
 	_rock_mat.roughness = 0.9
@@ -105,9 +97,22 @@ func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
 
 
 func _groves() -> void:
+	# Mêmes essences que le hameau (addon) : pins taillés, feuillus en dôme,
+	# cerisiers, bambous et quelques érables rouges. Tout est fusionné en quelques
+	# maillages par secteur, pour rester léger et laisser la caméra les écarter.
+	var style: BastideStyle = load("res://addons/bastide/styles/presets/japanese_wood.tres")
+	var gs: BastideGardenStyle = style.get_garden_style()
+	var green := gs.duplicate() as BastideGardenStyle
+	green.maple_colors = PackedColorArray([Color(0.3, 0.46, 0.2), Color(0.36, 0.5, 0.22), Color(0.27, 0.41, 0.2), Color(0.42, 0.52, 0.24)])
+	var sectors := 8
+	var red_items: Array = []
+	var green_items: Array = []
+	for i in sectors:
+		red_items.append([])
+		green_items.append([])
 	var placed: Array[Vector2] = []
 	var tries := 0
-	while placed.size() < 70 and tries < 2000:
+	while placed.size() < 85 and tries < 3000:
 		tries += 1
 		var a := _rng.randf() * TAU
 		var r := clearing_radius + 4.0 + pow(_rng.randf(), 1.6) * 60.0
@@ -119,96 +124,46 @@ func _groves() -> void:
 			continue
 		var too_close := false
 		for q in placed:
-			if q.distance_to(p) < 5.5:
+			if q.distance_to(p) < 4.6:
 				too_close = true
 				break
 		if too_close:
 			continue
 		placed.append(p)
-		var roll := _rng.randf()
+		var sec := int(posmod(atan2(p.y, p.x), TAU) / TAU * sectors) % sectors
 		var pos := Vector3(p.x, 0, p.y)
-		if roll < 0.2:
-			_bamboo_clump(pos)
-		elif roll < 0.42:
-			_tree(pos, true)
-		elif roll < 0.88:
-			_tree(pos, false)
+		var key := _rng.randi()
+		var roll := _rng.randf()
+		# Plus loin, plus grand : l'œil lit mieux les silhouettes dans la brume.
+		var far := clampf((r - clearing_radius) / 60.0, 0.0, 1.0)
+		var grow := lerpf(1.25, 1.7, far) * _rng.randf_range(0.9, 1.15)
+		if roll < 0.16:
+			green_items[sec].append({"type": "bamboo", "pos": pos, "size": _rng.randf_range(1.4, 1.9), "key": key})
+		elif roll < 0.34:
+			green_items[sec].append({"type": "sakura", "pos": pos, "size": 4.3 * grow, "key": key})
+		elif roll < 0.6:
+			green_items[sec].append({"type": "pine", "pos": pos, "size": 3.4 * grow, "key": key})
+		elif roll < 0.92:
+			green_items[sec].append({"type": "maple", "pos": pos, "size": 4.0 * grow, "key": key})
+		elif roll < 0.955:
+			red_items[sec].append({"type": "maple", "pos": pos, "size": 3.8 * grow, "key": key})
 		else:
 			_rock(pos, _rng.randf_range(0.8, 1.8))
 	# Quelques arbres isolés plus près, pour donner de la profondeur au hameau.
-	_tree(Vector3(31, 0, -10), true)
-	_tree(Vector3(-33, 0, -14), false)
-	_bamboo_clump(Vector3(28, 0, 14))
-
-
-## Arbre stylisé : tronc conique et houppier fait de quelques boules.
-func _tree(pos: Vector3, blossom: bool) -> void:
-	var root := Node3D.new()
-	root.name = "Cerisier" if blossom else "Arbre"
-	root.position = pos
-	root.rotation.y = _rng.randf() * TAU
-	var s := _rng.randf_range(0.8, 1.35)
-	root.scale = Vector3.ONE * s
-	add_child(root)
-	var h := _rng.randf_range(2.2, 3.4) if blossom else _rng.randf_range(3.0, 4.6)
-	var trunk := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.12
-	cyl.bottom_radius = 0.26
-	cyl.height = h
-	cyl.radial_segments = 8
-	cyl.material = _trunk_mat
-	trunk.mesh = cyl
-	trunk.position.y = h * 0.5
-	trunk.rotation.z = _rng.randf_range(-0.12, 0.12)
-	root.add_child(trunk)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var base_cols := [Color(0.97, 0.78, 0.82), Color(0.94, 0.68, 0.76), Color(1.0, 0.86, 0.88)] if blossom \
-			else [Color(0.27, 0.42, 0.2), Color(0.33, 0.47, 0.22), Color(0.24, 0.37, 0.2), Color(0.4, 0.5, 0.24)]
-	var blobs := _rng.randi_range(4, 7)
-	for i in blobs:
-		var ang := _rng.randf() * TAU
-		var spread := _rng.randf_range(0.3, 1.3)
-		var c := Vector3(cos(ang) * spread, h + _rng.randf_range(-0.4, 1.1), sin(ang) * spread)
-		var r := _rng.randf_range(0.9, 1.5) * (1.15 if blossom else 1.0)
-		var col: Color = base_cols[_rng.randi() % base_cols.size()]
-		_blob(st, c, Vector3(r, r * 0.8, r), col)
-	var canopy := MeshInstance3D.new()
-	st.generate_normals()
-	canopy.mesh = st.commit()
-	canopy.material_override = _foliage_mat
-	root.add_child(canopy)
-
-
-## Bosquet de bambous : tiges fines, nœuds plus clairs, plumets de feuilles.
-func _bamboo_clump(pos: Vector3) -> void:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var n := _rng.randi_range(9, 16)
-	for i in n:
-		var off := Vector3(_rng.randf_range(-1.4, 1.4), 0, _rng.randf_range(-1.4, 1.4))
-		var h := _rng.randf_range(5.0, 8.5)
-		var lean := Vector3(_rng.randf_range(-0.5, 0.5), 0, _rng.randf_range(-0.5, 0.5))
-		var col := Color(0.42, 0.55, 0.26).lerp(Color(0.55, 0.62, 0.3), _rng.randf())
-		var segs := int(h / 0.9)
-		for k in segs:
-			var t0 := float(k) / segs
-			var t1 := float(k + 1) / segs
-			var a := off + lean * t0 * t0 + Vector3(0, h * t0, 0)
-			var b := off + lean * t1 * t1 + Vector3(0, h * t1 - 0.04, 0)
-			_tube(st, a, b, 0.055, col)
-		for k in 3:
-			var top := off + lean + Vector3(0, h - k * 0.8, 0)
-			_blob(st, top + Vector3(_rng.randf_range(-0.5, 0.5), 0, _rng.randf_range(-0.5, 0.5)),
-					Vector3(0.7, 0.35, 0.7), Color(0.36, 0.5, 0.22).lerp(Color(0.48, 0.58, 0.27), _rng.randf()))
-	st.generate_normals()
-	var mi := MeshInstance3D.new()
-	mi.name = "Bambous"
-	mi.mesh = st.commit()
-	mi.material_override = _foliage_mat
-	mi.position = pos
-	add_child(mi)
+	green_items[7].append({"type": "sakura", "pos": Vector3(31, 0, -10), "size": 5.6, "key": 11})
+	green_items[3].append({"type": "pine", "pos": Vector3(-33, 0, -14), "size": 4.6, "key": 12})
+	green_items[0].append({"type": "bamboo", "pos": Vector3(28, 0, 14), "size": 1.8, "key": 13})
+	var mats := BastideGardenMesher.materials(style)
+	for i in sectors:
+		var mb := BastideMeshBuilder.new()
+		BastidePlantingMesher.draw_items(mb, green_items[i], green)
+		BastidePlantingMesher.draw_items(mb, red_items[i], gs)
+		if mb.triangle_count == 0:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.name = "Bosquet%d" % i
+		mi.mesh = mb.commit(mats)
+		add_child(mi)
 
 
 func _rock(pos: Vector3, size: float) -> void:
@@ -226,59 +181,7 @@ func _rock(pos: Vector3, size: float) -> void:
 	add_child(mi)
 
 
-## Ellipsoïde bosselé (icosphère grossière) à la couleur donnée.
-func _blob(st: SurfaceTool, c: Vector3, r: Vector3, col: Color) -> void:
-	var rings := 6
-	var segs := 9
-	var verts := []
-	for i in rings + 1:
-		var v := float(i) / rings
-		var phi := v * PI
-		var row := []
-		for j in segs:
-			var th := TAU * j / segs + (0.3 if i % 2 == 1 else 0.0)
-			var bump := 1.0 + _rng.randf_range(-0.08, 0.08) if i > 0 and i < rings else 1.0
-			row.append(c + Vector3(sin(phi) * cos(th) * r.x, cos(phi) * r.y, sin(phi) * sin(th) * r.z) * bump)
-		verts.append(row)
-	var shade := col
-	for i in rings:
-		for j in segs:
-			var a: Vector3 = verts[i][j]
-			var b: Vector3 = verts[i][(j + 1) % segs]
-			var cc: Vector3 = verts[i + 1][(j + 1) % segs]
-			var d: Vector3 = verts[i + 1][j]
-			# Le dessous des houppiers est plus sombre.
-			var k := 0.75 + 0.3 * (1.0 - float(i) / rings)
-			st.set_color(Color(shade.r * k, shade.g * k, shade.b * k))
-			st.add_vertex(a); st.add_vertex(b); st.add_vertex(cc)
-			st.add_vertex(a); st.add_vertex(cc); st.add_vertex(d)
 
-
-func _tube(st: SurfaceTool, a: Vector3, b: Vector3, r: float, col: Color) -> void:
-	var segs := 6
-	var axis := (b - a).normalized()
-	var side := axis.cross(Vector3.FORWARD).normalized()
-	if side.length() < 0.1:
-		side = Vector3.RIGHT
-	var up := side.cross(axis)
-	st.set_color(col)
-	for j in segs:
-		var t0 := TAU * j / segs
-		var t1 := TAU * (j + 1) / segs
-		var o0 := (side * cos(t0) + up * sin(t0)) * r
-		var o1 := (side * cos(t1) + up * sin(t1)) * r
-		st.add_vertex(a + o0); st.add_vertex(b + o0); st.add_vertex(b + o1)
-		st.add_vertex(a + o0); st.add_vertex(b + o1); st.add_vertex(a + o1)
-	# Nœud plus clair en haut du segment.
-	st.set_color(col.lightened(0.25))
-	for j in segs:
-		var t0 := TAU * j / segs
-		var t1 := TAU * (j + 1) / segs
-		var o0 := (side * cos(t0) + up * sin(t0)) * r * 1.25
-		var o1 := (side * cos(t1) + up * sin(t1)) * r * 1.25
-		var c0 := b - axis * 0.05
-		st.add_vertex(c0 + o0); st.add_vertex(b + o0); st.add_vertex(b + o1)
-		st.add_vertex(c0 + o0); st.add_vertex(b + o1); st.add_vertex(c0 + o1)
 
 
 ## Pétales de cerisier qui dérivent lentement dans l'air.

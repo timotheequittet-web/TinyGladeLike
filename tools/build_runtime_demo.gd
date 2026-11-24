@@ -41,7 +41,8 @@ func _init() -> void:
 	env.glow_hdr_threshold = 1.1
 	env.fog_enabled = true
 	env.fog_light_color = Color(0.9, 0.84, 0.76)
-	env.fog_density = 0.0045
+	env.fog_density = 0.003
+	env.fog_sky_affect = 0.35
 	env.fog_sun_scatter = 0.25
 	env.fog_aerial_perspective = 0.35
 	env.adjustment_enabled = true

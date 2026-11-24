@@ -91,6 +91,48 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 			if is_end or turns[i] >= corner_rad:
 				breaks.append(i)
 
+	# --- Portails : là où un chemin traverse le mur ------------------------------
+	var gate_kind := ws.effective_gate_kind()
+	var pillar_w := ws.thickness * ws.pillar_width_factor + ws.batter * 2.0
+	var trim := pillar_w * 0.42
+	var gate_pillars := gate_kind == BastideWallStyle.GateKind.ARCH or gate_kind == BastideWallStyle.GateKind.PILLARS
+	var gate_pw := pillar_w if gate_pillars else 0.0
+	var gate_end := EndKind.PILLAR if gate_pillars else EndKind.OPEN
+	var spans: Array[Vector2] = []
+	if spec.context != null and not spec.context.paths.is_empty():
+		var margin := 0.3 if gate_pillars else 0.58
+		spans = _openings(pts, layout.length, closed, spec.context, margin, ws.gate_min_clear)
+	var cut_spans: Array[Vector2] = []
+	for o in spans:
+		var lo := o.x - gate_pw * 0.5
+		var hi := o.y + gate_pw * 0.5
+		if closed:
+			if lo < 0.0:
+				cut_spans.append(Vector2(lo + layout.length, layout.length + 1.0))
+			if hi > layout.length:
+				cut_spans.append(Vector2(-1.0, hi - layout.length))
+		cut_spans.append(Vector2(lo, hi))
+	for o in spans:
+		var sc := (o.x + o.y) * 0.5
+		var pa := _pos_at(pts, cum, closed, o.x)
+		var pb := _pos_at(pts, cum, closed, o.y)
+		var d := BastidePolyline.flat_dir(pa, pb)
+		if d == Vector3.ZERO:
+			continue
+		var w := o.y - o.x
+		var g := {"s0": o.x, "s1": o.y, "a": pa, "b": pb, "dir": d, "right": BastidePolyline.right_of(d),
+			"width": w, "kind": gate_kind, "wall_h": layout.height_at(fposmod(sc, layout.length) if closed else sc),
+			"pillar_w": gate_pw, "arch": gate_kind == BastideWallStyle.GateKind.ARCH and w <= 4.6}
+		layout.gates.append(g)
+		if gate_pillars:
+			for e in 2:
+				var s_p: float = (o.x - gate_pw * 0.5) if e == 0 else (o.y + gate_pw * 0.5)
+				if not closed and (s_p < -gate_pw * 0.2 or s_p > layout.length + gate_pw * 0.2):
+					continue
+				var pp := _pos_at(pts, cum, closed, s_p)
+				layout.pillars.append({"pos": pp, "dir": d, "width": pillar_w, "s": s_p, "top": 0.0,
+					"gate": true, "arch": g["arch"]})
+
 	var kind_of := func(i: int) -> int:
 		if is_loop:
 			return EndKind.LOOP
@@ -106,8 +148,6 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 		return BastidePolyline.flat_dir(pts[j], pts[j + 1])
 
 	# --- Piliers et angles -------------------------------------------------
-	var pillar_w := ws.thickness * ws.pillar_width_factor + ws.batter * 2.0
-	var trim := pillar_w * 0.42
 	for bi in breaks.size():
 		var i: int = breaks[bi]
 		if closed and i == m - 1:
@@ -133,18 +173,95 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 	for bi in breaks.size() - 1:
 		var a: int = breaks[bi]
 		var b: int = breaks[bi + 1]
-		var ka: int = kind_of.call(a)
-		var kb: int = kind_of.call(b)
-		var sa: float = cum[a] + (trim if ka == EndKind.PILLAR else 0.0)
-		var sb: float = cum[b] - (trim if kb == EndKind.PILLAR else 0.0)
-		if sb - sa < 0.15:
+		for piece: Array in _cut(cum[a], cum[b], kind_of.call(a), kind_of.call(b), cut_spans, gate_end):
+			var ka: int = piece[2]
+			var kb: int = piece[3]
+			var sa: float = piece[0] + (trim if ka == EndKind.PILLAR else 0.0)
+			var sb: float = piece[1] - (trim if kb == EndKind.PILLAR else 0.0)
+			if sb - sa < (0.45 if piece[4] or piece[5] else 0.15):
+				continue
+			var run := BastideWallLayout.Run.new()
+			run.index = layout.runs.size()
+			run.s0 = sa
+			run.s1 = sb
+			run.start_kind = ka
+			run.end_kind = kb
+			run.start_gate = piece[4]
+			run.end_gate = piece[5]
+			_build_stations(run, a, b, pts, cum, closed, m, ws)
+			layout.runs.append(run)
+
+	_courses_and_stones(layout, spec, ws)
+	return layout
+
+
+## Découpe l'intervalle [x0, x1] d'un tronçon par les ouvertures (portails).
+## Renvoie [[début, fin, genre du début, genre de la fin, portail au début, portail à la fin], …].
+static func _cut(x0: float, x1: float, k0: int, k1: int, spans: Array[Vector2], gate_end: int) -> Array:
+	var out: Array = []
+	var s := x0
+	var ks := k0
+	var gs := false
+	for o in spans:
+		if o.y <= s or o.x >= x1:
 			continue
-		var run := BastideWallLayout.Run.new()
-		run.index = layout.runs.size()
-		run.s0 = sa
-		run.s1 = sb
-		run.start_kind = ka
-		run.end_kind = kb
+		if o.x > s:
+			out.append([s, o.x, ks, gate_end, gs, true])
+		s = maxf(s, o.y)
+		ks = gate_end
+		gs = true
+	if s < x1:
+		out.append([s, x1, ks, k1, gs, false])
+	return out
+
+
+## Ouvertures du mur (abscisses le long du tracé) là où un chemin le traverse,
+## élargies au passage minimal, fusionnées quand elles se touchent.
+static func _openings(pts: PackedVector3Array, length: float, closed: bool, ctx: BastideGardenContext,
+		margin: float, min_clear: float) -> Array[Vector2]:
+	var raw := BastideGardenRules.fence_openings(pts, false, ctx, margin)
+	var out: Array[Vector2] = []
+	for o in raw:
+		var c := (o.x + o.y) * 0.5
+		var half := maxf((o.y - o.x) * 0.5, min_clear * 0.5 + margin)
+		half = minf(half, 3.2)
+		var sp := Vector2(c - half, c + half)
+		if not closed:
+			sp.x = maxf(sp.x, 0.0)
+			sp.y = minf(sp.y, length)
+			if sp.y - sp.x < 0.8:
+				continue
+		if not out.is_empty() and sp.x <= out[out.size() - 1].y + 0.8:
+			out[out.size() - 1].y = maxf(out[out.size() - 1].y, sp.y)
+		else:
+			out.append(sp)
+	return out
+
+
+## Point de l'axe à l'abscisse s (enceinte : modulo le tour).
+static func _pos_at(pts: PackedVector3Array, cum: PackedFloat32Array, closed: bool, s: float) -> Vector3:
+	var total := cum[cum.size() - 1]
+	if closed:
+		s = fposmod(s, total)
+	s = clampf(s, 0.0, total)
+	var i := clampi(cum.bsearch(s), 1, cum.size() - 1)
+	var seg := cum[i] - cum[i - 1]
+	var t := (s - cum[i - 1]) / seg if seg > 1e-6 else 0.0
+	return pts[i - 1].lerp(pts[i], clampf(t, 0.0, 1.0))
+
+
+static func _build_stations(run: BastideWallLayout.Run, a: int, b: int, pts: PackedVector3Array,
+		cum: PackedFloat32Array, closed: bool, m: int, ws: BastideWallStyle) -> void:
+	var sa := run.s0
+	var sb := run.s1
+	var ka := run.start_kind
+	var kb := run.end_kind
+	var seg_dir := func(j: int) -> Vector3:
+		if closed:
+			j = posmod(j, m - 1)
+		j = clampi(j, 0, m - 2)
+		return BastidePolyline.flat_dir(pts[j], pts[j + 1])
+	if true:
 
 		# Abscisses des stations : bouts, sommets intermédiaires, puis subdivision régulière.
 		var marks: Array = [[sa, -3]]
@@ -184,8 +301,11 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 			run.s.append(d)
 			run.pos.append(p)
 			run.off.append(o)
-		layout.runs.append(run)
 
+
+## Assises, pierres, chaperon, merlons et hauteur des piliers, une fois les tronçons posés.
+static func _courses_and_stones(layout: BastideWallLayout, spec: BastideWallSpec, ws: BastideWallStyle) -> void:
+	var pillar_w := ws.thickness * ws.pillar_width_factor + ws.batter * 2.0
 	# --- Assises (communes à tout le mur pour qu'elles se raccordent aux angles) ---
 	var y := layout.footing
 	var y_max := layout.height + layout.top_amplitude + 0.05
@@ -261,7 +381,7 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 			var a: float = run.s0
 			var b: float = run.s1
 			var fit: Dictionary
-			if run.start_kind == EndKind.LOOP:
+			if run.start_kind == EndKind.LOOP and run.end_kind == EndKind.LOOP:
 				fit = BastideDistributor.fit_loop(b - a, ws.merlon_width, ws.merlon_gap)
 			else:
 				if run.start_kind == EndKind.PILLAR:
@@ -286,6 +406,5 @@ static func generate(spec: BastideWallSpec, style: BastideStyle) -> BastideWallL
 	for p in layout.pillars:
 		var s: float = p.s
 		var h := maxf(layout.height_at(s), maxf(layout.height_at(s - pillar_w), layout.height_at(s + pillar_w)))
-		p.top = h + crown + 0.25
+		p.top = h + crown + (0.6 if p.get("gate", false) else 0.25)
 
-	return layout

@@ -8,6 +8,8 @@ extends BastideStructure
 ## de Path3D (barre d'outils du viewport). Le mur se régénère à chaque modification.
 ## Un point sans poignées fait un angle net ; tire les poignées pour courber le mur.
 ## Coche « closed » sur la Curve3D pour fermer une enceinte.
+## Là où un chemin (BastidePath) le traverse, le mur s'ouvre tout seul : petit
+## portail couvert de tuiles en style japonais, piliers et arc de pierre en médiéval.
 ##
 ## En jeu : appelle set_points() pour construire un mur à partir de points calculés.
 
@@ -15,6 +17,12 @@ extends BastideStructure
 @export_range(0.0, 20.0, 0.05, "or_greater", "suffix:m") var height := 0.0:
 	set(value):
 		height = value
+		queue_rebuild()
+
+## Ouvre le mur là où un chemin le traverse (portail).
+@export var open_for_paths := true:
+	set(value):
+		open_for_paths = value
 		queue_rebuild()
 
 var _points_override := PackedVector3Array()
@@ -36,8 +44,18 @@ func clear_points() -> void:
 	queue_rebuild()
 
 
+func context_level() -> int:
+	return LEVEL_WALL
+
+
+func uses_context() -> bool:
+	return open_for_paths
+
+
 func _make_job() -> Callable:
 	var spec := build_spec()
+	if open_for_paths:
+		spec.context = gather_context()
 	var st := get_effective_style()
 	var with_collision := generate_collision
 	return func() -> BastideBuildResult: return compute(spec, st, with_collision)

@@ -2,9 +2,9 @@
 
 **Bastide** est un addon Godot 4 de construction procédurale « toujours belle », inspiré de Tiny Glade : on trace grossièrement, des règles corrigent et décorent.
 
-![Un hameau de campagne japonais : chemin de pas japonais, torii, érables et murets](docs/captures/etape5_torii.jpg)
+![Le chemin traverse le muret : un portail couvert de tuiles s'y ouvre tout seul, vantaux grands ouverts](docs/captures/etape6_portail.jpg)
 
-État : **étape 5 terminée** (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), après l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
+État : **étape 6 terminée** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -15,7 +15,7 @@ Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 1. Sur GitHub, bouton vert **Code > Download ZIP**, puis décompresse le dossier où tu veux.
 2. Ouvre Godot 4.7.2, clique sur **Importer**, et choisis le fichier `project.godot` du dossier décompressé, puis **Importer et modifier**.
 3. Appuie sur **F5** : la démo de construction en jeu (`demos/04_runtime/runtime_demo.tscn`) se lance. Voir « Construire en jeu » juste en dessous.
-4. Le jardin japonais dans l'éditeur : `demos/05_garden/garden_demo.tscn` (ouvre-le, **F6** pour s'y promener, ou sélectionne un chemin, une clôture ou un massif et déplace ses points : tout se recalcule, plantes comprises).
+4. Terrasses et portails dans l'éditeur : `demos/06_terraces/terrace_demo.tscn` (ouvre-le, **F6** pour s'y promener ; déplace un point du chemin à travers le muret, ou une terrasse près d'une maison). Le jardin japonais : `demos/05_garden/garden_demo.tscn` (ouvre-le, **F6** pour s'y promener, ou sélectionne un chemin, une clôture ou un massif et déplace ses points : tout se recalcule, plantes comprises).
 5. Les démos précédentes : `demos/03_styles/styles_demo.tscn` (le même hameau en médiéval et en japonais), `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs). Ouvre-les puis **F6**. Leurs commandes :
    - Clic droit maintenu + souris : regarder
    - ZQSD (ou WASD) : se déplacer, A/E : descendre/monter, Maj : plus vite
@@ -63,6 +63,42 @@ add_child(tool)
 ```
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
+
+## Terrasses et portails (étape 6)
+
+![Vue d'ensemble : le portail dans le grand muret, la terrasse au bord de l'étang et son chemin](docs/captures/etape6_vue_generale.jpg)
+
+Dans la démo de construction en jeu, un sixième outil, **Terrasse** (touche **T**, ou le bouton de la barre) :
+
+- **Contre une maison** : tire un rectangle le long d'une façade. Il s'aligne sur elle dès le premier clic, puis se colle au mur et devient un **engawa** : galerie de planches posée sur des poteaux courts et leurs pierres, de 0,9 à 2,4 m de profondeur, sans garde-corps, une grande pierre de seuil devant (parfois une paire de geta posée dessus). Il s'arrête aux angles de la maison et ne passe jamais devant la porte : il s'arrête avant, du côté le plus long.
+- **Ailleurs** : une terrasse isolée, avec son garde-corps (lisse haute, boules de bronze aux angles) et quelques marches de bois **du côté de la caméra**. Au bord de l'étang, elle avance sur l'eau.
+- **Retoucher** : les poignées d'angle gardent toujours un rectangle (l'angle opposé reste en place), les milieux de côtés poussent un côté. Près d'une maison, la terrasse s'y recolle.
+
+Et sans rien faire : **un muret traversé par un chemin s'ouvre**. Dessine un chemin à travers un muret à petit toit : un portail couvert apparaît (deux poteaux sur leurs pierres, une poutre, un petit toit de tuiles plus haut et plus large que celui du mur, des vantaux de planches grands ouverts contre le mur, un seuil de pierre). En style médiéval, ce sont deux piliers plus hauts que les autres et un arc de claveaux. Annule le chemin : le portail se referme.
+
+![Engawa le long de la façade, à gauche de la porte](docs/captures/etape6_engawa.jpg)
+
+![Terrasse au bord de l'étang : garde-corps, giboshi, marches, et le chemin qui y mène](docs/captures/etape6_terrasse_etang.jpg)
+
+![Le même portail en style médiéval : piliers et arc de pierre](docs/captures/etape6_portail_medieval.jpg)
+
+### Dans l'éditeur
+
+- `BastideTerrace` (hérite de `Path3D`) : les points de la courbe donnent l'emprise, toujours redressée en rectangle (axe du premier côté). `entry_side` choisit le côté des marches (-1 = automatique), `height` la hauteur du plancher (0 = style).
+- `BastideWall` s'ouvre tout seul pour les `BastidePath` qui le traversent (`open_for_paths`, coché par défaut). La forme du portail est dans le volet **Wall** du style, groupe **Portails** : `gate_kind` (Auto, Couvert, Arc, Piliers), bois, vantaux, passage minimal.
+- Les couleurs, la hauteur, le garde-corps, les giboshi et les petits détails des terrasses sont dans le volet **Garden**, groupe **Terrasses**.
+
+En jeu, nouveau record `"terrace"` (quatre angles, `entry` facultatif). Les marches d'une terrasse sont déclarées comme une porte : un chemin qui arrive près d'elles les rejoint, avec sa lanterne.
+
+## Les règles « toujours beau » de l'étape 6
+
+- Une terrasse est toujours un rectangle, au quart de mètre ; ses planches ont une largeur régulière, des joints décalés d'une planche à l'autre, et courent dans le sens de la façade pour un engawa (du plus long côté sinon). Poteaux en nombre entier, jamais plus de 1,8 m entre deux, chacun sur sa pierre.
+- Un engawa est collé à la façade (6 cm de jour pour le soubassement), ne dépasse pas les angles, laisse 55 cm de part et d'autre de la porte. Ses marches (sa pierre de seuil) donnent toujours à l'opposé de la maison.
+- Les marches d'une terrasse isolée ont toutes la même hauteur (environ 17 cm) ; le garde-corps s'ouvre pile à leur droit.
+- Un portail est centré sur le chemin, assez large même en biais (2 m de passage libre au moins entre les montants), et deux chemins voisins partagent un seul portail. Près du bout d'un mur, on ne laisse jamais un bout de mur ridicule.
+- Le petit toit du portail est toujours au-dessus de ceux du mur ; l'arc médiéval naît sur la dalle des piliers, avec un nombre impair de claveaux et une clé au sommet.
+- Aucune plante sous une terrasse ; pas de pas japonais, de bordure ni de lanterne qui la chevauchent.
+- Les structures se voient dans le bon ordre : maisons, puis terrasses (elles se calent sur les maisons), puis chemins (ils rejoignent portes et marches), puis murs (ils s'ouvrent pour les chemins), puis clôtures et massifs, puis le jardin. Retirer une structure prévient aussi ses voisins (un portail se referme quand on annule son chemin).
 
 ## Le jardin japonais (étape 5)
 
@@ -208,7 +244,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (200 vérifications, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (248 vérifications, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -226,6 +262,12 @@ Le décor de l'étape 5 a la sienne (chemin tracé jusqu'à une porte, torii aim
 godot --path . -s tools/garden_play.gd -- <dossier_des_captures>
 ```
 
+Et celui de l'étape 6 (engawa tiré contre une maison, terrasse isolée, chemin qui ouvre un second portail, passage en médiéval, annulations) :
+
+```
+godot --path . -s tools/terrace_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -235,15 +277,15 @@ addons/bastide/
   core/        logique pure, sans nœuds (utilisable sur un thread, en jeu, dans les tests)
     random/      hasard déterministe (seed + position)
     geometry/    polylignes, polygones, squelette droit pondéré (toits), tracés à main levée
-    rules/       assainissement du tracé et du contour, répartition « pile », règles du jardin
+    rules/       assainissement du tracé et du contour, répartition « pile », règles du jardin et des terrasses
     garden/      le voisinage vu par le décor (portes, chemins, murs…)
     generators/  Spec → Layout : murs, bâtiments, toits
     layout/      les plans sémantiques (mur, bâtiment, toit)
-    backends/    plan → géométrie (procedural/ : murs, bâtiments, toits, chemins, torii, clôtures, plantes ; kit/ à l'étape 6)
+    backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses ; kit/ plus tard)
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
-               BastidePlanting, BastideGarden, base commune BastideStructure)
+               BastidePlanting, BastideTerrace, BastideGarden, base commune BastideStructure)
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
   shaders/     shaders pierre, bois, gravier ratissé et feuillage procéduraux (aucune texture)
 demos/         une scène de démo par étape

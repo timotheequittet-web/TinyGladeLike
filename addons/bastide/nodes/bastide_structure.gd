@@ -145,9 +145,17 @@ var last_anchors := {}
 # une clôture s'ouvre là où passe un chemin, des plantes poussent au pied des murs.
 # Chaque structure a un « niveau » : quand elle change, seules celles de niveau
 # supérieur qui lisent le voisinage sont régénérées (jamais de boucle).
-#   0 : murs, maisons · 1 : chemins, torii · 2 : clôtures, massifs · 3 : jardin
+#   0 : maisons · 1 : terrasses (elles se calent sur les maisons) · 2 : chemins,
+#   torii (ils rejoignent portes et marches) · 3 : murs (ils s'ouvrent pour les
+#   chemins) · 4 : clôtures, massifs · 5 : jardin
 
 const GROUP := &"bastide_structures"
+const LEVEL_HOUSE := 0
+const LEVEL_TERRACE := 1
+const LEVEL_PATH := 2
+const LEVEL_WALL := 3
+const LEVEL_FENCE := 4
+const LEVEL_GARDEN := 5
 
 ## Faux pour un aperçu (fantôme) : les autres structures l'ignorent.
 var context_enabled := true:
@@ -155,7 +163,9 @@ var context_enabled := true:
 		if context_enabled == value:
 			return
 		context_enabled = value
-		_notify_dependents()
+		# Dans les deux sens : un voisin qui disparaît (fantôme, suppression) doit
+		# aussi être oublié par ceux qui le voyaient (portail qui se referme…).
+		_notify_dependents(true)
 
 
 ## Niveau dans le voisinage (voir plus haut). À surcharger.
@@ -194,8 +204,8 @@ func gather_context() -> BastideGardenContext:
 	return BastideGardenContext.from_entries(entries)
 
 
-func _notify_dependents() -> void:
-	if not is_inside_tree() or not context_enabled:
+func _notify_dependents(force := false) -> void:
+	if not is_inside_tree() or (not context_enabled and not force):
 		return
 	var lvl := context_level()
 	for n in get_tree().get_nodes_in_group(GROUP):

@@ -32,6 +32,10 @@ tree_weights = Vector3(0.35, 0.55, 0.1)
 gate_color = Color(0.42, 0.3, 0.2, 1)
 gate_top_color = Color(0.3, 0.32, 0.36, 1)
 lanterns = false
+terrace_color = Color(0.56, 0.42, 0.29, 1)
+terrace_frame_color = Color(0.3, 0.22, 0.16, 1)
+giboshi = false
+terrace_details = false
 
 [resource]
 script = ExtResource("1_4i8uw")

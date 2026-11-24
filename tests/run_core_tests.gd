@@ -52,6 +52,14 @@ func _init() -> void:
 	_test_plants_keep_clear()
 	_test_garden_determinism()
 	_test_garden_meshes()
+	# Étape 6 : portails dans les murets, terrasses et engawa.
+	_test_wall_gate_japanese()
+	_test_wall_gate_medieval()
+	_test_wall_gate_cases()
+	_test_terrace_rect()
+	_test_terrace_engawa_snap()
+	_test_terrace_build()
+	_test_terrace_neighbours()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -879,3 +887,245 @@ func _test_garden_meshes() -> void:
 	check(_mesh_ok(path) and path.stats.get("stones", 0) > 15, "un chemin de 20 m : %d pas japonais, %d triangles" % [path.stats.get("stones", 0), path.stats.get("triangles", 0)])
 	var med := BastidePathMesher.build(PackedVector3Array([Vector3(-10, 0, 20), Vector3(10, 0, 20)]), 2, load(MEDIEVAL_PATH), ctx)
 	check(_mesh_ok(med) and med.stats.get("stones", 0) == 0 and med.stats.get("lanterns", 0) == 0, "médiéval : chemin de terre, sans pas japonais ni lanterne")
+
+
+# --- Étape 6 : portails et terrasses ---------------------------------------------------
+
+func _crossing_ctx(points: Array, width := 1.5) -> BastideGardenContext:
+	return BastideGardenContext.from_entries([{"kind": "path", "points": PackedVector3Array(points), "width": width}])
+
+
+func _gate_wall(points: Array, closed: bool, st: BastideStyle, ctx: BastideGardenContext, seed := 4) -> Array:
+	var spec := BastideWallSpec.from_points(PackedVector3Array(points), closed, seed, 1.9)
+	spec.context = ctx
+	var layout := BastideWallGenerator.generate(spec, st)
+	return [layout, BastideWallMesher.build(layout, st)]
+
+
+func _test_wall_gate_japanese() -> void:
+	print("Portails : un chemin traverse un muret japonais")
+	var st: BastideStyle = load(JAPANESE_PATH)
+	var ctx := _crossing_ctx([Vector3(0.5, 0, -6), Vector3(0, 0, 6)])
+	var res := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, ctx)
+	var layout: BastideWallLayout = res[0]
+	var r: BastideBuildResult = res[1]
+	check(layout.gates.size() == 1, "un portail (%d)" % layout.gates.size())
+	check(layout.runs.size() == 2, "deux tronçons de part et d'autre (%d)" % layout.runs.size())
+	if layout.gates.size() == 1 and layout.runs.size() == 2:
+		var g: Dictionary = layout.gates[0]
+		var clear: float = g.width - 0.44
+		check(clear >= st.get_wall_style().gate_min_clear - 0.01, "passage libre entre les poteaux : %.2f m" % clear)
+		check(absf((g.s0 + g.s1) * 0.5 - 8.25) < 0.15, "centré sur le chemin (%.2f)" % ((g.s0 + g.s1) * 0.5))
+		var a: BastideWallLayout.Run = layout.runs[0]
+		var b: BastideWallLayout.Run = layout.runs[1]
+		check(a.end_gate and b.start_gate and not a.start_gate and not b.end_gate, "les bouts qui bordent le portail sont marqués")
+		check(absf(a.s1 - g.s0) < 0.01 and absf(b.s0 - g.s1) < 0.01, "le mur s'arrête pile aux poteaux")
+		check(int(g.kind) == BastideWallStyle.GateKind.ROOFED, "style japonais : portail couvert")
+	check(_mesh_ok(r) and r.stats.get("gates", 0) == 1, "le portail se dessine (%d triangles)" % r.stats.get("triangles", 0))
+	var shut := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, null)
+	check((shut[0] as BastideWallLayout).gates.is_empty() and (shut[0] as BastideWallLayout).runs.size() == 1, "sans chemin, le mur reste plein")
+	# Collisions : rien ne bloque le milieu du passage, au ras du sol.
+	var blocked := 0
+	var faces := r.collision_faces
+	for i in range(0, faces.size(), 3):
+		var lo := faces[i].min(faces[i + 1]).min(faces[i + 2])
+		var hi := faces[i].max(faces[i + 1]).max(faces[i + 2])
+		if lo.x < 0.3 and hi.x > -0.3 and lo.y < 1.5 and hi.y > 0.2 and lo.z < 0.3 and hi.z > -0.3:
+			blocked += 1
+	check(blocked == 0, "on passe : aucune collision au milieu du portail (%d)" % blocked)
+
+
+func _test_wall_gate_medieval() -> void:
+	print("Portails : arc de pierre entre deux piliers (médiéval)")
+	var st: BastideStyle = load(MEDIEVAL_PATH)
+	var ctx := _crossing_ctx([Vector3(0, 0, -6), Vector3(0, 0, 6)])
+	var res := _gate_wall([Vector3(-9, 0, 0), Vector3(9, 0, 0)], false, st, ctx)
+	var layout: BastideWallLayout = res[0]
+	var gate_pillars := layout.pillars.filter(func(p: Dictionary) -> bool: return p.get("gate", false))
+	check(layout.gates.size() == 1 and gate_pillars.size() == 2, "un portail, deux piliers (%d)" % gate_pillars.size())
+	if layout.gates.size() == 1:
+		var g: Dictionary = layout.gates[0]
+		check(g.arch, "un arc au-dessus du passage")
+		check(int(g.kind) == BastideWallStyle.GateKind.ARCH, "style médiéval : arc de pierre")
+		var tops := gate_pillars.map(func(p: Dictionary) -> float: return p.top)
+		var plain := layout.pillars.filter(func(p: Dictionary) -> bool: return not p.get("gate", false))
+		if not plain.is_empty():
+			check(tops.min() > float(plain[0].top), "les piliers du portail sont plus hauts que ceux du mur")
+	check(_mesh_ok(res[1]), "le portail médiéval se dessine (%d triangles)" % (res[1] as BastideBuildResult).stats.get("triangles", 0))
+
+
+func _test_wall_gate_cases() -> void:
+	print("Portails : cas limites")
+	var st: BastideStyle = load(JAPANESE_PATH)
+	# Un chemin qui longe le mur sans le traverser : rien.
+	var along := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(-6, 0, 2), Vector3(6, 0, 2)]))
+	check((along[0] as BastideWallLayout).gates.is_empty(), "un chemin qui longe le mur ne l'ouvre pas")
+	# En biais : l'ouverture s'élargit.
+	var slant := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(-4, 0, -3), Vector3(4, 0, 3)]))
+	var straight := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(0, 0, -3), Vector3(0, 0, 3)]))
+	var ws: float = ((slant[0] as BastideWallLayout).gates[0] as Dictionary).width if not (slant[0] as BastideWallLayout).gates.is_empty() else 0.0
+	var wd: float = ((straight[0] as BastideWallLayout).gates[0] as Dictionary).width if not (straight[0] as BastideWallLayout).gates.is_empty() else 0.0
+	check(ws > wd + 0.2, "en biais, le portail est plus large (%.2f contre %.2f m)" % [ws, wd])
+	# Une enceinte traversée de part en part : deux portails.
+	var loop := _gate_wall([Vector3(-6, 0, -5), Vector3(6, 0, -5), Vector3(6, 0, 5), Vector3(-6, 0, 5)], true, st,
+			_crossing_ctx([Vector3(0, 0, -9), Vector3(0, 0, 9)]))
+	var ll: BastideWallLayout = loop[0]
+	check(ll.gates.size() == 2 and _mesh_ok(loop[1]), "une enceinte traversée : deux portails (%d)" % ll.gates.size())
+	# Deux chemins côte à côte : un seul grand portail.
+	var ctx2 := BastideGardenContext.from_entries([
+		{"kind": "path", "points": PackedVector3Array([Vector3(0, 0, -5), Vector3(0, 0, 5)]), "width": 1.5},
+		{"kind": "path", "points": PackedVector3Array([Vector3(1.6, 0, -5), Vector3(1.6, 0, 5)]), "width": 1.5}])
+	var twin := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, ctx2)
+	check((twin[0] as BastideWallLayout).gates.size() == 1, "deux chemins voisins : un seul portail (%d)" % (twin[0] as BastideWallLayout).gates.size())
+	# Un chemin au ras du bout du mur : pas de tronçon ridicule.
+	var edge := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(7.6, 0, -4), Vector3(7.6, 0, 4)]))
+	var short := 0
+	for run: BastideWallLayout.Run in (edge[0] as BastideWallLayout).runs:
+		if run.length() < 0.44:
+			short += 1
+	check(short == 0 and _mesh_ok(edge[1]), "près du bout du mur, aucun bout de mur ridicule")
+	# Même seed, même portail.
+	var a := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(0, 0, -3), Vector3(0, 0, 3)]), 9)
+	var b := _gate_wall([Vector3(-8, 0, 0), Vector3(8, 0, 0)], false, st, _crossing_ctx([Vector3(0, 0, -3), Vector3(0, 0, 3)]), 9)
+	check((a[1] as BastideBuildResult).stats.get("triangles") == (b[1] as BastideBuildResult).stats.get("triangles"), "déterministe")
+
+
+func _is_rect(r: PackedVector3Array) -> bool:
+	if r.size() != 4:
+		return false
+	for i in 4:
+		var a := BastidePolyline.flat_dir(r[i], r[(i + 1) % 4])
+		var b := BastidePolyline.flat_dir(r[(i + 1) % 4], r[(i + 2) % 4])
+		if absf(a.dot(b)) > 1e-3:
+			return false
+	return BastideStroke.signed_area(r) > 0.0
+
+
+func _test_terrace_rect() -> void:
+	print("Terrasses : toujours un rectangle")
+	var wobbly := PackedVector3Array([Vector3(0, 0, 0), Vector3(4, 0, 0.3), Vector3(4.4, 0, 3), Vector3(-0.2, 0, 2.6)])
+	var r := BastideTerraceRules.fit_rect(wobbly)
+	check(_is_rect(r), "un tracé tremblant devient un rectangle direct")
+	var again := BastideTerraceRules.fit_rect(r)
+	var same := true
+	for i in 4:
+		same = same and again[i].distance_to(r[i]) < 1e-4
+	check(same, "redresser un rectangle ne le change pas")
+	var cw := PackedVector3Array([Vector3(0, 0, 0), Vector3(0, 0, 3), Vector3(4, 0, 3), Vector3(4, 0, 0)])
+	check(_is_rect(BastideTerraceRules.fit_rect(cw)), "même tracé dans l'autre sens")
+	for i in 4:
+		var n := BastideTerraceRules.side_normal(r, i)
+		var mid := (r[i] + r[(i + 1) % 4]) * 0.5
+		var c := BastideStroke.centroid(r)
+		if (mid - c).dot(n) <= 0.0:
+			check(false, "normale du côté %d sortante" % i)
+			return
+	check(true, "les normales des côtés sont sortantes")
+
+
+func _test_terrace_engawa_snap() -> void:
+	print("Terrasses : contre une maison, un engawa")
+	var house := _garden_house()  # 10 × 6 m, porte en façade
+	var ctx := BastideGardenContext.from_entries([house])
+	# Tirée un peu de travers et à 0,8 m de la façade x = 10.
+	var drawn := PackedVector3Array([Vector3(10.8, 0, 0.6), Vector3(12.5, 0, 0.6), Vector3(12.5, 0, 5.2), Vector3(10.8, 0, 5.2)])
+	var res := BastideTerraceRules.snap_to_house(BastideStroke.ensure_direct(drawn), ctx)
+	var pts: PackedVector3Array = res["points"]
+	check(res["engawa"], "elle se colle à la façade")
+	var minx := INF
+	var maxx := -INF
+	for p in pts:
+		minx = minf(minx, p.x)
+		maxx = maxf(maxx, p.x)
+	check(absf(minx - (10.0 + BastideTerraceRules.HOUSE_GAP)) < 0.01, "contre le mur, au jour près (x = %.3f)" % minx)
+	check(maxx - minx >= BastideTerraceRules.ENGAWA_MIN_DEPTH - 0.01 and maxx - minx <= BastideTerraceRules.ENGAWA_MAX_DEPTH + 0.01,
+			"profondeur d'une galerie (%.2f m)" % (maxx - minx))
+	check(_is_rect(BastideTerraceRules.fit_rect(pts)), "toujours un rectangle")
+	var hs := BastideTerraceRules.house_side(BastideTerraceRules.fit_rect(pts), ctx)
+	check(hs >= 0, "le côté contre la maison est reconnu")
+	check(BastideTerraceRules.entry_side(BastideTerraceRules.fit_rect(pts), ctx, hs) == (hs + 2) % 4, "la pierre de seuil est à l'opposé de la maison")
+	# Trop longue : elle s'arrête aux angles.
+	var long := PackedVector3Array([Vector3(10.2, 0, -3), Vector3(12, 0, -3), Vector3(12, 0, 9), Vector3(10.2, 0, 9)])
+	var lr: PackedVector3Array = BastideTerraceRules.snap_to_house(BastideStroke.ensure_direct(long), ctx)["points"]
+	var minz := INF
+	var maxz := -INF
+	for p in lr:
+		minz = minf(minz, p.z)
+		maxz = maxf(maxz, p.z)
+	check(minz >= 0.0 and maxz <= 6.0, "elle ne dépasse pas les angles de la maison (%.2f → %.2f)" % [minz, maxz])
+	# Devant la porte : elle s'arrête avant, du côté le plus long.
+	var door: Dictionary = (house["doors"] as Array)[0]
+	var dpos: Vector3 = door["pos"]
+	var dout: Vector3 = door["out"]
+	var along := Vector3(-dout.z, 0, dout.x)
+	var front := PackedVector3Array([dpos - along * 4.5 + dout * 0.3, dpos + along * 1.5 + dout * 0.3,
+		dpos + along * 1.5 + dout * 1.8, dpos - along * 4.5 + dout * 1.8])
+	var fr: PackedVector3Array = BastideTerraceRules.snap_to_house(BastideStroke.ensure_direct(front), ctx)["points"]
+	var clear := INF
+	for p in fr:
+		clear = minf(clear, absf((p - dpos).dot(along)))
+	var w: float = door["width"]
+	check(clear >= w * 0.5 + BastideTerraceRules.DOOR_CLEAR - 0.01, "elle laisse la porte libre (%.2f m du milieu)" % clear)
+	# Loin des maisons : rien ne bouge.
+	var far := BastideStroke.ensure_direct(PackedVector3Array([Vector3(20, 0, 20), Vector3(24, 0, 20), Vector3(24, 0, 23), Vector3(20, 0, 23)]))
+	var fres := BastideTerraceRules.snap_to_house(far, ctx)
+	check(not fres["engawa"] and fres["points"] == far, "loin des maisons, la terrasse reste où on l'a tirée")
+
+
+func _test_terrace_build() -> void:
+	print("Terrasses : maillages")
+	var st: BastideStyle = load(JAPANESE_PATH)
+	var house := _garden_house()
+	var ctx := BastideGardenContext.from_entries([house])
+	var eng := PackedVector3Array([Vector3(10.06, 0, 0.5), Vector3(11.56, 0, 0.5), Vector3(11.56, 0, 5.5), Vector3(10.06, 0, 5.5)])
+	var r := BastideTerraceMesher.build(eng, 3, st, ctx)
+	check(_mesh_ok(r) and r.stats.get("engawa", false), "engawa : %d planches, %d poteaux, %d triangles" % [r.stats.get("boards", 0), r.stats.get("posts", 0), r.stats.get("triangles", 0)])
+	var doors: Array = r.anchors.get("doors", [])
+	check(doors.size() == 1 and not (doors[0] as Dictionary).get("stone", true), "ses marches sont déclarées comme une porte (sans pierre de chemin)")
+	if doors.size() == 1:
+		check(((doors[0] as Dictionary)["out"] as Vector3).dot(Vector3.RIGHT) > 0.99, "elle donne à l'opposé de la maison")
+	var free := PackedVector3Array([Vector3(20, 0, 20), Vector3(24, 0, 20), Vector3(24, 0, 23), Vector3(20, 0, 23)])
+	var rf := BastideTerraceMesher.build(free, 3, st, ctx)
+	check(_mesh_ok(rf) and not rf.stats.get("engawa", true), "terrasse isolée : %d triangles" % rf.stats.get("triangles", 0))
+	check(rf.stats.get("triangles", 0) > r.stats.get("triangles", 0), "garde-corps et marches en plus")
+	check(rf.stats.get("triangles", 0) < 8000, "budget raisonnable")
+	var rm := BastideTerraceMesher.build(free, 3, load(MEDIEVAL_PATH), ctx)
+	check(_mesh_ok(rm), "en médiéval aussi")
+	var a := BastideTerraceMesher.build(free, 5, st, ctx)
+	var b := BastideTerraceMesher.build(free, 5, st, ctx)
+	check(a.stats.get("triangles") == b.stats.get("triangles") and str(a.anchors) == str(b.anchors), "déterministe")
+	# Le côté des marches demandé est respecté (sauf contre la maison).
+	var r2 := BastideTerraceMesher.build(free, 3, st, ctx, true, 2)
+	check(r2.stats.get("entry", -1) == 2, "côté des marches choisi")
+	var r3 := BastideTerraceMesher.build(eng, 3, st, ctx, true, BastideTerraceRules.house_side(BastideTerraceRules.fit_rect(eng), ctx))
+	check(r3.stats.get("entry", -1) != BastideTerraceRules.house_side(BastideTerraceRules.fit_rect(eng), ctx), "jamais de marches contre la maison")
+
+
+func _test_terrace_neighbours() -> void:
+	print("Terrasses : les voisins les voient")
+	var st: BastideStyle = load(JAPANESE_PATH)
+	var free := PackedVector3Array([Vector3(20, 0, 20), Vector3(24, 0, 20), Vector3(24, 0, 23), Vector3(20, 0, 23)])
+	var rf := BastideTerraceMesher.build(free, 3, st, BastideGardenContext.new(), true, 1)
+	var door: Dictionary = (rf.anchors["doors"] as Array)[0]
+	var terrace := {"kind": "terrace", "footprint": rf.anchors["rect"], "doors": rf.anchors["doors"], "height": 0.45}
+	var ctx := BastideGardenContext.from_entries([terrace])
+	check(ctx.doors().size() == 1, "ses marches comptent parmi les portes")
+	var dpos: Vector3 = door["pos"]
+	var dout: Vector3 = door["out"]
+	var path := BastidePathMesher.build(PackedVector3Array([dpos + dout * 10.0 + Vector3(0, 0, 3), dpos + dout * 2.5]), 4, st, ctx)
+	check(path.stats.get("doors", 0) == 1, "un chemin qui arrive près des marches les rejoint")
+	var pl := BastidePathMesher.plan(PackedVector3Array([dpos + dout * 10.0, dpos + dout * 2.5]), 4, st.get_garden_style(), ctx)
+	check((pl["step_stones"] as Array).is_empty(), "sans ajouter de pierre de seuil devant des marches")
+	var plan := BastidePlantingMesher.plan_garden(ctx, 7, st.get_garden_style())
+	var under := 0
+	for it: Dictionary in plan["items"]:
+		var p: Vector3 = it["pos"]
+		if ctx.terrace_clearance(Vector2(p.x, p.z)) < 0.0:
+			under += 1
+	var massif := BastidePlantingMesher.plan_planting(PackedVector3Array([Vector3(18, 0, 21.5), Vector3(26, 0, 21.5)]), 3, st.get_garden_style(), ctx)
+	for it: Dictionary in massif:
+		var p: Vector3 = it["pos"]
+		if ctx.terrace_clearance(Vector2(p.x, p.z)) < 0.0:
+			under += 1
+	check(under == 0, "aucune plante sous la terrasse (%d)" % under)
+

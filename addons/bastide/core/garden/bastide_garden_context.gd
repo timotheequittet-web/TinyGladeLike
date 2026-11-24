@@ -20,6 +20,8 @@ var fences: Array = []
 var gates: Array = []
 ## {points, rect}
 var plantings: Array = []
+## {footprint: PackedVector2Array, doors: [{pos, out, width, stone}], height, rect} : terrasses de bois.
+var terraces: Array = []
 
 
 ## Ramène une description (coordonnées monde) dans un autre repère.
@@ -34,8 +36,11 @@ static func transform_entry(d: Dictionary, xf: Transform3D) -> Dictionary:
 	if d.has("doors"):
 		var doors: Array = []
 		for door: Dictionary in d["doors"]:
-			doors.append({"pos": xf * (door["pos"] as Vector3), "out": (xf.basis * (door["out"] as Vector3)).normalized(),
-				"width": door.get("width", 1.5)})
+			var nd := (door as Dictionary).duplicate()
+			nd["pos"] = xf * (door["pos"] as Vector3)
+			nd["out"] = (xf.basis * (door["out"] as Vector3)).normalized()
+			nd["width"] = door.get("width", 1.5)
+			doors.append(nd)
 		out["doors"] = doors
 	return out
 
@@ -68,6 +73,14 @@ static func from_entries(entries: Array) -> BastideGardenContext:
 					c.gates.append({"a": pts[0], "b": pts[1], "rect": _rect3(pts, 0.8)})
 			"plants":
 				c.plantings.append(_line(d, 1.2))
+			"terrace":
+				var tp := PackedVector2Array()
+				for p: Vector3 in d.get("footprint", PackedVector3Array()):
+					tp.append(Vector2(p.x, p.z))
+				if tp.size() >= 3:
+					tp = BastidePolygon.ensure_direct(tp)
+					c.terraces.append({"footprint": tp, "doors": d.get("doors", []),
+						"height": float(d.get("height", 0.45)), "rect": _rect2(tp, 0.6)})
 	return c
 
 
@@ -99,11 +112,14 @@ static func _rect3(pts: PackedVector3Array, grow: float) -> Rect2:
 
 # --- Requêtes ----------------------------------------------------------------------
 
-## Toutes les portes : [{pos, out, width}].
+## Toutes les portes : [{pos, out, width}], marches des terrasses comprises
+## (celles-ci portent `stone: false` : elles ont déjà leur pierre de seuil).
 func doors() -> Array:
 	var out: Array = []
 	for h: Dictionary in houses:
 		out.append_array(h["doors"])
+	for t: Dictionary in terraces:
+		out.append_array(t["doors"])
 	return out
 
 
@@ -195,6 +211,23 @@ func house_clearance(p: Vector2) -> float:
 	return best
 
 
+## Distance au bord de la terrasse la plus proche (négative dessous).
+func terrace_clearance(p: Vector2) -> float:
+	var best := INF
+	for t: Dictionary in terraces:
+		if not (t["rect"] as Rect2).grow(2.0).has_point(p):
+			continue
+		var fp: PackedVector2Array = t["footprint"]
+		var d := INF
+		for i in fp.size():
+			var q := Geometry2D.get_closest_point_to_segment(p, fp[i], fp[(i + 1) % fp.size()])
+			d = minf(d, p.distance_to(q))
+		if Geometry2D.is_point_in_polygon(p, fp):
+			d = -d
+		best = minf(best, d)
+	return best
+
+
 ## Vrai si p est devant une porte (dans un demi-disque de rayon `radius`).
 func near_door(p: Vector2, radius := 2.0) -> bool:
 	for d: Dictionary in doors():
@@ -220,7 +253,7 @@ func gate_clearance(p: Vector2) -> float:
 
 
 ## Vrai si une plante de rayon `r` posée en p gênerait quelque chose : chemin,
-## maison, mur, clôture, seuil de porte, torii.
+## maison, mur, clôture, seuil de porte, torii, terrasse.
 func blocked(p: Vector2, r: float) -> bool:
 	if path_clearance(p) < r + 0.1:
 		return true
@@ -231,6 +264,8 @@ func blocked(p: Vector2, r: float) -> bool:
 	if near_door(p, 1.9 + r):
 		return true
 	if gate_clearance(p) < r + 0.4:
+		return true
+	if not terraces.is_empty() and terrace_clearance(p) < r * 0.5 + 0.1:
 		return true
 	return false
 

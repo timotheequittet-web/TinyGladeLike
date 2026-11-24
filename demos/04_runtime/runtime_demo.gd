@@ -1,9 +1,10 @@
 extends Node3D
-## Démo des étapes 4 et 5 : construire soi-même, en jeu, à la souris.
+## Démo des étapes 4 à 6 : construire soi-même, en jeu, à la souris.
 ##
 ## Le hameau de départ sort de terre au lancement ; ensuite, à toi : dessine des
 ## murets, tire des maisons, agrandis-les en L, trace des chemins, pose des torii,
-## plante des massifs et des arbres, retouche avec les poignées. Le jardin
+## plante des massifs et des arbres, pose des terrasses et des engawa, retouche
+## avec les poignées. Un muret traversé par un chemin s'ouvre en portail. Le jardin
 ## (galets, plantes au pied des murs) pousse tout seul.
 ## L'interface est construite ici, en code, pour rester légère et discrète.
 
@@ -39,10 +40,12 @@ func _starting_village() -> Array:
 			"points": [[-9, 0, -6], [1, 0, -6], [1, 0, 0], [-9, 0, 0]]},
 		{"kind": "house", "seed": 31, "floors": 1, "style": j, "door": 2,
 			"points": [[6, 0, -11], [14, 0, -11], [14, 0, 3], [9, 0, 3], [9, 0, -5], [6, 0, -5]]},
+		# Le grand muret à petit toit : le chemin le traverse, un portail s'y ouvre.
 		{"kind": "wall", "seed": 4, "height": 1.9, "style": j, "closed": false,
-			"points": [[-13, 0, -1], [-13.5, 0, 5], [-10, 0, 8.5], [-4, 0, 9]]},
-		{"kind": "wall", "seed": 8, "height": 1.9, "style": j, "closed": false,
-			"points": [[2, 0, 9], [7, 0, 8.4], [10.5, 0, 6.5]]},
+			"points": [[-13, 0, -1], [-13.5, 0, 5], [-10, 0, 8.5], [-4, 0, 9], [2, 0, 9], [7, 0, 8.4], [10.5, 0, 6.5]]},
+		# Engawa le long de la façade de la grande maison, à gauche de la porte.
+		{"kind": "terrace", "seed": 8, "style": j, "entry": -1,
+			"points": [[-8.7, 0, 0.3], [-4.6, 0, 0.3], [-4.6, 0, 1.8], [-8.7, 0, 1.8]]},
 		# Le chemin qui monte vers le hameau, et sa branche vers la seconde maison.
 		{"kind": "path", "seed": 5, "style": j,
 			"points": [[-1, 0, 26], [0.5, 0, 18], [-0.6, 0, 11], [-2.2, 0, 5], [-4, 0, 2.6]]},
@@ -56,9 +59,14 @@ func _starting_village() -> Array:
 		{"kind": "fence", "seed": 9, "variant": 0, "style": j, "closed": false,
 			"points": [[-5, 0, 17], [-10, 0, 15.5], [-14.5, 0, 12], [-17, 0, 7]]},
 		{"kind": "plants", "seed": 21, "style": j, "points": [[5, 0, 12.5], [8.5, 0, 11.5], [12, 0, 9]]},
-		{"kind": "plants", "seed": 14, "style": j, "points": [[-6.8, 0, 6.2]]},
+		{"kind": "plants", "seed": 14, "style": j, "points": [[-9.8, 0, 4.4]]},
 		{"kind": "plants", "seed": 27, "style": j, "points": [[4.2, 0, 16.5]]},
 		{"kind": "plants", "seed": 33, "style": j, "points": [[-11.5, 0, -4.5]]},
+		# Terrasse au bord de l'étang, et le chemin qui y mène.
+		{"kind": "terrace", "seed": 17, "style": j, "entry": -1,
+			"points": [[-22.8, 0, 13.8], [-18.8, 0, 13.8], [-18.8, 0, 16.8], [-22.8, 0, 16.8]]},
+		{"kind": "path", "seed": 19, "style": j,
+			"points": [[0.3, 0, 20], [-6, 0, 20.8], [-12, 0, 19.2], [-16.8, 0, 16.4]]},
 	]
 
 
@@ -229,6 +237,7 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.PATH] = _button(hb, "Chemin  3", func() -> void: tool.mode = BastideBuildTool.Mode.PATH, true)
 	_mode_buttons[BastideBuildTool.Mode.TORII] = _button(hb, "Torii  4", func() -> void: tool.mode = BastideBuildTool.Mode.TORII, true)
 	_mode_buttons[BastideBuildTool.Mode.PLANTS] = _button(hb, "Plantes  5", func() -> void: tool.mode = BastideBuildTool.Mode.PLANTS, true)
+	_mode_buttons[BastideBuildTool.Mode.TERRACE] = _button(hb, "Terrasse  T", func() -> void: tool.mode = BastideBuildTool.Mode.TERRACE, true)
 	_sep(hb)
 	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
 	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
@@ -294,7 +303,7 @@ func _build_ui() -> void:
 	root.add_child(title)
 	var keys := Label.new()
 	keys.position = Vector2(28, 54)
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5 : outils   ·   V : variante du muret\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T : outils   ·   V : variante du muret\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))

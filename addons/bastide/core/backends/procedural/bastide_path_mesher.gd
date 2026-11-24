@@ -49,7 +49,8 @@ static func plan(points: PackedVector3Array, seed: int, gs: BastideGardenStyle, 
 			var side := BastidePolyline.right_of(dir)
 			var zig := (0.07 if k % 2 == 0 else -0.07) * w + BastideRng.signed_at(seed, "stone_off", k) * 0.04
 			var q := p + side * zig
-			if ctx.path_clearance(Vector2(q.x, q.z)) > 0.15 and ctx.house_clearance(Vector2(q.x, q.z)) > 0.3:
+			if ctx.path_clearance(Vector2(q.x, q.z)) > 0.15 and ctx.house_clearance(Vector2(q.x, q.z)) > 0.3 \
+					and ctx.terrace_clearance(Vector2(q.x, q.z)) > 0.3:
 				out["stones"].append({"pos": q, "radius": w * 0.22 * (1.0 + BastideRng.signed_at(seed, "stone_r", k) * 0.12),
 					"rot": atan2(dir.z, dir.x) + BastideRng.signed_at(seed, "stone_rot", k) * 0.35, "key": BastideRng.key(seed, "stone", k)})
 			s += stride * (1.0 + BastideRng.signed_at(seed, "stride", k) * 0.1)
@@ -58,7 +59,7 @@ static func plan(points: PackedVector3Array, seed: int, gs: BastideGardenStyle, 
 	# Pierres de seuil devant les portes rejointes (kutsunugi-ishi).
 	for key in ["door_start", "door_end"]:
 		var door: Dictionary = out[key]
-		if door.is_empty():
+		if door.is_empty() or not door.get("stone", true):
 			continue
 		var dpos: Vector3 = door["pos"]
 		var dout: Vector3 = door["out"]
@@ -78,7 +79,8 @@ static func plan(points: PackedVector3Array, seed: int, gs: BastideGardenStyle, 
 				var hw := _half_width(seed, w, s, side_sign)
 				var q := p + side * (hw + 0.05)
 				var q2 := Vector2(q.x, q.z)
-				var ok := ctx.path_clearance(q2) > 0.08 and ctx.house_clearance(q2) > 0.15 and ctx.wall_clearance(q2) > 0.05
+				var ok := ctx.path_clearance(q2) > 0.08 and ctx.house_clearance(q2) > 0.15 and ctx.wall_clearance(q2) > 0.05 \
+						and ctx.terrace_clearance(q2) > 0.1
 				# Pas de bordure en travers de l'arrivée sur une porte.
 				for key in ["door_start", "door_end"]:
 					var door: Dictionary = out[key]
@@ -109,7 +111,7 @@ static func plan(points: PackedVector3Array, seed: int, gs: BastideGardenStyle, 
 			for side_sign: float in [first, -first]:
 				var q: Vector3 = p + BastidePolyline.right_of(dir) * side_sign * (w * 0.5 + 0.75)
 				var q2 := Vector2(q.x, q.z)
-				if ctx.house_clearance(q2) > 0.5 and ctx.path_clearance(q2) > 0.45 and ctx.wall_clearance(q2) > 0.4 \
+				if ctx.house_clearance(q2) > 0.5 and ctx.terrace_clearance(q2) > 0.5 and ctx.path_clearance(q2) > 0.45 and ctx.wall_clearance(q2) > 0.4 \
 						and ctx.gate_clearance(q2) > 0.8:
 					out["lanterns"].append({"pos": q, "rot": atan2(dir.z, dir.x), "key": BastideRng.key(seed, "lantern", e)})
 					break

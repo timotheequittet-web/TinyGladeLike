@@ -12,6 +12,9 @@ extends Node3D
 ## - Mode TORII : un torii fantôme suit la souris et se cale sur les chemins ; clic
 ##   pour le poser.
 ## - Mode PLANTES : dessine un massif, ou clique pour planter un arbre.
+## - Mode TERRASSE : tire un rectangle ; contre une maison, il devient un engawa
+##   collé à la façade (jamais devant la porte). Isolée, la terrasse a un
+##   garde-corps et ses marches donnent vers la caméra.
 ## - Variantes du mode MUR (touche V) : muret à petit toit, muret de pierres sèches,
 ##   clôture de bambou.
 ## - Clic sur une structure : la sélectionne. Des poignées apparaissent : on tire
@@ -26,7 +29,7 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE, PATH, TORII, PLANTS }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE }
 ## Variantes du mode MUR.
 enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
@@ -71,6 +74,8 @@ signal history_changed(can_undo: bool, can_redo: bool)
 @export var house_snap := 0.5
 @export var house_min_side := 4.0
 @export var house_max_side := 22.0
+## Plus grand côté d'une terrasse.
+@export var terrace_max_side := 12.0
 ## Longueur minimale d'un mur.
 @export var wall_min_length := 1.5
 ## Transparence de l'aperçu fantôme.
@@ -113,6 +118,7 @@ var _mat_hover: ShaderMaterial
 var _mat_selected: ShaderMaterial
 var _ghost_overlay: ShaderMaterial
 var _torii_snapped := false
+var _terrace_engawa := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -371,7 +377,9 @@ func _on_key(k: InputEventKey) -> void:
 			KEY_5, KEY_KP_5:
 				mode = Mode.PLANTS
 			_:
-				if k.keycode == KEY_R:
+				if k.keycode == KEY_T:
+					mode = Mode.TERRACE
+				elif k.keycode == KEY_R:
 					reroll_selected()
 				elif k.keycode == KEY_V:
 					cycle_wall_variant()
@@ -462,6 +470,8 @@ func _draw_kind() -> String:
 			return "torii"
 		Mode.PLANTS:
 			return "plants"
+		Mode.TERRACE:
+			return "terrace"
 	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
 
 
@@ -477,12 +487,16 @@ func _new_record(kind: String) -> Dictionary:
 	}
 	if kind == "fence":
 		rec["variant"] = 1 if wall_variant == WallVariant.BAMBOO else 0
+	if kind == "terrace":
+		rec["entry"] = -1
 	return rec
 
 
 func _continue_draw(g: Vector3) -> void:
 	if _draft_rec["kind"] == "house":
 		_draw_house(g)
+	elif _draft_rec["kind"] == "terrace":
+		_draw_terrace(g)
 	else:
 		_draw_wall(g)
 
@@ -540,6 +554,53 @@ func _draw_house(g: Vector3) -> void:
 	_draft_rec["points"] = pts
 	_draw_ink(pts, true)
 	_update_draft()
+
+
+## Terrasse : rectangle tiré à la souris, aligné sur la façade la plus proche ;
+## collé contre elle, il devient un engawa.
+func _draw_terrace(g: Vector3) -> void:
+	var pts := terrace_rect(_press_ground, g)
+	var engawa := BastideTerraceRules.house_side(pts, site.context()) >= 0
+	if engawa != _terrace_engawa:
+		_terrace_engawa = engawa
+		_emit_hint()
+	_draft_rec["points"] = pts
+	_draft_rec["entry"] = -1 if engawa else _entry_toward_camera(pts)
+	_draw_ink(pts, true)
+	_update_draft()
+
+
+## Rectangle de terrasse entre deux points du sol, déjà redressé et collé à une
+## maison s'il y a lieu.
+func terrace_rect(a: Vector3, b: Vector3) -> PackedVector3Array:
+	var ctx := site.context()
+	var axis := BastideTerraceRules.facade_axis(a, ctx)
+	if axis == Vector3.ZERO:
+		axis = camera.global_transform.basis.x
+	var rect := BastideStroke.rectangle(a, b, axis, 0.25, 1.5)
+	var u := rect[1] - rect[0]
+	var v := rect[3] - rect[0]
+	if u.length() > terrace_max_side:
+		u = u.normalized() * terrace_max_side
+	if v.length() > terrace_max_side:
+		v = v.normalized() * terrace_max_side
+	rect = PackedVector3Array([rect[0], rect[0] + u, rect[0] + u + v, rect[0] + v])
+	rect = BastideTerraceRules.snap_to_house(BastideStroke.ensure_direct(rect), ctx)["points"]
+	return BastideTerraceRules.fit_rect(rect)
+
+
+## Côté du rectangle qui regarde le plus vers la caméra (pour les marches).
+func _entry_toward_camera(rect: PackedVector3Array) -> int:
+	var to_cam := site.to_local(camera.global_position) - BastideStroke.centroid(rect)
+	to_cam.y = 0.0
+	var best := 0
+	var best_dot := -INF
+	for i in 4:
+		var d := BastideTerraceRules.side_normal(rect, i).dot(to_cam.normalized())
+		if d > best_dot:
+			best_dot = d
+			best = i
+	return best
 
 
 func _clamp_rect(rect: PackedVector3Array) -> PackedVector3Array:
@@ -658,8 +719,8 @@ func _rebuild_handles() -> void:
 		var r: Dictionary = site.get_record(selected)
 		var pts: PackedVector3Array = r["points"]
 		for i in pts.size():
-			_handles.append({"pos": pts[i], "kind": "corner" if r["kind"] == "house" else "point", "index": i})
-		if r["kind"] == "house":
+			_handles.append({"pos": pts[i], "kind": "corner" if r["kind"] in ["house", "terrace"] else "point", "index": i})
+		if r["kind"] in ["house", "terrace"]:
 			for i in pts.size():
 				var mid := (pts[i] + pts[(i + 1) % pts.size()]) * 0.5
 				_handles.append({"pos": mid, "kind": "edge", "index": i})
@@ -729,6 +790,16 @@ func _continue_handle_drag(g: Vector3) -> void:
 	var rec: Dictionary = site.get_record(selected)
 	var pts := _drag_start_points.duplicate()
 	var i: int = _drag_handle["index"]
+	if rec["kind"] == "terrace" and _drag_handle["kind"] == "corner":
+		# Un rectangle reste un rectangle : on tire l'angle, l'angle opposé reste en place.
+		var opp := pts[(i + 2) % 4]
+		var axis := pts[1] - pts[0]
+		var r := BastideStroke.ensure_direct(BastideStroke.rectangle(opp, g, axis, 0.25, 1.2))
+		pts = BastideTerraceRules.fit_rect(BastideTerraceRules.snap_to_house(r, site.context())["points"])
+		rec["points"] = pts
+		site.apply_record(selected, rec, false)
+		_rebuild_handles()
+		return
 	match _drag_handle["kind"]:
 		"point":
 			pts[i] = g
@@ -796,7 +867,7 @@ func _delete_handle_point(h: Dictionary) -> void:
 	match String(before["kind"]):
 		"house":
 			min_pts = 4
-		"torii":
+		"torii", "terrace":
 			return
 		"plants":
 			min_pts = 1
@@ -862,7 +933,7 @@ func _update_cursor(g: Variant) -> void:
 	_cursor.visible = g != null and _hover < 0 and _hover_handle < 0
 	if g != null:
 		_cursor.global_position = (g as Vector3) + Vector3(0, 0.03, 0)
-		var s := 1.6 if mode == Mode.HOUSE else (0.0 if mode == Mode.TORII else 1.0)
+		var s := 1.6 if mode == Mode.HOUSE or mode == Mode.TERRACE else (0.0 if mode == Mode.TORII else 1.0)
 		_cursor.scale = Vector3(maxf(s, 0.01), 0.15, maxf(s, 0.01))
 		_cursor.visible = _cursor.visible and mode != Mode.TORII
 
@@ -953,6 +1024,10 @@ func current_hint() -> String:
 				if _draft_rec.get("closed", false):
 					return "Relâche pour fermer l'enceinte"
 				return "Dessine le tracé, relâche pour le poser"
+			if mode == Mode.TERRACE:
+				if _terrace_engawa:
+					return "Relâche : un engawa le long de la façade"
+				return "Tire la terrasse  ·  contre une maison, elle devient un engawa"
 			if _merge_id >= 0:
 				return "Relâche pour agrandir la maison"
 			return "Tire pour donner sa taille à la maison"
@@ -986,4 +1061,6 @@ func current_hint() -> String:
 			return "Approche la souris d'un chemin pour y poser un torii"
 		Mode.PLANTS:
 			return "Dessine un massif  ·  ou clique pour planter un arbre"
+		Mode.TERRACE:
+			return "Maintiens le clic et tire une terrasse  ·  contre une maison : un engawa"
 	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"

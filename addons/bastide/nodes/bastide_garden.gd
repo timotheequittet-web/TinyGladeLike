@@ -11,7 +11,7 @@ extends BastideStructure
 ## Sa courbe ne sert pas. Densité, couleurs et galets : volet Garden du style.
 
 func context_level() -> int:
-	return 3
+	return LEVEL_GARDEN
 
 
 func uses_context() -> bool:

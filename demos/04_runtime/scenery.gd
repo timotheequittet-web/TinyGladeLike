@@ -32,7 +32,8 @@ func _ready() -> void:
 	_rock_mat.roughness = 0.9
 	_ground()
 	_hills()
-	_pond(Vector3(-27, 0, 16), Vector2(9.0, 6.0))
+	# La rive est dégagée là où la terrasse de la démo avance sur l'eau.
+	_pond(Vector3(-27, 0, 16), Vector2(9.0, 6.0), Rect2(-23.5, 13.0, 6.0, 4.6))
 	_groves()
 	_petals_fx()
 
@@ -79,7 +80,7 @@ func _hills() -> void:
 		add_child(mi)
 
 
-func _pond(center: Vector3, size: Vector2) -> void:
+func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
 	var water := MeshInstance3D.new()
 	water.name = "Etang"
 	var plane := PlaneMesh.new()
@@ -95,7 +96,10 @@ func _pond(center: Vector3, size: Vector2) -> void:
 	for i in n:
 		var a := TAU * i / n + _rng.randf_range(-0.05, 0.05)
 		var p := center + Vector3(cos(a) * size.x * 0.97, 0, sin(a) * size.y * 0.97)
-		_rock(p, _rng.randf_range(0.35, 0.8))
+		var sz := _rng.randf_range(0.35, 0.8)
+		if clear.has_point(Vector2(p.x, p.z)):
+			continue
+		_rock(p, sz)
 	_rock(center + Vector3(size.x * 0.6, 0, -size.y * 0.9), 1.5)
 	_rock(center + Vector3(-size.x * 0.9, 0, size.y * 0.4), 1.1)
 

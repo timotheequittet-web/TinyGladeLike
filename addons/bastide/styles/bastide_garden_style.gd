@@ -135,3 +135,39 @@ enum FenceKind { STONE, BAMBOO }
 	set(value):
 		lantern_color = value
 		emit_changed()
+
+@export_group("Terrasses")
+## Hauteur du plancher des terrasses et des engawa.
+@export_range(0.2, 1.2, 0.01, "suffix:m") var terrace_height: float = 0.45:
+	set(value):
+		terrace_height = value
+		emit_changed()
+## Planches du plancher (cèdre patiné).
+@export var terrace_color: Color = Color(0.64, 0.52, 0.38):
+	set(value):
+		terrace_color = value
+		emit_changed()
+## Poteaux, poutres, garde-corps.
+@export var terrace_frame_color: Color = Color(0.33, 0.25, 0.19):
+	set(value):
+		terrace_frame_color = value
+		emit_changed()
+## Garde-corps autour des terrasses isolées (jamais sur un engawa).
+@export var terrace_railing := true:
+	set(value):
+		terrace_railing = value
+		emit_changed()
+## Boules de bronze (giboshi) en tête des poteaux d'angle du garde-corps.
+@export var giboshi := true:
+	set(value):
+		giboshi = value
+		emit_changed()
+@export var giboshi_color: Color = Color(0.36, 0.45, 0.38):
+	set(value):
+		giboshi_color = value
+		emit_changed()
+## Petits détails de vie : une paire de geta sur la pierre de seuil, parfois.
+@export var terrace_details := true:
+	set(value):
+		terrace_details = value
+		emit_changed()

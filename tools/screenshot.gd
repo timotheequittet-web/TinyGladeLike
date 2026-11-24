@@ -32,6 +32,14 @@ var _styles_views := [
 ]
 
 
+var _terrace_views := [
+	["etape6_editeur_vue_generale", Vector3(4, 13, 36), Vector3(-20, 0, 0)],
+	["etape6_editeur_terrasse", Vector3(3, 4.5, 20), Vector3(-14, 35, 0)],
+	["etape6_editeur_engawa", Vector3(11, 3.2, 3), Vector3(-12, 50, 0)],
+	["etape6_editeur_arc", Vector3(-27, 3, 13), Vector3(-6, 20, 0)],
+]
+
+
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out_dir: String = args[0] if args.size() > 0 else "/tmp/shots"
@@ -41,6 +49,8 @@ func _init() -> void:
 		views = _building_views
 	elif scene_path.contains("03_styles"):
 		views = _styles_views
+	elif scene_path.contains("06_terraces"):
+		views = _terrace_views
 	var scene: Node = (load(scene_path) as PackedScene).instantiate()
 	root.add_child(scene)
 	current_scene = scene

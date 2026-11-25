@@ -129,8 +129,11 @@ func _run() -> void:
 
 	# 5. On annule le chemin : le portail se referme.
 	tool.undo()
-	await _wait(2.0)
-	check(wall.last_stats.get("gates", 0) == 1, "annuler le chemin referme le portail")
+	# Le hameau entier se reconstruit encore après l'annulation du style : on attend le muret.
+	var t_gate := Time.get_ticks_msec()
+	while wall.last_stats.get("gates", 0) != 1 and Time.get_ticks_msec() - t_gate < 15000:
+		await process_frame
+	check(wall.last_stats.get("gates", 0) == 1, "annuler le chemin referme le portail (%d)" % wall.last_stats.get("gates", 0))
 	tool.undo()
 	tool.undo()
 	await _wait(2.0)

@@ -36,6 +36,10 @@ Au lancement, la caméra descend doucement vers un petit hameau qui sort de terr
 - **Style** : les boutons **Japonais / Médiéval** changent le style des prochaines constructions et celui de la structure sélectionnée.
 - **Annuler / rétablir** : **Ctrl+Z / Ctrl+Y** (ou les boutons). Tout s'annule : tracés, agrandissements, retouches, étages, styles, suppressions.
 - **Caméra** : clic droit (ou molette) maintenu + souris pour tourner autour, molette pour zoomer vers ce que vise la souris, **ZQSD** ou les flèches pour glisser, **A / E** pour pivoter, **F** pour recentrer. Plus tu t'approches, plus elle se baisse à hauteur de promeneur. Tous ses mouvements sont amortis.
+- **Herbe et lumière** : une herbe haute et dense (`BastideGrass`) suit la caméra, foncée au pied et dorée aux pointes, couchée par des vagues de vent ; elle s'écarte toute seule des chemins, maisons, terrasses, murets et de l'étang, et reste plus rase en forêt. Lumière dorée de fin de journée, brume volumétrique où passent les rayons, léger flou au loin et halo doux.
+
+![Herbe haute et lumière de fin de journée](docs/captures/ambiance_prairie.jpg)
+
 - **Promenade** (touche **P**) : la caméra descend à hauteur d'homme là où tu regardes. **ZQSD** pour marcher (**Maj** pour courir), clic droit + souris pour regarder. Troncs, murets et maisons arrêtent le pas, et on monte sur les terrasses. **P**, **Échap** ou molette arrière pour remonter.
 
 ![Promenade dans la forêt du hameau](docs/captures/foret_promenade.jpg)

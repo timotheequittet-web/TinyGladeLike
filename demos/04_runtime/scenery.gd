@@ -48,6 +48,9 @@ func _ground() -> void:
 	plane.material = mat
 	mi.mesh = plane
 	add_child(mi)
+	var grass := get_parent().get_node_or_null("Herbe") as BastideGrass
+	if grass:
+		grass.ground_material = mat
 
 
 ## Collines douces au loin : elles referment l'horizon dans la brume.
@@ -73,6 +76,9 @@ func _hills() -> void:
 
 
 func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
+	var grass := get_parent().get_node_or_null("Herbe") as BastideGrass
+	if grass:
+		grass.add_blocker(center, size * 1.08)
 	var water := MeshInstance3D.new()
 	water.name = "Etang"
 	var plane := PlaneMesh.new()

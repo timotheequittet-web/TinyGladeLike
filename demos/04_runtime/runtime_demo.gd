@@ -110,6 +110,15 @@ func _ready() -> void:
 	_show_hint(tool.current_hint())
 
 
+## Le flou lointain commence juste derrière ce qu'on regarde : le hameau reste net,
+## les collines et la forêt du fond s'adoucissent.
+func _process(_delta: float) -> void:
+	var attrs := camera.attributes as CameraAttributesPractical
+	if attrs:
+		var focus := 38.0 if camera.walking else camera.distance + 28.0
+		attrs.dof_blur_far_distance = lerpf(attrs.dof_blur_far_distance, focus, 0.1)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var k := event as InputEventKey

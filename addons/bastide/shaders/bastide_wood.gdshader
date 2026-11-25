@@ -32,11 +32,11 @@ float vnoise(vec3 x) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_nrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	world_nrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz + vec3(0.0, 1e-5, 0.0));
 }
 
 void fragment() {
-	vec3 c = COLOR.rgb;
+	vec3 c = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));   // jamais négatif : pow() donnerait NaN
 	vec3 base = mix(pow((c + vec3(0.055)) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
 	// Fil vertical sur les faces verticales, horizontal sur le dessus et le dessous.
 	vec3 s = abs(world_nrm.y) > 0.6 ? vec3(1.0, 1.0, 1.0 / stretch) : vec3(1.0, 1.0 / stretch, 1.0);

@@ -44,12 +44,12 @@ float fbm(vec3 p) {
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	world_nrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	world_nrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz + vec3(0.0, 1e-5, 0.0));
 }
 
 void fragment() {
 	// Les couleurs de sommets sont données en sRGB : conversion en linéaire.
-	vec3 c = COLOR.rgb;
+	vec3 c = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));   // jamais négatif : pow() donnerait NaN
 	vec3 base = mix(pow((c + vec3(0.055)) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
 	float grain = fbm(world_pos * grain_scale);
 	float blotch = fbm(world_pos * blotch_scale + vec3(13.1));

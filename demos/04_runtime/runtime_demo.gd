@@ -80,7 +80,9 @@ func _ready() -> void:
 	_build_ui()
 	tool.style = JAPANESE
 	site.garden_style = JAPANESE
-	tool.hint_changed.connect(_show_hint)
+	tool.hint_changed.connect(func(t: String) -> void:
+		if not camera.walking:
+			_show_hint(t))
 	tool.mode_changed.connect(func(_m: int) -> void: _refresh_mode())
 	tool.variant_changed.connect(func(_v: int) -> void: _refresh_mode())
 	tool.forest_kind_changed.connect(func(_k: int) -> void: _refresh_mode())

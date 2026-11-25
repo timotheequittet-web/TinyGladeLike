@@ -27,7 +27,7 @@ const SAKURA := [Color(0.9, 0.6, 0.66), Color(1.0, 0.84, 0.86)]   # cœur, bord 
 
 ## Réglages des couronnes par famille (voir crown()).
 const WOOD := {"kind": "leaf", "cover": 2.6, "card": 1.25}
-const SHRUB := {"kind": "bloom", "autumn": 0.0, "all_leafy": true, "card": 0.5, "cover": 12.0, "pull": 0.18}
+const SHRUB := {"kind": "bloom", "autumn": 0.0, "all_leafy": true, "card": 0.5, "cover": 12.0, "pull": 0.26}
 const MOMI := {"kind": "needle", "autumn": 0.0, "green_only": true, "card": 1.15, "depth": 0.6}
 const MATSU := {"kind": "needle", "autumn": 0.0, "green_only": true, "card": 0.45, "depth": 0.35}
 
@@ -309,7 +309,9 @@ static func plant(model: String, scale := 1.0) -> Dictionary:
 	var out := {}
 	if model.begins_with("hydrangea") or model.begins_with("azalea"):
 		var b := crown(key, arr, SHRUB)
-		out = {"mesh": b["crown"], "mat": b["crown_mat"]}
+		# Un cœur plein et sombre sous les fleurs : de près, l'arbuste a du volume
+		# au lieu d'un nuage de pétales.
+		out = {"mesh": b["crown"], "mat": b["crown_mat"], "trunk": _shrub_core(arr)}
 	elif model == "bush_1":
 		var b := crown(key, arr, {"kind": "leaf"})
 		out = {"mesh": b["crown"], "mat": b["crown_mat"], "trunk": b["trunk"]}
@@ -322,6 +324,33 @@ static func plant(model: String, scale := 1.0) -> Dictionary:
 	_cache[key] = out
 	_mutex.unlock()
 	return out
+
+
+static func _shrub_core(arr: Array) -> ArrayMesh:
+	var v: PackedVector3Array = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).duplicate()
+	if v.is_empty():
+		return null
+	var box := AABB(v[0], Vector3.ZERO)
+	for p in v:
+		box = box.expand(p)
+	var pivot := Vector3(box.get_center().x, box.position.y + box.size.y * 0.25, box.get_center().z)
+	for i in v.size():
+		var d := v[i] - pivot
+		v[i] = pivot + Vector3(d.x * 0.78, d.y * 0.8, d.z * 0.78)
+	var cols := PackedColorArray()
+	var src: Variant = arr[Mesh.ARRAY_COLOR]
+	cols.resize(v.size())
+	for i in v.size():
+		var c: Color = (src as PackedColorArray)[i] if src != null and i < (src as PackedColorArray).size() else Color(0.2, 0.3, 0.15)
+		# Vert profond tiré de la couleur d'origine (l'écorce l'éclaircit ensuite).
+		var g := Color(c.r * 0.25 + 0.03, c.g * 0.35 + 0.07, c.b * 0.25 + 0.03)
+		cols[i] = g
+	var out := arr.duplicate()
+	out[Mesh.ARRAY_VERTEX] = v
+	out[Mesh.ARRAY_COLOR] = cols
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+	return m
 
 
 static func _card(st: SurfaceTool, p: Vector3, n: Vector3, s: float, ang: float, color: Color) -> void:

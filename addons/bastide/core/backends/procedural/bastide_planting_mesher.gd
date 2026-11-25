@@ -342,6 +342,8 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 				var pl := BastideKitNature.plant(model)
 				var xf := Transform3D(Basis(Vector3.UP, rot).scaled(Vector3.ONE * size * 1.5), p)
 				add.call("plant/" + model, pl["mesh"], pl["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				if pl.get("trunk") != null:
+					add.call("plantcore/" + model, pl["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 			FERN:
 				var tf := BastideKitNature.tuft("fern", Color.WHITE, 1.4)
 				if tf.is_empty():

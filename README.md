@@ -36,6 +36,9 @@ Au lancement, la caméra descend doucement vers un petit hameau qui sort de terr
 - **Style** : les boutons **Japonais / Médiéval** changent le style des prochaines constructions et celui de la structure sélectionnée.
 - **Annuler / rétablir** : **Ctrl+Z / Ctrl+Y** (ou les boutons). Tout s'annule : tracés, agrandissements, retouches, étages, styles, suppressions.
 - **Caméra** : clic droit (ou molette) maintenu + souris pour tourner autour, molette pour zoomer vers ce que vise la souris, **ZQSD** ou les flèches pour glisser, **A / E** pour pivoter, **F** pour recentrer. Plus tu t'approches, plus elle se baisse à hauteur de promeneur. Tous ses mouvements sont amortis.
+- **Promenade** (touche **P**) : la caméra descend à hauteur d'homme là où tu regardes. **ZQSD** pour marcher (**Maj** pour courir), clic droit + souris pour regarder. Troncs, murets et maisons arrêtent le pas, et on monte sur les terrasses. **P**, **Échap** ou molette arrière pour remonter.
+
+![Promenade dans la forêt du hameau](docs/captures/foret_promenade.jpg)
 - **Divers** : **Ctrl+S / Ctrl+O** enregistrer / recharger le hameau, **M** couper le son, **H** masquer l'interface (pour les belles captures), **Échap** annuler un tracé ou désélectionner.
 
 ![Un rectangle tiré par-dessus une maison l'agrandit en L](docs/captures/etape4_agrandir_fantome.jpg)

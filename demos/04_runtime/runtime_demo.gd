@@ -28,6 +28,7 @@ var _forest_panel: PanelContainer
 var _style_buttons := {}
 var _undo_btn: Button
 var _redo_btn: Button
+var _walk_btn: Button
 var _sel_panel: PanelContainer
 var _floor_box: HBoxContainer
 var _toast: Label
@@ -91,6 +92,7 @@ func _ready() -> void:
 	tool.edited.connect(func() -> void: ambience.play_edit())
 	tool.removed.connect(func(_k: String) -> void: ambience.play_remove())
 	site.structure_changed.connect(func(_id: int) -> void: _refresh_selection())
+	camera.walking_changed.connect(_on_walking)
 	_refresh_mode()
 	_refresh_selection()
 	_undo_btn.disabled = true
@@ -251,6 +253,8 @@ func _build_ui() -> void:
 	_sep(hb)
 	_undo_btn = _button(hb, "Annuler", tool.undo)
 	_redo_btn = _button(hb, "Rétablir", tool.redo)
+	_sep(hb)
+	_walk_btn = _button(hb, "Promenade  P", func() -> void: camera.set_walking(not camera.walking), true)
 
 	# Variantes du muret (touche V), juste au-dessus quand le mode Muret est actif.
 	_variant_panel = PanelContainer.new()
@@ -323,7 +327,7 @@ func _build_ui() -> void:
 	root.add_child(title)
 	var keys := Label.new()
 	keys.position = Vector2(28, 54)
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
@@ -402,6 +406,19 @@ func _refresh_selection() -> void:
 				(_style_buttons[s] as Button).set_pressed_no_signal(s.resource_path == st.resource_path)
 	else:
 		_refresh_style_buttons()
+
+
+## En promenade, on ne construit pas : l'outil se tait et la barre s'efface un peu.
+func _on_walking(on: bool) -> void:
+	_walk_btn.set_pressed_no_signal(on)
+	if on:
+		tool.cancel_draft()
+		tool.select(-1)
+	tool.set_process_unhandled_input(not on)
+	if on:
+		_show_hint("Promenade : ZQSD pour marcher (Maj pour courir) · clic droit + souris pour regarder · P ou Échap pour remonter")
+	else:
+		_show_hint(tool.current_hint())
 
 
 func _show_hint(text: String) -> void:

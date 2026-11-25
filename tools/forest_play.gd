@@ -63,6 +63,59 @@ func _run() -> void:
 		await _wait(2.0)
 		await _shot("foret_dedans" if i == 0 else "foret_dedans_%d" % (i + 1))
 	cam.set_process(true)
+
+	# Promenade (P) : on descend marcher vers le tronc le plus proche ; il arrête le pas.
+	var bc := cam as BastideOrbitCamera
+	var trunks: Array[Vector3] = []
+	for t in forest.last_anchors.get("trees", []):
+		trunks.append(forest.to_global(t))
+	var start: Vector3 = views[0].origin if views.size() > 0 else forest.global_position
+	start.y = 0.0
+	bc.target = start
+	bc.focus(start)
+	bc.set_walking(true)
+	check(bc.walking, "la touche P fait descendre en promenade")
+	var near_t := trunks[0]
+	for t in trunks:
+		if Vector2(t.x - start.x, t.z - start.z).length() < Vector2(near_t.x - start.x, near_t.z - start.z).length():
+			near_t = t
+	var to := near_t - start
+	bc.set("_goal_yaw", atan2(-to.x, -to.z))
+	bc.set("_yaw", atan2(-to.x, -to.z))
+	await _wait(0.5)
+	var p0 := bc.global_position
+	var closest := INF
+	# Quelques pas, on s'arrête et on regarde autour de soi.
+	_key(KEY_W, true)
+	var pre_t := 0.0
+	while pre_t < 0.8:
+		await process_frame
+		pre_t += bc.get_process_delta_time()
+	_key(KEY_W, false)
+	bc.set("_goal_yaw", bc.get("_goal_yaw") + 0.5)
+	bc.set("_goal_walk_pitch", 0.12)
+	await _wait(1.5)
+	await _shot("foret_promenade")
+	bc.set("_goal_yaw", atan2(-(near_t - bc.global_position).x, -(near_t - bc.global_position).z))
+	bc.set("_goal_walk_pitch", -0.05)
+	await _wait(1.0)
+	_key(KEY_W, true)
+	var walk_frames := 0
+	var walk_t := 0.0
+	while walk_t < 5.0 and walk_frames < 400:
+		await process_frame
+		walk_frames += 1
+		walk_t += bc.get_process_delta_time()
+		for t in trunks:
+			closest = minf(closest, Vector2(t.x - bc.global_position.x, t.z - bc.global_position.z).length())
+	_key(KEY_W, false)
+	var walked := Vector2(bc.global_position.x - p0.x, bc.global_position.z - p0.z).length()
+	check(walked > 1.0, "on marche (%.1f m)" % walked)
+	check(closest > 0.55, "les troncs arrêtent le pas (au plus près %.2f m du cœur d'un tronc)" % closest)
+	check(absf(bc.global_position.y - bc.eye_height) < 0.6, "à hauteur d'homme (%.2f m)" % bc.global_position.y)
+	bc.set_walking(false)
+	await _wait(2.0)
+	check(not bc.walking and bc.global_position.y > 4.0, "P remonte en vue d'ensemble")
 	if views_only:
 		quit(_fail)
 		return
@@ -267,3 +320,11 @@ func _walker_views(forest: BastideForest) -> Array[Transform3D]:
 		if out.size() >= 2:
 			break
 	return out
+
+
+func _key(code: Key, pressed: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = pressed
+	Input.parse_input_event(e)

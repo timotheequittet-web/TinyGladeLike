@@ -318,24 +318,38 @@ func _build_ui() -> void:
 	root.add_child(_hint)
 
 	# Titre discret et rappel des commandes de la caméra.
+	# Un voile chaud et discret derrière le texte, lisible sur un ciel clair comme sur les cerisiers.
+	var card := PanelContainer.new()
+	card.position = Vector2(16, 12)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var veil := StyleBoxFlat.new()
+	veil.bg_color = Color(0.13, 0.1, 0.07, 0.32)
+	veil.set_corner_radius_all(12)
+	veil.set_content_margin_all(12)
+	veil.content_margin_left = 14
+	veil.content_margin_right = 16
+	card.add_theme_stylebox_override("panel", veil)
+	root.add_child(card)
+	var card_box := VBoxContainer.new()
+	card_box.add_theme_constant_override("separation", 4)
+	card_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(card_box)
 	var title := Label.new()
-	title.position = Vector2(26, 20)
 	title.text = "Bastide · hameau de campagne"
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Color(1, 0.98, 0.94))
 	title.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
 	title.add_theme_constant_override("shadow_outline_size", 6)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(title)
+	card_box.add_child(title)
 	var keys := Label.new()
-	keys.position = Vector2(28, 54)
 	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
-	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
+	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.92))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
 	keys.add_theme_constant_override("shadow_outline_size", 5)
 	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(keys)
+	card_box.add_child(keys)
 
 	# Petit bouton « tout retirer », en haut à droite.
 	var tr := PanelContainer.new()

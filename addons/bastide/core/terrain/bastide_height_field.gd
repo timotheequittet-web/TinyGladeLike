@@ -15,6 +15,9 @@ var cell := 1.0
 var width := 0
 var depth := 0
 var heights := PackedFloat32Array()
+## Plans d'eau posés sur ce relief (étangs) : [{poly: PackedVector2Array, level, rect}],
+## en monde. Lus par les structures qui ne doivent pas finir sous l'eau.
+var waters: Array = []
 
 
 static func flat(origin_: Vector2, cell_: float, width_: int, depth_: int, h := 0.0) -> BastideHeightField:
@@ -66,6 +69,21 @@ func height(x: float, z: float) -> float:
 
 func height_v(p: Vector3) -> float:
 	return height(p.x, p.z)
+
+
+## Niveau de l'eau en (x, z) s'il y a un étang à cet endroit, sinon -INF.
+func water_level(x: float, z: float) -> float:
+	var p := Vector2(x, z)
+	for w: Dictionary in waters:
+		if (w["rect"] as Rect2).has_point(p) and Geometry2D.is_point_in_polygon(p, w["poly"]):
+			return w["level"]
+	return -INF
+
+
+## Profondeur d'eau en (x, z) (0 hors de l'eau).
+func water_depth(x: float, z: float) -> float:
+	var l := water_level(x, z)
+	return maxf(l - height(x, z), 0.0) if l > -INF else 0.0
 
 
 ## Normale du sol (différences centrées).

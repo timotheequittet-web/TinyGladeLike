@@ -135,6 +135,8 @@ func add_blocker(center: Vector3, radii: Vector2, strength := 1.0) -> void:
 
 
 func _bind_terrain() -> void:
+	# Un étang vient d'être creusé (ou comblé) : le masque change aussi.
+	_mask_dirty = true
 	if terrain == null or terrain.field == null:
 		return
 	var r := terrain.field.rect()
@@ -397,6 +399,9 @@ func _draw_mask() -> void:
 		_poly(d["footprint"], xf, 0.9, k)
 	for d: Dictionary in ctx.terraces:
 		_poly(d["footprint"], xf, 0.5, k)
+	# Pas d'herbe dans l'eau, une berge plus rase autour.
+	for d: Dictionary in ctx.ponds:
+		_poly(d["footprint"], xf, 0.7, k)
 	for d: Dictionary in ctx.paths:
 		_line(d["points"], xf, float(d["width"]) + 0.7, 1.0, k, false)
 	for d: Dictionary in ctx.walls:

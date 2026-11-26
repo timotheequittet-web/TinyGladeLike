@@ -16,7 +16,13 @@ uniform float grass_far = 70.0;
 uniform vec3 under_grass : source_color = vec3(0.3, 0.45, 0.16);
 uniform vec3 far_tint : source_color = vec3(0.55, 0.62, 0.27);
 
+// Berges et fonds d'étang (couleur des sommets du relief : r = berge, g = lit).
+uniform vec3 bank_color : source_color = vec3(0.36, 0.33, 0.24);
+uniform vec3 bed_color : source_color = vec3(0.34, 0.31, 0.22);
+uniform vec3 pebble_color : source_color = vec3(0.62, 0.6, 0.55);
+
 varying vec3 wp;
+varying vec2 water_paint;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -32,6 +38,7 @@ float fbm(vec2 p) {
 
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	water_paint = COLOR.rg;
 }
 
 void fragment() {
@@ -64,6 +71,19 @@ void fragment() {
 	float d = abs(wp.x - path_x);
 	float on_path = (1.0 - smoothstep(0.9, 1.6 + mid * 0.6, d)) * smoothstep(14.0, 24.0, wp.z) * painted_path;
 	col = mix(col, path_color * (0.92 + fine * 0.12), on_path);
+	// Étangs : la berge mouillée et le lit (vase, petits galets) remplacent l'herbe.
+	float bank = smoothstep(0.05, 0.9, water_paint.r) * (0.75 + mid * 0.4);
+	float bed = smoothstep(0.05, 0.8, water_paint.g);
+	vec2 pc = floor(p * 6.0);
+	vec2 pf = fract(p * 6.0) - 0.5;
+	float pebble = (1.0 - smoothstep(0.18, 0.34, length(pf - (vec2(hash(pc + 1.7), hash(pc + 9.2)) - 0.5) * 0.4)))
+			* step(0.45, hash(pc));
+	vec3 earth = mix(bank_color, bank_color * 0.75, fine);
+	earth = mix(earth, pebble_color * (0.85 + hash(pc + 4.0) * 0.3), pebble * 0.55);
+	col = mix(col, earth, clamp(bank, 0.0, 1.0) * (1.0 - bed));
+	vec3 mud = mix(bed_color, bed_color * 1.25, mid);
+	mud = mix(mud, pebble_color * 0.8, pebble * 0.6);
+	col = mix(col, mud, bed);
 	ALBEDO = col;
-	ROUGHNESS = 0.95;
+	ROUGHNESS = mix(0.95, 0.6, max(bank * 0.6, bed));
 }

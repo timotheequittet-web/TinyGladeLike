@@ -64,6 +64,12 @@ func _init() -> void:
 	_test_forest()
 	_test_terrain()
 	_test_silhouettes()
+	# Jardins d'eau.
+	_test_pond_shape()
+	_test_pond_carve()
+	_test_pond_build()
+	_test_pond_bridges()
+	_test_pond_neighbours()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1281,3 +1287,206 @@ func _test_silhouettes() -> void:
 	check(sl.floors == 1 and sl.eave_y < kl.eave_y, "petite maison : un niveau, plus basse que le kura")
 	var tm := BastideBuilding.compute(BastideBuildingSpec.from_points(_rect(4.4, 4.4), 5), tower, true)
 	check(tm.mesh != null and tm.mesh.get_surface_count() > 0 and not tm.collision_faces.is_empty(), "tour : maillage et collisions")
+
+
+# --- Jardins d'eau -------------------------------------------------------------------
+
+func _blob(cx: float, cz: float, r: float, n := 9) -> PackedVector3Array:
+	var pts := PackedVector3Array()
+	for i in n:
+		var a := TAU * i / n
+		var rr := r * (1.0 + 0.18 * sin(a * 3.0))
+		pts.append(Vector3(cx + cos(a) * rr * 1.3, 0, cz + sin(a) * rr))
+	return pts
+
+
+func _test_pond_shape() -> void:
+	print("Étang : forme")
+	var pts := _blob(0, 0, 4.0)
+	var poly := BastidePondShape.outline(pts, 3)
+	check(poly.size() > 30, "la rive est rééchantillonnée finement (%d points)" % poly.size())
+	check(BastidePolygon.signed_area(poly) > 0.0, "la rive est dans le sens direct")
+	check(not BastidePolygon.self_intersects(poly), "la rive ne se croise pas")
+	var a0 := absf(BastideStroke.signed_area(pts))
+	var a1 := BastidePolygon.signed_area(poly)
+	check(a1 > a0 * 0.75 and a1 < a0 * 1.15, "la surface reste proche du tracé (%.0f / %.0f m²)" % [a1, a0])
+	var max_turn := 0.0
+	for i in poly.size():
+		max_turn = maxf(max_turn, absf(BastidePolygon.turn_angle(poly, i)))
+	check(max_turn < deg_to_rad(40.0), "pas d'angle vif sur la rive (%.0f°)" % rad_to_deg(max_turn))
+	check(BastidePondShape.outline(pts, 3) == poly, "même tracé, même graine : même rive")
+	check(BastidePondShape.outline(pts, 4) != poly, "autre graine : rive un peu différente")
+	# Un tracé main levée qui se recoupe à peine ou un gribouillis minuscule.
+	check(BastidePondShape.outline(_blob(0, 0, 0.8), 1).is_empty(), "un étang minuscule est refusé")
+	var big := BastidePondShape.outline(_blob(0, 0, 60.0, 12), 1)
+	var r := BastidePondShape.rect_of(big)
+	check(maxf(r.size.x, r.size.y) <= BastidePondShape.MAX_SIDE + 3.0, "un étang géant est ramené à %.0f m" % BastidePondShape.MAX_SIDE)
+	# Un carré dessiné grossièrement devient une forme douce.
+	var sq := PackedVector3Array([Vector3(0, 0, 0), Vector3(8, 0, 0.3), Vector3(8.2, 0, 7), Vector3(-0.2, 0, 7.4)])
+	var sp := BastidePondShape.outline(sq, 2)
+	check(not sp.is_empty() and not BastidePolygon.self_intersects(sp), "un carré grossier devient un étang arrondi")
+	check(BastidePondShape.signed_distance(Vector2(4, 3.6), sp) < -2.0 and BastidePondShape.signed_distance(Vector2(-3, 3.6), sp) > 1.0,
+			"distance signée : négative dans l'eau, positive sur la berge")
+
+
+func _slope_field(slope := 0.08) -> BastideHeightField:
+	var f := BastideHeightField.flat(Vector2(-40, -40), 1.0, 81, 81)
+	for j in 81:
+		for i in 81:
+			f.set_at(i, j, (i - 40) * slope)
+	return f
+
+
+func _test_pond_carve() -> void:
+	print("Étang : creusement")
+	var base := _slope_field()
+	var poly := BastidePondShape.outline(_blob(0, 0, 5.0), 5)
+	var level := BastidePondShape.water_level(base, poly)
+	var lo := INF
+	var hi := -INF
+	for p in poly:
+		lo = minf(lo, base.height(p.x, p.y))
+		hi = maxf(hi, base.height(p.x, p.y))
+	check(level < lo + 0.6 * (hi - lo) and level > lo - 0.5, "niveau d'eau entre bas et haut de la rive (%.2f dans [%.2f, %.2f])" % [level, lo, hi])
+	var c := BastidePondShape.carve_info(poly, level)
+	var f := BastideHeightField.flat(base.origin, base.cell, base.width, base.depth)
+	f.heights = base.heights.duplicate()
+	var paint := PackedColorArray()
+	paint.resize(f.width * f.depth)
+	paint.fill(Color(0, 0, 0, 1))
+	var touched := BastidePondShape.apply(f, base, paint, c)
+	check(touched.size.x > 10 and touched.size.y > 10, "zone touchée sur la grille")
+	# Le centre est sous l'eau, la rive juste au-dessus, partout autour (pas de fuite).
+	check(f.height(0, 0) < level - 0.4, "le centre est creusé (%.2f sous l'eau)" % (level - f.height(0, 0)))
+	var leak := 0
+	var dry_rim := 0
+	for p in poly:
+		var g := f.height(p.x, p.y)
+		if g < level:
+			leak += 1
+		if g > level + 0.6:
+			dry_rim += 1
+	check(leak == 0, "la rive est partout au-dessus de l'eau : l'eau ne fuit pas (%d)" % leak)
+	check(dry_rim < poly.size() / 10, "la rive affleure presque partout (%d points trop hauts)" % dry_rim)
+	# Loin de l'étang, le sol n'a pas bougé.
+	check(is_equal_approx(f.height(30, 30), base.height(30, 30)), "le sol est intact loin de l'étang")
+	var wet := paint[40 * f.width + 40]
+	check(wet.g > 0.9, "le lit de l'étang est peint")
+	# Le relief garde la mémoire de l'eau.
+	f.waters.append({"poly": poly, "level": level, "rect": BastidePondShape.rect_of(poly)})
+	check(is_equal_approx(f.water_level(0, 0), level) and f.water_level(30, 30) == -INF, "le relief sait où est l'eau")
+	check(f.water_depth(0, 0) > 0.4, "profondeur d'eau au centre (%.2f m)" % f.water_depth(0, 0))
+
+
+func _test_pond_build() -> void:
+	print("Étang : génération")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var pts := _blob(0, 0, 5.0)
+	var base := _slope_field(0.05)
+	var r := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.GARDEN, jp, null, base, Transform3D.IDENTITY)
+	check(r.mesh != null and r.mesh.get_surface_count() >= 3, "eau, pierres et nénuphars (%d surfaces)" % (r.mesh.get_surface_count() if r.mesh else 0))
+	check(r.stats.get("rocks", 0) >= 2 and r.stats.get("stones", 0) >= 5, "rochers et pierres de rive (%d, %d)" % [r.stats.get("rocks", 0), r.stats.get("stones", 0)])
+	check(r.stats.get("pebbles", 0) >= 30, "une rive de galets (%d)" % r.stats.get("pebbles", 0))
+	check(r.stats.get("plants", 0) >= 6, "iris et massifs (%d)" % r.stats.get("plants", 0))
+	check(r.stats.get("lilies", 0) >= 3, "nénuphars (%d)" % r.stats.get("lilies", 0))
+	check(r.stats.get("koi", 0) >= 2, "carpes koï (%d)" % r.stats.get("koi", 0))
+	var koi_ok := false
+	for g: Dictionary in r.instances:
+		if g.has("custom") and (g["custom"] as Array).size() == (g["transforms"] as Array).size():
+			koi_ok = true
+	check(koi_ok, "les koï portent leur cercle de nage (données par instance)")
+	check(not r.collision_faces.is_empty(), "collisions (surface de l'eau, rochers)")
+	check(r.anchors.has("carve") and r.anchors.has("shore"), "l'étang décrit son creusement et sa rive")
+	var water_y: float = r.anchors["level"]
+	var surf := -1
+	for i in r.mesh.get_surface_count():
+		if r.mesh.surface_get_name(i) == "water":
+			surf = i
+	var flat := surf >= 0
+	if surf >= 0:
+		for v: Vector3 in r.mesh.surface_get_arrays(surf)[Mesh.ARRAY_VERTEX]:
+			if absf(v.y - water_y) > 1e-4:
+				flat = false
+	check(flat, "l'eau est parfaitement à plat, même sur la pente")
+	var r2 := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.GARDEN, jp, null, base, Transform3D.IDENTITY)
+	check(r2.stats == r.stats, "même graine, même étang")
+	var onsen := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.ONSEN, jp, null, base, Transform3D.IDENTITY)
+	check(onsen.stats.get("rocks", 0) >= 15 and onsen.stats.get("koi", 0) == 0 and onsen.stats.get("lilies", 0) == 0,
+			"onsen : cerné de rochers, sans koï ni nénuphars (%d rochers)" % onsen.stats.get("rocks", 0))
+	check((onsen.anchors.get("steam", PackedVector3Array()) as PackedVector3Array).size() >= 3, "onsen : de la vapeur au-dessus de l'eau")
+	var wild := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.WILD, jp, null, base, Transform3D.IDENTITY)
+	check(wild.stats.get("plants", 0) > r.stats.get("plants", 0) and wild.stats.get("lilies", 0) >= r.stats.get("lilies", 0),
+			"mare sauvage : plus de roseaux et de nénuphars")
+	check(BastidePondBuilder.build(_blob(0, 0, 0.5), 7, 0, jp, null, base, Transform3D.IDENTITY).is_empty(), "tracé trop petit : rien")
+	# Sans relief : posé à plat.
+	var r0 := BastidePondBuilder.build(pts, 7, 0, jp, null, null, Transform3D.IDENTITY)
+	check(not r0.is_empty() and is_equal_approx(float(r0.anchors["level"]), -BastidePondShape.FREEBOARD), "sans relief : eau juste sous le sol")
+	var t0 := Time.get_ticks_msec()
+	BastidePondBuilder.build(_blob(0, 0, 12.0, 12), 9, 0, jp, null, _slope_field(0.03), Transform3D.IDENTITY)
+	var ms := Time.get_ticks_msec() - t0
+	check(ms < 3000, "un grand étang se génère vite (%d ms)" % ms)
+
+
+func _test_pond_bridges() -> void:
+	print("Étang : ponts")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var pts := _blob(0, 0, 5.0)
+	var ctx_of := func(line: Array) -> BastideGardenContext:
+		return BastideGardenContext.from_entries([{"kind": "path", "points": PackedVector3Array(line), "width": 1.5}])
+	# Traverse l'étang de part en part : un pont arqué.
+	var across := BastidePondBuilder.build(pts, 7, 0, jp, ctx_of.call([Vector3(-12, 0, 0.5), Vector3(12, 0, 0.5)]), null, Transform3D.IDENTITY)
+	var br: Array = across.anchors.get("bridges", [])
+	check(br.size() == 1, "un chemin qui traverse : un pont (%d)" % br.size())
+	if br.size() == 1:
+		check(br[0]["kind"] == "arch" or br[0]["kind"] == "zigzag", "au-dessus d'un bras d'eau : pont en bois (%s, %.1f m)" % [br[0]["kind"], br[0]["span"]])
+	# Coupe juste un coin de l'étang : des pierres de gué.
+	var corner := BastidePondBuilder.build(pts, 7, 0, jp, ctx_of.call([Vector3(5.2, 0, -8), Vector3(6.05, 0, 0.6), Vector3(5.2, 0, 8)]), null, Transform3D.IDENTITY)
+	var cb: Array = corner.anchors.get("bridges", [])
+	check(cb.size() >= 1 and cb[0]["kind"] == "stones", "coin de l'étang : pierres de gué (%s)" % (str(cb[0]) if cb.size() > 0 else "rien"))
+	# Le chemin s'arrête dans l'eau : pas de pont vers nulle part.
+	var dead := BastidePondBuilder.build(pts, 7, 0, jp, ctx_of.call([Vector3(-12, 0, 0), Vector3(0, 0, 0)]), null, Transform3D.IDENTITY)
+	check((dead.anchors.get("bridges", []) as Array).is_empty(), "chemin qui finit dans l'eau : pas de pont")
+	# Un long étang traversé dans la longueur : passerelle en zigzag.
+	var long_pts := PackedVector3Array()
+	for i in 10:
+		var a := TAU * i / 10.0
+		long_pts.append(Vector3(cos(a) * 9.5, 0, sin(a) * 3.2))
+	var zz := BastidePondBuilder.build(long_pts, 7, 0, jp, ctx_of.call([Vector3(-16, 0, 0), Vector3(16, 0, 0.2)]), null, Transform3D.IDENTITY)
+	var zb: Array = zz.anchors.get("bridges", [])
+	check(zb.size() == 1 and zb[0]["kind"] == "zigzag", "longue traversée : passerelle en zigzag (%s)" % (zb[0]["kind"] if zb.size() > 0 else "rien"))
+	# Le gravier du chemin noyé est retiré.
+	var f := BastideHeightField.flat(Vector2(-20, -20), 1.0, 41, 41)
+	var poly := BastidePondShape.outline(pts, 7)
+	var c := BastidePondShape.carve_info(poly, -0.2)
+	BastidePondShape.apply(f, BastideHeightField.flat(Vector2(-20, -20), 1.0, 41, 41), PackedColorArray(), c)
+	f.waters.append({"poly": poly, "level": -0.2, "rect": BastidePondShape.rect_of(poly)})
+	var path := BastidePathMesher.build(PackedVector3Array([Vector3(-12, 0, 0.5), Vector3(12, 0, 0.5)]), 3, jp, BastideGardenContext.new(), true)
+	var before := 0
+	for i in path.mesh.get_surface_count():
+		before += path.mesh.surface_get_array_len(i)
+	BastideDrape.apply(path, f, Transform3D.IDENTITY, BastideDrape.Mode.FOLLOW)
+	var gone := BastideDrape.clip_water(path, f, Transform3D.IDENTITY)
+	var after := 0
+	for i in path.mesh.get_surface_count():
+		after += path.mesh.surface_get_array_len(i)
+	check(gone > 20 and after < before, "le gravier noyé du chemin disparaît (%d triangles)" % gone)
+
+
+func _test_pond_neighbours() -> void:
+	print("Étang : voisins")
+	var poly := BastidePondShape.outline(_blob(0, 0, 4.0), 3)
+	var shore := PackedVector3Array()
+	for p in poly:
+		shore.append(Vector3(p.x, -0.3, p.y))
+	var ctx := BastideGardenContext.from_entries([{"kind": "pond", "footprint": shore, "pond_kind": 0}])
+	check(ctx.ponds.size() == 1 and is_equal_approx(float(ctx.ponds[0]["level"]), -0.3), "le voisinage connaît l'étang et son niveau")
+	check(ctx.blocked(Vector2(0, 0), 0.3), "on ne plante rien dans l'eau")
+	check(not ctx.blocked(Vector2(12, 0), 0.3), "loin de l'étang, la place est libre")
+	# Les arbres d'une forêt évitent l'eau.
+	var forest_pts := PackedVector3Array([Vector3(-20, 0, -20), Vector3(20, 0, -20), Vector3(20, 0, 20), Vector3(-20, 0, 20)])
+	var fr := BastideForestBuilder.build(forest_pts, 3, BastideForestBuilder.Kind.MIXED, 1.0, 1.0, 1.0, ctx, false)
+	var wet := 0
+	for t: Vector3 in fr.anchors.get("trees", []):
+		if BastidePondShape.signed_distance(Vector2(t.x, t.z), poly) < 0.5:
+			wet += 1
+	check(wet == 0, "aucun arbre de forêt dans l'eau (%d)" % wet)

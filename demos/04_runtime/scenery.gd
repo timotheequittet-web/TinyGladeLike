@@ -4,7 +4,6 @@ extends Node3D
 ## d'image ni modèle, et reste hors de la zone de construction.
 
 const GROUND_SHADER := preload("res://demos/04_runtime/ground.gdshader")
-const WATER_SHADER := preload("res://demos/04_runtime/water.gdshader")
 
 ## Rayon de la clairière laissée libre pour construire.
 @export var clearing_radius := 34.0
@@ -16,6 +15,9 @@ var _rng := RandomNumberGenerator.new()
 var _rock_mat: StandardMaterial3D
 var _petals: CPUParticles3D
 var _terrain: BastideTerrain
+## Rochers épars : [MeshInstance3D, décalage au-dessus du sol], recalés quand le
+## relief change (un étang creusé dessous les noie au lieu de les laisser en l'air).
+var _rocks: Array = []
 
 
 ## Hauteur du sol (relief s'il y en a un).
@@ -32,10 +34,12 @@ func _ready() -> void:
 	_ground()
 	if _terrain == null:
 		_hills()
-	# La rive est dégagée là où la terrasse de la démo avance sur l'eau.
-	_pond(Vector3(-27, 0, 16), Vector2(9.0, 6.0), Rect2(-23.5, 13.0, 6.0, 4.6))
+	# L'étang de la démo est maintenant une vraie structure (BastidePond, dans le
+	# hameau de départ) : il creuse le relief et vit avec le reste.
 	_groves()
 	_petals_fx()
+	if _terrain:
+		_terrain.changed.connect(_resnap_rocks)
 
 
 func _process(_delta: float) -> void:
@@ -90,33 +94,6 @@ func _hills() -> void:
 		mi.rotation.y = _rng.randf() * TAU
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
-
-
-func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
-	var grass := get_parent().get_node_or_null("Herbe") as BastideGrass
-	if grass:
-		grass.add_blocker(center, size * 1.08)
-	var water := MeshInstance3D.new()
-	water.name = "Etang"
-	var plane := PlaneMesh.new()
-	plane.size = size * 2.0
-	var mat := ShaderMaterial.new()
-	mat.shader = WATER_SHADER
-	plane.material = mat
-	water.mesh = plane
-	water.position = center + Vector3(0, _h(center.x, center.z) + 0.05, 0)
-	add_child(water)
-	# Rive : galets autour de l'eau.
-	var n := 34
-	for i in n:
-		var a := TAU * i / n + _rng.randf_range(-0.05, 0.05)
-		var p := center + Vector3(cos(a) * size.x * 0.97, 0, sin(a) * size.y * 0.97)
-		var sz := _rng.randf_range(0.35, 0.8)
-		if clear.has_point(Vector2(p.x, p.z)):
-			continue
-		_rock(p, sz)
-	_rock(center + Vector3(size.x * 0.6, 0, -size.y * 0.9), 1.5)
-	_rock(center + Vector3(-size.x * 0.9, 0, size.y * 0.4), 1.1)
 
 
 func _groves() -> void:
@@ -204,6 +181,17 @@ func _rock(pos: Vector3, size: float) -> void:
 	mi.scale = Vector3(size * _rng.randf_range(0.8, 1.3), size * _rng.randf_range(0.4, 0.65), size * _rng.randf_range(0.8, 1.2))
 	mi.rotation = Vector3(_rng.randf_range(-0.2, 0.2), _rng.randf() * TAU, _rng.randf_range(-0.2, 0.2))
 	add_child(mi)
+	_rocks.append([mi, size * 0.15])
+
+
+func _resnap_rocks() -> void:
+	if _terrain == null or _terrain.field == null:
+		return
+	for r: Array in _rocks:
+		var mi := r[0] as MeshInstance3D
+		var p := mi.position
+		mi.position.y = _h(p.x, p.z) + float(r[1])
+		mi.visible = _terrain.field.water_level(p.x, p.z) == -INF
 
 
 

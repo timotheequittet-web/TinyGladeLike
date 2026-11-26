@@ -97,7 +97,32 @@ static func anchors(layout: BastideBuildingLayout) -> Dictionary:
 			if o.kind == Kind.DOOR and o.floor == 0:
 				doors.append({"pos": f.point((o.u0 + o.u1) * 0.5, layout.base_y), "out": f.out3(), "width": o.u1 - o.u0})
 	return {"doors": doors, "footprint": layout.footprint, "base_y": layout.base_y,
-		"overhang": layout.roof.overhang if layout.roof else 0.5}
+		"overhang": layout.roof.overhang if layout.roof else 0.5, "smoke": smoke_points(layout.roof)}
+
+
+## Où la fumée du foyer s'échappe : le haut de la cheminée, sinon les bouts du plus
+## haut faîtage (les évents sous les petits pignons d'un irimoya).
+static func smoke_points(roof: BastideRoofLayout) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if roof == null:
+		return out
+	if not roof.chimney.is_empty():
+		var p: Vector2 = roof.chimney.pos
+		out.append(Vector3(p.x, float(roof.chimney.y1) + 0.15, p.y))
+		return out
+	var best := -INF
+	var top: Dictionary = {}
+	for arc: Dictionary in roof.arcs:
+		var a: Vector3 = arc["a"]
+		var b: Vector3 = arc["b"]
+		if int(arc["kind"]) == BastideRoofLayout.ArcKind.RIDGE and absf(a.y - b.y) < 0.05 and a.y > best and a.distance_to(b) > 0.5:
+			best = a.y
+			top = arc
+	if not top.is_empty():
+		var a: Vector3 = top["a"]
+		var b: Vector3 = top["b"]
+		out.append(a.lerp(b, 0.12) + Vector3(0, 0.1, 0))
+	return out
 
 
 static func _roof_name(roof: BastideRoofLayout) -> String:

@@ -80,7 +80,14 @@ func _close_views() -> void:
 	_walk_at(Vector3(-1, 0, 6), Vector3(-5, 2.5, -4), 0.08)
 	await _wait(2.0)
 	await _shot("pres_facade")
+	# Vie du hameau : lanterne au premier plan, fumée sur le toit, papillons.
+	_walk_at(Vector3(1.5, 0, 5.5), Vector3(-7, 6, -3), 0.12)
+	await _wait(2.5)
+	await _shot("vie")
 	cam.set_walking(false)
+	cam.glide_to(Vector3(-4, 0, -2), 26.0, 25.0)
+	await _wait(3.0)
+	await _shot("vie_haut")
 
 
 func _walk_at(p: Vector3, look: Vector3, pitch: float) -> void:

@@ -125,6 +125,13 @@ func _init() -> void:
 	grass.site = site
 	grass.camera = cam
 
+	# --- Vie du hameau : fumées, lanternes, oiseaux, papillons ---
+	var life := BastideLife.new()
+	life.name = "Vie"
+	_add(root, life)
+	life.site = site
+	life.camera = cam
+
 	var amb := Node.new()
 	amb.name = "Ambiance"
 	amb.set_script(load("res://demos/04_runtime/ambience.gd"))

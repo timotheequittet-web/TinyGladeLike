@@ -101,6 +101,20 @@ soubassement de pierres sèches appareillées (façon ishigaki).
 - **Enduit** (`plaster_amount` du shader pierre) : nuages de chaux chauds et froids,
   traces de taloche et fines coulures, sans texture.
 
+## Vie du hameau
+
+![Fumée sur le toit, lanternes, papillons](docs/captures/vie_hameau.jpg)
+
+Le nœud `BastideLife` anime le hameau tout seul, à partir de ce que les
+constructions exposent (points `smoke` et `lights`, posés sur le relief) :
+
+- la fumée monte des cheminées, ou des évents sous le faîtage des maisons
+  japonaises, et part avec le vent (`wind`, `smoke_share`) ;
+- les lanternes de pierre des chemins sont allumées et vacillent ; seules les plus
+  proches de la caméra éclairent (`max_lights`) ;
+- des vols d'oiseaux tournent haut au-dessus du hameau, entre battements et planés ;
+- des papillons volettent au ras de l'herbe autour de la caméra.
+
 ## Forêts et arbres d'Onsen
 
 ![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)

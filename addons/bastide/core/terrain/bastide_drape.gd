@@ -34,6 +34,10 @@ static func apply(result: BastideBuildResult, field: BastideHeightField, xf: Tra
 	if result.mesh:
 		result.mesh = _mesh(result.mesh, field, xf, inv, mode, lift)
 	result.collision_faces = _points(result.collision_faces, field, xf, inv, mode, lift)
+	# Points de vie (fumées, lumières) : posés comme le reste.
+	for key in ["smoke", "lights"]:
+		if result.anchors.get(key) is PackedVector3Array:
+			result.anchors[key] = _points(result.anchors[key], field, xf, inv, mode, lift)
 	for g: Dictionary in result.instances:
 		var out: Array = []
 		for t: Transform3D in g["transforms"]:

@@ -210,7 +210,10 @@ static func build(points: PackedVector3Array, seed: int, style: BastideStyle, ct
 			result.add_box([p + Vector3(-0.3, 0, -0.3), p + Vector3(0.3, 0, -0.3), p + Vector3(0.3, 0, 0.3), p + Vector3(-0.3, 0, 0.3),
 				p + Vector3(-0.3, 1.6, -0.3), p + Vector3(0.3, 1.6, -0.3), p + Vector3(0.3, 1.6, 0.3), p + Vector3(-0.3, 1.6, 0.3)])
 	result.mesh = mb.commit(BastideGardenMesher.materials(style))
-	result.anchors = {"center": center, "width": w}
+	var lights := PackedVector3Array()
+	for l: Dictionary in pl["lanterns"]:
+		lights.append((l["pos"] as Vector3) + Vector3(0, 1.05, 0))
+	result.anchors = {"center": center, "width": w, "lights": lights}
 	result.stats = {"triangles": mb.triangle_count, "length": snappedf(cum[cum.size() - 1], 0.01),
 		"stones": (pl["stones"] as Array).size(), "lanterns": (pl["lanterns"] as Array).size(),
 		"doors": int(not (pl["door_start"] as Dictionary).is_empty()) + int(not (pl["door_end"] as Dictionary).is_empty())}

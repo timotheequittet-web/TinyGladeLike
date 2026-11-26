@@ -1,15 +1,16 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://demos/04_runtime/runtime_demo.gd" id="1_o2c6s"]
-[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_terrain.gd" id="2_uvevg"]
-[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_orbit_camera.gd" id="3_hbpmb"]
-[ext_resource type="Script" path="res://demos/04_runtime/scenery.gd" id="4_b38ro"]
-[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_site.gd" id="5_a5b3o"]
-[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_tool.gd" id="6_uji84"]
-[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_grass.gd" id="7_6w2e4"]
-[ext_resource type="Script" path="res://demos/04_runtime/ambience.gd" id="8_ndi6n"]
+[ext_resource type="Script" path="res://demos/04_runtime/runtime_demo.gd" id="1_uvevg"]
+[ext_resource type="Script" path="res://addons/bastide/nodes/bastide_terrain.gd" id="2_hbpmb"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_orbit_camera.gd" id="3_b38ro"]
+[ext_resource type="Script" path="res://demos/04_runtime/scenery.gd" id="4_a5b3o"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_site.gd" id="5_uji84"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_build_tool.gd" id="6_6w2e4"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_grass.gd" id="7_ndi6n"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_life.gd" id="8_nxrwe"]
+[ext_resource type="Script" path="res://demos/04_runtime/ambience.gd" id="9_2sv16"]
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_nxrwe"]
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_dkw7m"]
 sky_top_color = Color(0.46, 0.6, 0.8, 1)
 sky_horizon_color = Color(1, 0.8, 0.6, 1)
 sky_curve = 0.1
@@ -18,12 +19,12 @@ ground_horizon_color = Color(0.92, 0.76, 0.56, 1)
 sun_angle_max = 32.0
 sun_curve = 0.12
 
-[sub_resource type="Sky" id="Sky_2sv16"]
-sky_material = SubResource("ProceduralSkyMaterial_nxrwe")
+[sub_resource type="Sky" id="Sky_pbapx"]
+sky_material = SubResource("ProceduralSkyMaterial_dkw7m")
 
-[sub_resource type="Environment" id="Environment_dkw7m"]
+[sub_resource type="Environment" id="Environment_76swp"]
 background_mode = 2
-sky = SubResource("Sky_2sv16")
+sky = SubResource("Sky_pbapx")
 ambient_light_source = 3
 ambient_light_energy = 0.75
 reflected_light_source = 2
@@ -55,23 +56,23 @@ adjustment_enabled = true
 adjustment_contrast = 1.04
 adjustment_saturation = 1.1
 
-[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_pbapx"]
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_a2d0c"]
 dof_blur_far_enabled = true
 dof_blur_far_distance = 80.0
 dof_blur_far_transition = 50.0
 dof_blur_amount = 0.06
 
-[node name="RuntimeDemo" type="Node3D" unique_id=2096760649]
-script = ExtResource("1_o2c6s")
+[node name="RuntimeDemo" type="Node3D" unique_id=141696400]
+script = ExtResource("1_uvevg")
 
-[node name="Terrain" type="Node3D" parent="." unique_id=208605628]
-script = ExtResource("2_uvevg")
+[node name="Terrain" type="Node3D" parent="." unique_id=1052318561]
+script = ExtResource("2_hbpmb")
 flat_zones = Array[Vector4]([Vector4(-27, 16, 10.5, 7)])
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=59184010]
-environment = SubResource("Environment_dkw7m")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=20584770]
+environment = SubResource("Environment_76swp")
 
-[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=1582376906]
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=1102065435]
 transform = Transform3D(-0.88294756, -0.1372602, 0.44895792, 0, 0.9563048, 0.2923717, -0.46947157, 0.25814888, -0.84436697, 0, 0, 0)
 light_color = Color(1, 0.78, 0.55, 1)
 light_energy = 1.9
@@ -80,31 +81,37 @@ shadow_enabled = true
 shadow_blur = 1.4
 directional_shadow_max_distance = 150.0
 
-[node name="Camera" type="Camera3D" parent="." unique_id=2085184198]
-attributes = SubResource("CameraAttributesPractical_pbapx")
+[node name="Camera" type="Camera3D" parent="." unique_id=1544615269]
+attributes = SubResource("CameraAttributesPractical_a2d0c")
 fov = 50.0
-script = ExtResource("3_hbpmb")
+script = ExtResource("3_b38ro")
 distance = 70.0
 max_distance = 75.0
 yaw_degrees = -25.0
 bounds_radius = 45.0
 
-[node name="Decor" type="Node3D" parent="." unique_id=749840783 node_paths=PackedStringArray("follow")]
-script = ExtResource("4_b38ro")
+[node name="Decor" type="Node3D" parent="." unique_id=301276222 node_paths=PackedStringArray("follow")]
+script = ExtResource("4_a5b3o")
 follow = NodePath("../Camera")
 
-[node name="Chantier" type="Node3D" parent="." unique_id=1443049127]
-script = ExtResource("5_a5b3o")
+[node name="Chantier" type="Node3D" parent="." unique_id=749986897]
+script = ExtResource("5_uji84")
 
-[node name="Outil" type="Node3D" parent="." unique_id=1297381347 node_paths=PackedStringArray("site", "camera")]
-script = ExtResource("6_uji84")
+[node name="Outil" type="Node3D" parent="." unique_id=346961620 node_paths=PackedStringArray("site", "camera")]
+script = ExtResource("6_6w2e4")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 
-[node name="Herbe" type="Node3D" parent="." unique_id=2104103974 node_paths=PackedStringArray("site", "camera")]
-script = ExtResource("7_6w2e4")
+[node name="Herbe" type="Node3D" parent="." unique_id=1966550244 node_paths=PackedStringArray("site", "camera")]
+script = ExtResource("7_ndi6n")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 
-[node name="Ambiance" type="Node" parent="." unique_id=1809391364]
-script = ExtResource("8_ndi6n")
+[node name="Vie" type="Node3D" parent="." unique_id=441231265 node_paths=PackedStringArray("site", "camera")]
+script = ExtResource("8_nxrwe")
+site = NodePath("../Chantier")
+camera = NodePath("../Camera")
+butterfly_colors = PackedColorArray(0.98, 0.96, 0.9, 1, 0.98, 0.84, 0.36, 1, 0.95, 0.56, 0.24, 1, 0.7, 0.78, 0.98, 1)
+
+[node name="Ambiance" type="Node" parent="." unique_id=1599443628]
+script = ExtResource("9_2sv16")

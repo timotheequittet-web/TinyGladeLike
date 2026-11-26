@@ -132,6 +132,12 @@ func _init() -> void:
 	life.site = site
 	life.camera = cam
 
+	# --- Habillage des maisons (lanternes, lierre, pots…), niveaux Haut et Ultra ---
+	var dressing := BastideDressing.new()
+	dressing.name = "Habillage"
+	_add(root, dressing)
+	dressing.site = site
+
 	# --- Réglages graphiques (F3 compteur, F4 niveau) ---
 	var gfx := BastideGraphics.new()
 	gfx.name = "Graphismes"

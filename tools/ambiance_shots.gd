@@ -55,6 +55,13 @@ func _run() -> void:
 	await _wait(2.0)
 	await _shot("chemin")
 	cam.set_walking(false)
+	# 4. Le relief : muret qui suit la pente, maisons posées sur leur socle.
+	cam.glide_to(Vector3(-8, 0, -6), 24.0, 16.0)
+	await _wait(3.0)
+	await _shot("relief")
+	cam.glide_to(Vector3(-4, 0, 0), 60.0, 22.0)
+	await _wait(3.0)
+	await _shot("collines")
 	quit()
 
 

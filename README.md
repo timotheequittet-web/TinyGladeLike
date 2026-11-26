@@ -71,6 +71,22 @@ add_child(tool)
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
 
+## Relief du terrain
+
+![Le hameau sur ses collines](docs/captures/terrain_collines.jpg)
+![Muret qui suit la pente, maison sur son socle](docs/captures/terrain_relief.jpg)
+
+Un nœud `BastideTerrain` (collines douces, clairière presque plate, zones aplanies
+`flat_zones`) donne un sol en relief avec ses collisions. Toutes les structures s'y
+posent seules :
+
+- murs, chemins et clôtures **épousent la pente** ;
+- maisons, torii et terrasses restent **d'aplomb sur un socle de pierre** ;
+  la terrasse se cale à la hauteur de la maison voisine (engawa) ;
+- l'outil à la souris, la caméra, la promenade (P), l'herbe et le décor suivent le sol.
+
+Les tracés restent enregistrés à plat : changer le terrain repose tout le hameau.
+
 ## Forêts et arbres d'Onsen
 
 ![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)

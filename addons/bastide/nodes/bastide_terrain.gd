@@ -68,6 +68,14 @@ const GROUP := &"bastide_terrain"
 		material = v
 		for mi: MeshInstance3D in _chunks.values():
 			mi.material_override = v
+## Les collines portent-elles ombre (réglage graphique ; voir _build_chunk_shadow).
+@export var cast_shadows := true:
+	set(v):
+		cast_shadows = v
+		for mi: MeshInstance3D in _chunks.values():
+			var sh := mi.get_node_or_null("Ombre") as Node3D
+			if sh:
+				sh.visible = v
 @export_flags_3d_physics var collision_layer := 2:
 	set(v):
 		collision_layer = v
@@ -83,6 +91,8 @@ var height_texture: ImageTexture
 ## Côté d'un morceau de maillage du sol, en cases : un étang ne reconstruit que
 ## les morceaux qu'il touche.
 const CHUNK := 32
+## Pas de la grille grossière qui porte l'ombre du relief.
+const SHADOW_STEP := 4
 
 ## Étangs creusés dans le relief : clé -> {poly, level, depth, shelf, bank, rect} (monde).
 var _carves := {}
@@ -358,6 +368,42 @@ func _build_chunk(c: Vector2i) -> void:
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	mi.mesh = m
+	_build_chunk_shadow(mi, i0, j0, w, d)
+
+
+## Le sol fin ne porte pas d'ombre : une grille grossière (un sommet toutes les
+## SHADOW_STEP cases), un peu enfoncée, porte seule celle des collines. Mêmes longues
+## ombres de fin de journée, pour 16 fois moins de triangles dans la passe d'ombre.
+func _build_chunk_shadow(mi: MeshInstance3D, i0: int, j0: int, w: int, d: int) -> void:
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var sh := mi.get_node_or_null("Ombre") as MeshInstance3D
+	if sh == null:
+		sh = MeshInstance3D.new()
+		sh.name = "Ombre"
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		mi.add_child(sh, false, Node.INTERNAL_MODE_FRONT)
+	sh.visible = cast_shadows
+	var sw := (w - 2) / SHADOW_STEP + 2
+	var sd := (d - 2) / SHADOW_STEP + 2
+	var verts := PackedVector3Array()
+	verts.resize(sw * sd)
+	for j in sd:
+		for i in sw:
+			var gi := i0 + mini(i * SHADOW_STEP, w - 1)
+			var gj := j0 + mini(j * SHADOW_STEP, d - 1)
+			verts[j * sw + i] = Vector3(field.origin.x + gi * field.cell, field.at(gi, gj) - 0.3, field.origin.y + gj * field.cell)
+	var idx := PackedInt32Array()
+	for j in sd - 1:
+		for i in sw - 1:
+			var a := j * sw + i
+			idx.append_array([a, a + 1, a + sw, a + 1, a + sw + 1, a + sw])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	sh.mesh = m
 
 
 func _build_collision() -> void:

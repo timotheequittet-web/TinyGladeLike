@@ -71,6 +71,26 @@ add_child(tool)
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
 
+## Réglages graphiques et niveaux de détail
+
+Le nœud `BastideGraphics` (« Graphismes » dans la démo) règle tout le rendu en quatre niveaux, gardés d'une partie à l'autre (`user://bastide_graphics.cfg`) :
+
+| | Bas | Moyen | Haut | Ultra |
+|---|---|---|---|---|
+| Herbe (densité, étendue) | 35 %, 60 % | 60 %, 80 % | 100 % | 140 %, 125 % |
+| Ombres | 70 m, 2 cascades | 110 m | 150 m | 200 m, douces |
+| SSAO / SSIL / brouillard volumétrique | non | SSAO | oui | oui, pleine résolution |
+| Résolution 3D (FSR) | 70 % | 85 % | 100 % | 100 % |
+| Anticrénelage | FXAA | FXAA | MSAA 2× | MSAA 4× |
+| Distances de détail | ×0,5 | ×0,75 | ×1 | ×1,5 |
+| Images/s max | 60 | 60 | 60 | écran |
+
+- **F3** : compteur (images/s, temps carte graphique, triangles, appels de dessin).
+- **F4** : niveau suivant.
+- Fenêtre en arrière-plan : 15 images/s, pour ne pas chauffer pour rien.
+
+Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 150 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).
+
 ## Relief du terrain
 
 ![Le hameau sur ses collines](docs/captures/terrain_collines.jpg)

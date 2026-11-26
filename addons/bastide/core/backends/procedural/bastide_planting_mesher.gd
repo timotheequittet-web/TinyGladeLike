@@ -150,7 +150,7 @@ static func build_planting(points: PackedVector3Array, seed: int, style: Bastide
 	if items.is_empty():
 		return result
 	var mb := BastideMeshBuilder.new()
-	draw_items(mb, items, gs)
+	draw_items(mb, kit_split(items, gs, result), gs)
 	if with_collision:
 		for it: Dictionary in items:
 			var p: Vector3 = it["pos"]
@@ -295,12 +295,67 @@ static func build_garden(ctx: BastideGardenContext, seed: int, style: BastideSty
 		var k: int = c["key"]
 		BastideGardenMesher.rock(mb, c["pos"], Vector3(0.12 + BastideGardenMesher.h(k, 1) * 0.05, 0.07 + BastideGardenMesher.h(k, 2) * 0.03,
 				0.1 + BastideGardenMesher.h(k, 3) * 0.04), k, BastideGardenMesher.tint(gs.edging_color, BastideGardenMesher.hs(k, 4) * 0.08), 3, 6, 0.25)
-	draw_items(mb, pl["items"], gs)
-	if mb.triangle_count == 0:
+	draw_items(mb, kit_split(pl["items"], gs, result), gs)
+	if mb.triangle_count == 0 and result.instances.is_empty():
 		return result
 	result.mesh = mb.commit(BastideGardenMesher.materials(style))
 	result.stats = {"triangles": mb.triangle_count, "plants": (pl["items"] as Array).size(), "curbs": (pl["curbs"] as Array).size()}
 	return result
+
+
+## Plantes confiées au kit nature (arbres, hortensias, fougères) : posées en instances
+## dans `result`, retirées de la liste rendue. Renvoie les plantes restantes.
+static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuildResult) -> Array:
+	if not gs.kit_plants:
+		return items
+	var rest: Array = []
+	var groups := {}
+	var add := func(gkey: String, m: Mesh, mat: Material, xf: Transform3D, shadow: int) -> void:
+		if m == null:
+			return
+		if not groups.has(gkey):
+			groups[gkey] = {"mesh": m, "mat": mat, "xf": [], "shadow": shadow}
+		(groups[gkey]["xf"] as Array).append(xf)
+	var bark := BastideKitNature.trunk_material()
+	for it: Dictionary in items:
+		var type: String = it["type"]
+		var p: Vector3 = it["pos"]
+		var size: float = it["size"]
+		var k: int = it["key"]
+		var rot := BastideGardenMesher.h(k, 701) * TAU
+		match type:
+			MAPLE, SAKURA, PINE:
+				var sp := "momiji" if type == MAPLE else ("sakura" if type == SAKURA else "matsu")
+				var hmodel := float(BastideKitNature.SPECIES[sp]["height"])
+				var sc := snappedf(size * 1.15 / hmodel, 0.1)
+				var variant := int(BastideGardenMesher.h(k, 702) * 4.0)
+				var tr := BastideKitNature.tree(sp, variant, sc)
+				var xf := Transform3D(Basis(Vector3.UP, rot), p)
+				var id := "%s/%d/%.1f" % [sp, variant, sc]
+				add.call("trunk/" + id, tr["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				add.call("crown/" + id, tr["crown"], tr["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				add.call("shadow/" + id, tr["shadow"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+			HYDRANGEA:
+				var model := "hydrangea_blue" if BastideGardenMesher.h(k, 703) < 0.55 else "hydrangea_pink"
+				if it.get("bloom", false) and BastideGardenMesher.h(k, 704) < 0.5:
+					model = "azalea_pink"
+				var pl := BastideKitNature.plant(model)
+				var xf := Transform3D(Basis(Vector3.UP, rot).scaled(Vector3.ONE * size * 1.5), p)
+				add.call("plant/" + model, pl["mesh"], pl["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				if pl.get("trunk") != null:
+					add.call("plantcore/" + model, pl["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+			FERN:
+				var tf := BastideKitNature.tuft("fern", Color.WHITE, 1.4)
+				if tf.is_empty():
+					rest.append(it)
+					continue
+				var xf := Transform3D(Basis(Vector3.UP, rot).scaled(Vector3.ONE * size * 1.6), p)
+				add.call("fern", tf["mesh"], tf["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+			_:
+				rest.append(it)
+	for g: Dictionary in groups.values():
+		result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"])
+	return rest
 
 
 ## Dessine une liste de plantes (voir plan_*).

@@ -11,6 +11,8 @@ var closed := false
 var seed := 0
 ## Hauteur voulue ; ≤ 0 pour prendre celle du style.
 var height := 0.0
+## Voisinage (facultatif) : le mur s'ouvre là où un de ses chemins le traverse.
+var context: BastideGardenContext
 
 
 static func from_points(p_points: PackedVector3Array, p_closed: bool, p_seed: int, p_height := 0.0) -> BastideWallSpec:

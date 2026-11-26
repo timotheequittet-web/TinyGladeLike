@@ -25,10 +25,8 @@ func _run() -> void:
 	cam = scene.get_node("Camera")
 	site = scene.get_node("Chantier")
 	tool = scene.get_node("Outil")
-	# Le rendu logiciel des conteneurs de test fait des points blancs isolés que le
-	# glow transforme en taches : on le coupe pour les captures seulement.
-	if DisplayServer.get_name() != "headless":
-		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
+	# Rendu allégé pour les captures (glow, brouillard volumétrique, herbe).
+	preload("res://tools/play_light.gd").apply(scene)
 	var n0: int = scene.call("_starting_village").size()
 	var t0 := Time.get_ticks_msec()
 	while site.ids().size() < n0 and Time.get_ticks_msec() - t0 < 60000:
@@ -148,7 +146,11 @@ func _wait(sec: float) -> void:
 		await process_frame
 
 
+## Point à plat (y = 0) → écran, en le posant d'abord sur le relief.
 func _screen(p: Vector3) -> Vector2:
+	var field := BastideTerrain.field_for(cam)
+	if field:
+		p.y += field.height(p.x, p.z)
 	return cam.unproject_position(p)
 
 

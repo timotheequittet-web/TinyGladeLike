@@ -42,7 +42,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 c = COLOR.rgb;
+	vec3 c = clamp(COLOR.rgb, vec3(0.0), vec3(1.0));   // jamais négatif : pow() donnerait NaN
 	vec3 base = mix(pow((c + vec3(0.055)) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
 	vec2 p = world_pos.xz;
 	float id;

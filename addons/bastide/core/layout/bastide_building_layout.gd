@@ -58,6 +58,8 @@ var noren_color := Color(0, 0, 0, 0)
 ## Ossature bois et auvent (repris du style, pour le backend).
 var timber := false
 var pent_roof := false
+## Nombre d'auvents superposés (un par étage pour une tour).
+var pent_levels := 1
 ## Remarques du générateur (« angles redressés »…), utiles dans l'inspecteur.
 var notes := PackedStringArray()
 

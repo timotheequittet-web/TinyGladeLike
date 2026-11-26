@@ -56,7 +56,8 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		if with_collision:
 			_facade_collision(result, layout, f)
 	if layout.pent_roof:
-		_pent_roof(mb, result, layout, style, with_collision)
+		for level in range(1, layout.pent_levels + 1):
+			_pent_roof(mb, result, layout, style, with_collision, level)
 	if bs.quoins and not layout.timber:
 		for i in layout.facades.size():
 			var f: BastideBuildingLayout.Facade = layout.facades[i]
@@ -97,7 +98,32 @@ static func anchors(layout: BastideBuildingLayout) -> Dictionary:
 			if o.kind == Kind.DOOR and o.floor == 0:
 				doors.append({"pos": f.point((o.u0 + o.u1) * 0.5, layout.base_y), "out": f.out3(), "width": o.u1 - o.u0})
 	return {"doors": doors, "footprint": layout.footprint, "base_y": layout.base_y,
-		"overhang": layout.roof.overhang if layout.roof else 0.5}
+		"overhang": layout.roof.overhang if layout.roof else 0.5, "smoke": smoke_points(layout.roof)}
+
+
+## Où la fumée du foyer s'échappe : le haut de la cheminée, sinon les bouts du plus
+## haut faîtage (les évents sous les petits pignons d'un irimoya).
+static func smoke_points(roof: BastideRoofLayout) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if roof == null:
+		return out
+	if not roof.chimney.is_empty():
+		var p: Vector2 = roof.chimney.pos
+		out.append(Vector3(p.x, float(roof.chimney.y1) + 0.15, p.y))
+		return out
+	var best := -INF
+	var top: Dictionary = {}
+	for arc: Dictionary in roof.arcs:
+		var a: Vector3 = arc["a"]
+		var b: Vector3 = arc["b"]
+		if int(arc["kind"]) == BastideRoofLayout.ArcKind.RIDGE and absf(a.y - b.y) < 0.05 and a.y > best and a.distance_to(b) > 0.5:
+			best = a.y
+			top = arc
+	if not top.is_empty():
+		var a: Vector3 = top["a"]
+		var b: Vector3 = top["b"]
+		out.append(a.lerp(b, 0.12) + Vector3(0, 0.1, 0))
+	return out
 
 
 static func _roof_name(roof: BastideRoofLayout) -> String:
@@ -813,19 +839,20 @@ static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout,
 					f.out3(), mc, mc, mc, mc)
 
 
-## Auvent de tuiles (hisashi) entre le rez-de-chaussée et l'étage, tout autour.
+## Auvent de tuiles (hisashi) au-dessus de l'étage `level` - 1, tout autour. Sur
+## une tour, chaque auvent est un peu moins profond que celui du dessous.
 static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideBuildingLayout,
-		style: BastideStyle, with_collision: bool) -> void:
+		style: BastideStyle, with_collision: bool, level := 1) -> void:
 	var bs := style.get_building_style()
 	var rs := style.get_roof_style()
 	var fp := layout.footprint
 	var n := fp.size()
-	var depth := bs.pent_depth
+	var depth := bs.pent_depth * (1.0 - 0.12 * (level - 1))
 	var outer := BastidePolygon.offset(fp, -depth, 3.0)
 	if BastidePolygon.self_intersects(outer):
 		return
 	var tan_p := tan(deg_to_rad(bs.pent_pitch))
-	var y_top := layout.base_y + layout.floor_height + 0.32
+	var y_top := layout.base_y + layout.floor_height * level + 0.32
 	var y_bot := y_top - depth * tan_p
 	var tp := BastideRoofMesher.TileParams.from_style(rs, bs.pent_pitch, y_bot, layout.roof.color)
 	var under := rs.underside_color
@@ -838,7 +865,7 @@ static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: 
 			Vector3(outer[i].x, y_bot, outer[i].y), Vector3(outer[j].x, y_bot, outer[j].y),
 			Vector3(fp[j].x, y_top, fp[j].y), Vector3(fp[i].x, y_top, fp[i].y)])
 		var nrm := (out * tan_p + Vector3.UP).normalized()
-		BastideRoofMesher.tile_polygon(mb, poly, nrm, f.dir3(), -out, tp, layout.seed, 1000 + i)
+		BastideRoofMesher.tile_polygon(mb, poly, nrm, f.dir3(), -out, tp, layout.seed, 1000 * level + i)
 		var low := PackedVector3Array()
 		for p in poly:
 			low.append(p - Vector3(0.0, thick, 0.0))

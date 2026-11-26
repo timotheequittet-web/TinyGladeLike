@@ -12,12 +12,16 @@ extends Node3D
 ## - Mode TORII : un torii fantôme suit la souris et se cale sur les chemins ; clic
 ##   pour le poser.
 ## - Mode PLANTES : dessine un massif, ou clique pour planter un arbre.
+## - Mode TERRASSE : tire un rectangle ; contre une maison, il devient un engawa
+##   collé à la façade (jamais devant la porte). Isolée, la terrasse a un
+##   garde-corps et ses marches donnent vers la caméra.
 ## - Variantes du mode MUR (touche V) : muret à petit toit, muret de pierres sèches,
 ##   clôture de bambou.
 ## - Clic sur une structure : la sélectionne. Des poignées apparaissent : on tire
 ##   un angle, un côté de maison ou un point de mur pour retoucher ; clic droit sur
 ##   une poignée de mur : retire ce point.
-## - Suppr : supprimer ; R : autre variation ; + / − (ou Page haut/bas) : étages ;
+## - Suppr : supprimer ; R : autre variation ; G : silhouette de la maison (petite
+##   maison, kura, tour…) ; + / − (ou Page haut/bas) : étages ;
 ##   Ctrl+Z / Ctrl+Y : annuler / rétablir ; Échap : annuler le tracé ou désélectionner.
 ##
 ## Le style appliqué est `style` : il vaut pour les nouvelles structures et, via
@@ -26,12 +30,13 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE, PATH, TORII, PLANTS }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST }
 ## Variantes du mode MUR.
 enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
 signal mode_changed(mode: Mode)
 signal variant_changed(variant: WallVariant)
+signal forest_kind_changed(kind: int)
 signal selection_changed(id: int)
 ## Une structure vient d'être posée ou retirée (pour jouer un son, par exemple).
 signal placed(kind: String)
@@ -61,6 +66,17 @@ signal history_changed(can_undo: bool, can_redo: bool)
 		wall_variant = value
 		variant_changed.emit(wall_variant)
 		_emit_hint()
+## Sorte des forêts tracées en mode FORÊT (essences, voir BastideForestBuilder.Kind).
+@export var forest_kind := BastideForestBuilder.Kind.MIXED:
+	set(value):
+		if forest_kind == value:
+			return
+		cancel_draft()
+		forest_kind = value
+		forest_kind_changed.emit(int(forest_kind))
+		_emit_hint()
+## Surface minimale d'une forêt (m²).
+@export var forest_min_area := 60.0
 ## Hauteur des murets posés (0 = celle du style).
 @export var wall_height := 1.9
 ## Hauteur du sol (plan de construction).
@@ -71,6 +87,8 @@ signal history_changed(can_undo: bool, can_redo: bool)
 @export var house_snap := 0.5
 @export var house_min_side := 4.0
 @export var house_max_side := 22.0
+## Plus grand côté d'une terrasse.
+@export var terrace_max_side := 12.0
 ## Longueur minimale d'un mur.
 @export var wall_min_length := 1.5
 ## Transparence de l'aperçu fantôme.
@@ -81,6 +99,8 @@ const HANDLE_SHADER := preload("res://addons/bastide/runtime/bastide_handle.gdsh
 const HIGHLIGHT_SHADER := preload("res://addons/bastide/runtime/bastide_highlight.gdshader")
 const INK_SHADER := preload("res://addons/bastide/runtime/bastide_ground_ink.gdshader")
 const DRAG_THRESHOLD := 6.0
+## Distance (le long du tracé) au-delà de laquelle un muret tracé ne bouge plus.
+const FREEZE_DIST := 4.0
 const HANDLE_PICK_RADIUS := 17.0
 
 enum _State { IDLE, PRESSING, DRAWING, DRAGGING }
@@ -93,6 +113,10 @@ var _undo := UndoRedo.new()
 var _draft: BastideStructure
 var _draft_rec := {}
 var _raw := PackedVector3Array()
+# Début du tracé déjà figé (points de contrôle qui ne bougent plus) et l'indice
+# du point brut où reprend la partie encore libre.
+var _frozen := PackedVector3Array()
+var _frozen_at := 0
 var _merge_id := -1
 
 # Sélection, survol, poignées.
@@ -113,6 +137,7 @@ var _mat_hover: ShaderMaterial
 var _mat_selected: ShaderMaterial
 var _ghost_overlay: ShaderMaterial
 var _torii_snapped := false
+var _terrace_engawa := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -252,6 +277,36 @@ func change_floors(delta: int) -> void:
 	edited.emit()
 
 
+## Silhouette suivante pour la maison sélectionnée (automatique, grande maison,
+## petite maison, kura, tour).
+func cycle_silhouette() -> void:
+	if selected < 0 or not site.has(selected):
+		return
+	var before: Dictionary = site.get_record(selected)
+	if before["kind"] != "house":
+		return
+	var cur := int(before.get("shape", BastideSilhouette.Kind.AUTO))
+	var i := BastideSilhouette.CYCLE.find(cur)
+	var after := before.duplicate(true)
+	after["shape"] = BastideSilhouette.CYCLE[(i + 1) % BastideSilhouette.CYCLE.size()]
+	# Les étages suivent la nouvelle silhouette.
+	after["floors"] = 0
+	_commit("Silhouette", [[selected, before, after]], true)
+	edited.emit()
+
+
+## Nom de la silhouette de la maison sélectionnée ("" si ce n'en est pas une).
+func selected_silhouette_name() -> String:
+	if selected < 0 or not site.has(selected) or site.get_record(selected)["kind"] != "house":
+		return ""
+	var node := site.node_of(selected) as BastideBuilding
+	if node == null:
+		return ""
+	var shape := int(site.get_record(selected).get("shape", 0))
+	var name: String = BastideSilhouette.NAMES[node.resolved_silhouette()]
+	return name + (" (auto)" if shape == BastideSilhouette.Kind.AUTO else "")
+
+
 ## Change le style des prochaines constructions et de la structure sélectionnée.
 func set_style(new_style: BastideStyle) -> void:
 	style = new_style
@@ -288,6 +343,12 @@ func clear_all() -> void:
 	if not changes.is_empty():
 		_commit("Tout retirer", changes, true)
 		removed.emit("all")
+
+
+## Sorte de forêt suivante (et passe en mode FORÊT).
+func cycle_forest_kind() -> void:
+	mode = Mode.FOREST
+	forest_kind = ((int(forest_kind) + 1) % BastideForestBuilder.Kind.size()) as BastideForestBuilder.Kind
 
 
 ## Variante suivante du mode MUR (et passe en mode MUR).
@@ -371,10 +432,19 @@ func _on_key(k: InputEventKey) -> void:
 			KEY_5, KEY_KP_5:
 				mode = Mode.PLANTS
 			_:
-				if k.keycode == KEY_R:
+				if k.keycode == KEY_T:
+					mode = Mode.TERRACE
+				elif k.keycode == KEY_B:
+					mode = Mode.FOREST
+				elif k.keycode == KEY_R:
 					reroll_selected()
+				elif k.keycode == KEY_G:
+					cycle_silhouette()
 				elif k.keycode == KEY_V:
-					cycle_wall_variant()
+					if mode == Mode.FOREST:
+						cycle_forest_kind()
+					else:
+						cycle_wall_variant()
 				else:
 					handled = false
 	if handled:
@@ -446,6 +516,8 @@ func _start_draw() -> void:
 	_set_hover(-1)
 	_cursor.visible = false
 	_raw = PackedVector3Array([_press_ground])
+	_frozen = PackedVector3Array()
+	_frozen_at = 0
 	_draft_rec = _new_record(_draw_kind())
 	_merge_id = -1
 	_emit_hint()
@@ -462,6 +534,10 @@ func _draw_kind() -> String:
 			return "torii"
 		Mode.PLANTS:
 			return "plants"
+		Mode.TERRACE:
+			return "terrace"
+		Mode.FOREST:
+			return "forest"
 	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
 
 
@@ -477,12 +553,19 @@ func _new_record(kind: String) -> Dictionary:
 	}
 	if kind == "fence":
 		rec["variant"] = 1 if wall_variant == WallVariant.BAMBOO else 0
+	if kind == "terrace":
+		rec["entry"] = -1
+	if kind == "forest":
+		rec["forest_kind"] = int(forest_kind)
+		rec["closed"] = true
 	return rec
 
 
 func _continue_draw(g: Vector3) -> void:
 	if _draft_rec["kind"] == "house":
 		_draw_house(g)
+	elif _draft_rec["kind"] == "terrace":
+		_draw_terrace(g)
 	else:
 		_draw_wall(g)
 
@@ -490,21 +573,66 @@ func _continue_draw(g: Vector3) -> void:
 func _draw_wall(g: Vector3) -> void:
 	if _raw[_raw.size() - 1].distance_to(g) > 0.3:
 		_raw.append(g)
-	var pts := _raw.duplicate()
-	if pts[pts.size() - 1].distance_to(g) > 0.05:
-		pts.append(g)
-	var control := BastideStroke.simplify(pts, 0.28)
+	# Seule la fin du tracé (les derniers mètres) est re-simplifiée à chaque
+	# mouvement : ce qui est loin derrière la souris est figé et ne tremble plus.
+	var simple := _simplified_tail(g)
+	if _freeze_behind(simple):
+		simple = _simplified_tail(g)
+	var control := _frozen.slice(0, maxi(_frozen.size() - 1, 0))
+	control.append_array(simple)
 	var total := BastideStroke.length(control)
 	# Revenir près du départ ferme l'enceinte (murs et clôtures seulement).
 	var closable: bool = _draft_rec["kind"] == "wall" or _draft_rec["kind"] == "fence"
 	var closed := closable and total > 10.0 and g.distance_to(_raw[0]) < 1.6 and control.size() >= 4
 	if closed:
 		control.remove_at(control.size() - 1)
+	if _draft_rec["kind"] == "forest":
+		# Une forêt est toujours une zone : le contour se referme tout seul. Elle
+		# n'apparaît qu'au relâcher (des centaines d'arbres : pas de fantôme en direct).
+		_draft_rec["points"] = control
+		_draft_rec["closed"] = true
+		_draw_ink(BastideStroke.wall_path(control, control.size() >= 3, 0.6), control.size() >= 3)
+		return
 	_draft_rec["points"] = control
 	_draft_rec["closed"] = closed
 	_draw_ink(BastideStroke.wall_path(control, closed, 0.4), closed)
 	if total >= wall_min_length:
 		_update_draft()
+
+
+func _simplified_tail(g: Vector3) -> PackedVector3Array:
+	var tail := _raw.slice(_frozen_at)
+	if tail[tail.size() - 1].distance_to(g) > 0.05:
+		tail.append(g)
+	return BastideStroke.simplify(tail, 0.28)
+
+
+## Fige les points de contrôle intérieurs de la partie libre qui sont à plus de
+## FREEZE_DIST mètres (le long du tracé) derrière la souris. Vrai si un point a été figé.
+func _freeze_behind(simple: PackedVector3Array) -> bool:
+	if simple.size() < 3:
+		return false
+	var n := _raw.size()
+	var remain := PackedFloat32Array()
+	remain.resize(n)
+	var acc := 0.0
+	for i in range(n - 1, -1, -1):
+		if i < n - 1:
+			acc += _raw[i].distance_to(_raw[i + 1])
+		remain[i] = acc
+	var changed := false
+	var j := _frozen_at
+	for k in range(1, simple.size() - 1):
+		while j < n and _raw[j] != simple[k]:
+			j += 1
+		if j >= n or remain[j] < FREEZE_DIST:
+			break
+		if _frozen.is_empty():
+			_frozen.append(simple[0])
+		_frozen.append(simple[k])
+		_frozen_at = j
+		changed = true
+	return changed
 
 
 func _draw_house(g: Vector3) -> void:
@@ -533,6 +661,7 @@ func _draw_house(g: Vector3) -> void:
 			site.node_of(_merge_id).visible = false
 			_draft_rec["seed"] = site.get_record(_merge_id)["seed"]
 			_draft_rec["floors"] = site.get_record(_merge_id)["floors"]
+			_draft_rec["shape"] = site.get_record(_merge_id).get("shape", 0)
 			_draft_rec["style"] = site.get_record(_merge_id)["style"]
 		else:
 			_draft_rec["style"] = style.resource_path
@@ -540,6 +669,53 @@ func _draw_house(g: Vector3) -> void:
 	_draft_rec["points"] = pts
 	_draw_ink(pts, true)
 	_update_draft()
+
+
+## Terrasse : rectangle tiré à la souris, aligné sur la façade la plus proche ;
+## collé contre elle, il devient un engawa.
+func _draw_terrace(g: Vector3) -> void:
+	var pts := terrace_rect(_press_ground, g)
+	var engawa := BastideTerraceRules.house_side(pts, site.context()) >= 0
+	if engawa != _terrace_engawa:
+		_terrace_engawa = engawa
+		_emit_hint()
+	_draft_rec["points"] = pts
+	_draft_rec["entry"] = -1 if engawa else _entry_toward_camera(pts)
+	_draw_ink(pts, true)
+	_update_draft()
+
+
+## Rectangle de terrasse entre deux points du sol, déjà redressé et collé à une
+## maison s'il y a lieu.
+func terrace_rect(a: Vector3, b: Vector3) -> PackedVector3Array:
+	var ctx := site.context()
+	var axis := BastideTerraceRules.facade_axis(a, ctx)
+	if axis == Vector3.ZERO:
+		axis = camera.global_transform.basis.x
+	var rect := BastideStroke.rectangle(a, b, axis, 0.25, 1.5)
+	var u := rect[1] - rect[0]
+	var v := rect[3] - rect[0]
+	if u.length() > terrace_max_side:
+		u = u.normalized() * terrace_max_side
+	if v.length() > terrace_max_side:
+		v = v.normalized() * terrace_max_side
+	rect = PackedVector3Array([rect[0], rect[0] + u, rect[0] + u + v, rect[0] + v])
+	rect = BastideTerraceRules.snap_to_house(BastideStroke.ensure_direct(rect), ctx)["points"]
+	return BastideTerraceRules.fit_rect(rect)
+
+
+## Côté du rectangle qui regarde le plus vers la caméra (pour les marches).
+func _entry_toward_camera(rect: PackedVector3Array) -> int:
+	var to_cam := site.to_local(camera.global_position) - BastideStroke.centroid(rect)
+	to_cam.y = 0.0
+	var best := 0
+	var best_dot := -INF
+	for i in 4:
+		var d := BastideTerraceRules.side_normal(rect, i).dot(to_cam.normalized())
+		if d > best_dot:
+			best_dot = d
+			best = i
+	return best
 
 
 func _clamp_rect(rect: PackedVector3Array) -> PackedVector3Array:
@@ -580,6 +756,19 @@ func _finish_draw() -> void:
 	_ink_mesh.clear_surfaces()
 	var rec := _draft_rec
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
+	if rec.get("kind") == "forest":
+		if pts.size() >= 3 and absf(BastideStroke.signed_area(pts)) >= forest_min_area:
+			rec["points"] = BastideStroke.ensure_direct(pts)
+			_update_draft()
+			_draft.mesh_transparency = 0.0
+			_draft.mesh_overlay = null
+			_draft.mesh_casts_shadow = true
+			_draft.context_enabled = true
+			_place_draft()
+		else:
+			cancel_draft()
+		_emit_hint()
+		return
 	var ok := _draft != null and pts.size() >= 2
 	if rec.get("kind") != "house" and BastideStroke.length(pts, rec["closed"]) < wall_min_length:
 		ok = false
@@ -658,8 +847,8 @@ func _rebuild_handles() -> void:
 		var r: Dictionary = site.get_record(selected)
 		var pts: PackedVector3Array = r["points"]
 		for i in pts.size():
-			_handles.append({"pos": pts[i], "kind": "corner" if r["kind"] == "house" else "point", "index": i})
-		if r["kind"] == "house":
+			_handles.append({"pos": pts[i], "kind": "corner" if r["kind"] in ["house", "terrace"] else "point", "index": i})
+		if r["kind"] in ["house", "terrace"]:
 			for i in pts.size():
 				var mid := (pts[i] + pts[(i + 1) % pts.size()]) * 0.5
 				_handles.append({"pos": mid, "kind": "edge", "index": i})
@@ -681,7 +870,7 @@ func _rebuild_handles() -> void:
 		if i < _handles.size():
 			var h: Dictionary = _handles[i]
 			mi.visible = true
-			mi.global_position = site.to_global(h["pos"]) + Vector3(0, 0.25, 0)
+			mi.global_position = _lift(h["pos"]) + Vector3(0, 0.25, 0)
 			var mat := mi.material_override as ShaderMaterial
 			mat.set_shader_parameter("pixel_size", 16.0 if h["kind"] == "edge" else 26.0)
 			mat.set_shader_parameter("hover", 1.0 if i == _hover_handle else 0.0)
@@ -697,7 +886,7 @@ func _handle_under(screen: Vector2) -> int:
 	var best := -1
 	var best_d := HANDLE_PICK_RADIUS
 	for i in _handles.size():
-		var world := site.to_global(_handles[i]["pos"]) + Vector3(0, 0.25, 0)
+		var world := _lift(_handles[i]["pos"]) + Vector3(0, 0.25, 0)
 		if camera.is_position_behind(world):
 			continue
 		var d := camera.unproject_position(world).distance_to(screen)
@@ -729,6 +918,16 @@ func _continue_handle_drag(g: Vector3) -> void:
 	var rec: Dictionary = site.get_record(selected)
 	var pts := _drag_start_points.duplicate()
 	var i: int = _drag_handle["index"]
+	if rec["kind"] == "terrace" and _drag_handle["kind"] == "corner":
+		# Un rectangle reste un rectangle : on tire l'angle, l'angle opposé reste en place.
+		var opp := pts[(i + 2) % 4]
+		var axis := pts[1] - pts[0]
+		var r := BastideStroke.ensure_direct(BastideStroke.rectangle(opp, g, axis, 0.25, 1.2))
+		pts = BastideTerraceRules.fit_rect(BastideTerraceRules.snap_to_house(r, site.context())["points"])
+		rec["points"] = pts
+		site.apply_record(selected, rec, false)
+		_rebuild_handles()
+		return
 	match _drag_handle["kind"]:
 		"point":
 			pts[i] = g
@@ -796,7 +995,7 @@ func _delete_handle_point(h: Dictionary) -> void:
 	match String(before["kind"]):
 		"house":
 			min_pts = 4
-		"torii":
+		"torii", "terrace":
 			return
 		"plants":
 			min_pts = 1
@@ -861,8 +1060,8 @@ func _structure_under(screen: Vector2) -> int:
 func _update_cursor(g: Variant) -> void:
 	_cursor.visible = g != null and _hover < 0 and _hover_handle < 0
 	if g != null:
-		_cursor.global_position = (g as Vector3) + Vector3(0, 0.03, 0)
-		var s := 1.6 if mode == Mode.HOUSE else (0.0 if mode == Mode.TORII else 1.0)
+		_cursor.global_position = _lift(g as Vector3) + Vector3(0, 0.03, 0)
+		var s := 1.6 if mode == Mode.HOUSE or mode == Mode.TERRACE else (0.0 if mode == Mode.TORII else 1.0)
 		_cursor.scale = Vector3(maxf(s, 0.01), 0.15, maxf(s, 0.01))
 		_cursor.visible = _cursor.visible and mode != Mode.TORII
 
@@ -874,7 +1073,11 @@ func _ground(screen: Vector2) -> Variant:
 		var q := PhysicsRayQueryParameters3D.create(from, from + dir * 1000.0, ground_mask)
 		var hit := get_world_3d().direct_space_state.intersect_ray(q)
 		if not hit.is_empty():
-			return site.to_local(hit["position"])
+			return _flat(site.to_local(hit["position"]))
+	var field := BastideTerrain.field_for(site)
+	if field:
+		var th: Variant = field.raycast(from, dir, 400.0)
+		return _flat(site.to_local(th)) if th != null else null
 	var p: Variant = Plane(Vector3.UP, ground_height).intersects_ray(from, dir)
 	if p == null:
 		return null
@@ -885,6 +1088,21 @@ func _ground(screen: Vector2) -> Variant:
 
 
 ## Trait lumineux au sol sous le tracé en cours.
+## Les tracés sont enregistrés à plat (y = 0 dans le chantier) : le relief est
+## appliqué à la génération. Pour l'affichage (curseur, encre, poignées), on remonte
+## sur le sol.
+func _flat(local: Vector3) -> Vector3:
+	return Vector3(local.x, 0.0, local.z)
+
+
+func _lift(local: Vector3) -> Vector3:
+	var w := site.to_global(_flat(local))
+	var field := BastideTerrain.field_for(site)
+	if field:
+		w.y += field.height(w.x, w.z)
+	return w
+
+
 func _draw_ink(pts: PackedVector3Array, closed: bool) -> void:
 	_ink_mesh.clear_surfaces()
 	if pts.size() < 2:
@@ -896,7 +1114,7 @@ func _draw_ink(pts: PackedVector3Array, closed: bool) -> void:
 	_ink_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	var dist := 0.0
 	for i in path.size():
-		var p := site.to_global(path[i]) + Vector3(0, 0.04, 0)
+		var p := _lift(path[i]) + Vector3(0, 0.06, 0)
 		var a := path[maxi(i - 1, 0)]
 		var b := path[mini(i + 1, path.size() - 1)]
 		var t := (b - a)
@@ -953,6 +1171,12 @@ func current_hint() -> String:
 				if _draft_rec.get("closed", false):
 					return "Relâche pour fermer l'enceinte"
 				return "Dessine le tracé, relâche pour le poser"
+			if mode == Mode.FOREST:
+				return "Fais le tour de la forêt, relâche pour la planter"
+			if mode == Mode.TERRACE:
+				if _terrace_engawa:
+					return "Relâche : un engawa le long de la façade"
+				return "Tire la terrasse  ·  contre une maison, elle devient un engawa"
 			if _merge_id >= 0:
 				return "Relâche pour agrandir la maison"
 			return "Tire pour donner sa taille à la maison"
@@ -972,7 +1196,7 @@ func current_hint() -> String:
 	if selected >= 0 and site.has(selected):
 		var kind: String = site.get_record(selected)["kind"]
 		if kind == "house":
-			return "Poignées : retoucher  ·  + / − : étages  ·  R : autre variation  ·  Suppr : retirer"
+			return "%s  ·  G : autre silhouette  ·  + / − : étages  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
 		return "Poignées : retoucher  ·  R : autre variation  ·  Suppr : retirer"
 	if _hover >= 0:
 		return "Clic : sélectionner"
@@ -986,4 +1210,9 @@ func current_hint() -> String:
 			return "Approche la souris d'un chemin pour y poser un torii"
 		Mode.PLANTS:
 			return "Dessine un massif  ·  ou clique pour planter un arbre"
+		Mode.TERRACE:
+			return "Maintiens le clic et tire une terrasse  ·  contre une maison : un engawa"
+		Mode.FOREST:
+			var fnames := ["forêt mêlée", "forêt de cèdres", "chênaie", "érables d'automne", "cerisiers", "pinède"]
+			return "Maintiens le clic et fais le tour d'une %s  ·  V : changer" % fnames[int(forest_kind)]
 	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"

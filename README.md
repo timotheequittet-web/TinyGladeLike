@@ -2,9 +2,9 @@
 
 **Bastide** est un addon Godot 4 de construction procédurale « toujours belle », inspiré de Tiny Glade : on trace grossièrement, des règles corrigent et décorent.
 
-![Un hameau de campagne japonais : chemin de pas japonais, torii, érables et murets](docs/captures/etape5_torii.jpg)
+![Le chemin traverse le muret : un portail couvert de tuiles s'y ouvre tout seul, vantaux grands ouverts](docs/captures/etape6_portail.jpg)
 
-État : **étape 5 terminée** (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), après l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
+État : **forêts et arbres d'Onsen** (grands arbres à couronnes peintes, outil Forêt, sous-bois), après l'**étape 6** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -15,7 +15,7 @@ Version cible : **Godot 4.7.2** (fonctionne avec Forward+ et Compatibilité).
 1. Sur GitHub, bouton vert **Code > Download ZIP**, puis décompresse le dossier où tu veux.
 2. Ouvre Godot 4.7.2, clique sur **Importer**, et choisis le fichier `project.godot` du dossier décompressé, puis **Importer et modifier**.
 3. Appuie sur **F5** : la démo de construction en jeu (`demos/04_runtime/runtime_demo.tscn`) se lance. Voir « Construire en jeu » juste en dessous.
-4. Le jardin japonais dans l'éditeur : `demos/05_garden/garden_demo.tscn` (ouvre-le, **F6** pour s'y promener, ou sélectionne un chemin, une clôture ou un massif et déplace ses points : tout se recalcule, plantes comprises).
+4. Terrasses et portails dans l'éditeur : `demos/06_terraces/terrace_demo.tscn` (ouvre-le, **F6** pour s'y promener ; déplace un point du chemin à travers le muret, ou une terrasse près d'une maison). Le jardin japonais : `demos/05_garden/garden_demo.tscn` (ouvre-le, **F6** pour s'y promener, ou sélectionne un chemin, une clôture ou un massif et déplace ses points : tout se recalcule, plantes comprises).
 5. Les démos précédentes : `demos/03_styles/styles_demo.tscn` (le même hameau en médiéval et en japonais), `demos/02_building/building_demo.tscn` (bâtiments) et `demos/01_wall/wall_demo.tscn` (murs). Ouvre-les puis **F6**. Leurs commandes :
    - Clic droit maintenu + souris : regarder
    - ZQSD (ou WASD) : se déplacer, A/E : descendre/monter, Maj : plus vite
@@ -36,6 +36,13 @@ Au lancement, la caméra descend doucement vers un petit hameau qui sort de terr
 - **Style** : les boutons **Japonais / Médiéval** changent le style des prochaines constructions et celui de la structure sélectionnée.
 - **Annuler / rétablir** : **Ctrl+Z / Ctrl+Y** (ou les boutons). Tout s'annule : tracés, agrandissements, retouches, étages, styles, suppressions.
 - **Caméra** : clic droit (ou molette) maintenu + souris pour tourner autour, molette pour zoomer vers ce que vise la souris, **ZQSD** ou les flèches pour glisser, **A / E** pour pivoter, **F** pour recentrer. Plus tu t'approches, plus elle se baisse à hauteur de promeneur. Tous ses mouvements sont amortis.
+- **Herbe et lumière** : une herbe haute et dense (`BastideGrass`) suit la caméra, foncée au pied et dorée aux pointes, couchée par des vagues de vent ; elle s'écarte toute seule des chemins, maisons, terrasses, murets et de l'étang, et reste plus rase en forêt. Lumière dorée de fin de journée, brume volumétrique où passent les rayons, léger flou au loin et halo doux.
+
+![Herbe haute et lumière de fin de journée](docs/captures/ambiance_prairie.jpg)
+
+- **Promenade** (touche **P**) : la caméra descend à hauteur d'homme là où tu regardes. **ZQSD** pour marcher (**Maj** pour courir), clic droit + souris pour regarder. Troncs, murets et maisons arrêtent le pas, et on monte sur les terrasses. **P**, **Échap** ou molette arrière pour remonter.
+
+![Promenade dans la forêt du hameau](docs/captures/foret_promenade.jpg)
 - **Divers** : **Ctrl+S / Ctrl+O** enregistrer / recharger le hameau, **M** couper le son, **H** masquer l'interface (pour les belles captures), **Échap** annuler un tracé ou désélectionner.
 
 ![Un rectangle tiré par-dessus une maison l'agrandit en L](docs/captures/etape4_agrandir_fantome.jpg)
@@ -63,6 +70,120 @@ add_child(tool)
 ```
 
 Les structures posées ont leurs collisions sur la couche 1 (`site.structure_layer`). Par défaut on construit sur un plan horizontal (`tool.ground_height`) ; pour un terrain en relief, mets sa couche de collision dans `tool.ground_mask`.
+
+## Relief du terrain
+
+![Le hameau sur ses collines](docs/captures/terrain_collines.jpg)
+![Muret qui suit la pente, maison sur son socle](docs/captures/terrain_relief.jpg)
+
+Un nœud `BastideTerrain` (collines douces, clairière presque plate, zones aplanies
+`flat_zones`) donne un sol en relief avec ses collisions. Toutes les structures s'y
+posent seules :
+
+- murs, chemins et clôtures **épousent la pente** ;
+- maisons, torii et terrasses restent **d'aplomb sur un socle de pierre** ;
+  la terrasse se cale à la hauteur de la maison voisine (engawa) ;
+- l'outil à la souris, la caméra, la promenade (P), l'herbe et le décor suivent le sol.
+
+Les tracés restent enregistrés à plat : changer le terrain repose tout le hameau.
+
+Sous une maison posée sur la pente, le pied descendu jusqu'au sol devient un
+soubassement de pierres sèches appareillées (façon ishigaki).
+
+## Matériaux de près
+
+![Avant / après](docs/captures/materiaux_avant_apres.jpg)
+
+- **Tuiles** (`bastide_tile.gdshader`) : teinte qui varie d'une tuile à l'autre,
+  émail satiné qui accroche la lumière rasante, coulures dans le sens de la pente,
+  poussière sur les rangs et lichens jaunis par plaques. Réglages `glaze`, `streaks`,
+  `dust`, `lichen_amount` ; le style par défaut est une terre cuite mate.
+- **Enduit** (`plaster_amount` du shader pierre) : nuages de chaux chauds et froids,
+  traces de taloche et fines coulures, sans texture.
+
+## Silhouettes de bâtiments
+
+![Tour, grande maison, longue maison et kura](docs/captures/silhouette_silhouettes.jpg)
+
+Un même style se décline en plusieurs volumes (`BastideBuilding.silhouette`,
+`BastideSilhouette`) :
+
+- **grande maison** : le volume du style ;
+- **petite maison** : un seul niveau, toit qui descend bas ;
+- **kura** : entrepôt aux murs blancs épais, petites fenêtres hautes, toit à pignons ;
+- **tour** : trois niveaux sur une base carrée, un auvent à chaque étage, toit en pavillon.
+
+En automatique, le tracé décide : une petite base carrée fait une tour, un petit
+rectangle une petite maison ou un kura, le reste une grande maison. En jeu, **G**
+(ou le bouton « Silhouette ») passe d'une silhouette à l'autre sur la maison
+sélectionnée ; le choix est enregistré avec elle. Le kura et la tour ne fument pas.
+
+## Vie du hameau
+
+![Fumée sur le toit, lanternes, papillons](docs/captures/vie_hameau.jpg)
+
+Le nœud `BastideLife` anime le hameau tout seul, à partir de ce que les
+constructions exposent (points `smoke` et `lights`, posés sur le relief) :
+
+- la fumée monte des cheminées, ou des évents sous le faîtage des maisons
+  japonaises, et part avec le vent (`wind`, `smoke_share`) ;
+- les lanternes de pierre des chemins sont allumées et vacillent ; seules les plus
+  proches de la caméra éclairent (`max_lights`) ;
+- des vols d'oiseaux tournent haut au-dessus du hameau, entre battements et planés ;
+- des papillons volettent au ras de l'herbe autour de la caméra.
+
+## Forêts et arbres d'Onsen
+
+![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)
+
+Les arbres et plantes viennent du projet « L'onsen de la colline » (même auteur) : des modèles faits par script dans Blender (couleurs par sommet), habillés comme dans Onsen. Chaque arbre garde son tronc, et sa couronne est refaite en **cartes face caméra** posées sur les boules de feuillage du modèle, texturées de touffes peintes. Elle s'éclaire en deux tons francs, avec la lumière qui traverse le bord à contre-jour. Une silhouette légère porte l'ombre.
+
+- **Forêt** (touche **B**) : maintiens le clic et fais le tour d'une zone. Relâche : la forêt pousse. **V** change la sorte : mêlée, cèdres, chênaie, érables d'automne, cerisiers, pinède.
+- Les grands arbres (chênes, hêtres, cèdres, camphriers) font **15 à 20 m**, et les érables, cerisiers et pins 10 à 12 m. On circule entre les troncs, qui ont des collisions.
+- **Lisière festonnée** : plus claire au bord, plus dense au cœur.
+- **Sous-bois** : fougères et buissons à l'ombre des couronnes, fleurs des champs, azalées, hortensias et iris dans les trouées.
+- La forêt évite d'elle-même les maisons, terrasses, chemins, murs et portes.
+- **Massifs et jardin** : leurs arbres isolés (érable, cerisier, pin taillé), leurs hortensias et leurs fougères sont maintenant ceux d'Onsen (style japonais, `kit_plants` dans le volet Garden).
+- Au loin, les couronnes passent à une version à peu de cartes, et les plantes du sous-bois s'effacent.
+- Dans l'éditeur : nœud **BastideForest** (contour fermé). Réglages : `forest_kind`, `tree_scale` (2 = géants de 35 m), `density`, `undergrowth`.
+
+Les sources d'Onsen gardées pour référence (le script Blender `japan.py` qui génère les arbres, les scripts et shaders d'origine) sont dans `docs/onsen_ref/`. Les touffes peintes ont été générées avec Gemini puis détourées. Les modèles Meshy d'Onsen n'ont pas été repris.
+
+## Terrasses et portails (étape 6)
+
+![Vue d'ensemble : le portail dans le grand muret, la terrasse au bord de l'étang et son chemin](docs/captures/etape6_vue_generale.jpg)
+
+Dans la démo de construction en jeu, un sixième outil, **Terrasse** (touche **T**, ou le bouton de la barre) :
+
+- **Contre une maison** : tire un rectangle le long d'une façade. Il s'aligne sur elle dès le premier clic, puis se colle au mur et devient un **engawa** : galerie de planches posée sur des poteaux courts et leurs pierres, de 0,9 à 2,4 m de profondeur, sans garde-corps, une grande pierre de seuil devant (parfois une paire de geta posée dessus). Il s'arrête aux angles de la maison et ne passe jamais devant la porte : il s'arrête avant, du côté le plus long.
+- **Ailleurs** : une terrasse isolée, avec son garde-corps (lisse haute, boules de bronze aux angles) et quelques marches de bois **du côté de la caméra**. Au bord de l'étang, elle avance sur l'eau.
+- **Retoucher** : les poignées d'angle gardent toujours un rectangle (l'angle opposé reste en place), les milieux de côtés poussent un côté. Près d'une maison, la terrasse s'y recolle.
+
+Et sans rien faire : **un muret traversé par un chemin s'ouvre**. Dessine un chemin à travers un muret à petit toit : un portail couvert apparaît (deux poteaux sur leurs pierres, une poutre, un petit toit de tuiles plus haut et plus large que celui du mur, des vantaux de planches grands ouverts contre le mur, un seuil de pierre). En style médiéval, ce sont deux piliers plus hauts que les autres et un arc de claveaux. Annule le chemin : le portail se referme.
+
+![Engawa le long de la façade, à gauche de la porte](docs/captures/etape6_engawa.jpg)
+
+![Terrasse au bord de l'étang : garde-corps, giboshi, marches, et le chemin qui y mène](docs/captures/etape6_terrasse_etang.jpg)
+
+![Le même portail en style médiéval : piliers et arc de pierre](docs/captures/etape6_portail_medieval.jpg)
+
+### Dans l'éditeur
+
+- `BastideTerrace` (hérite de `Path3D`) : les points de la courbe donnent l'emprise, toujours redressée en rectangle (axe du premier côté). `entry_side` choisit le côté des marches (-1 = automatique), `height` la hauteur du plancher (0 = style).
+- `BastideWall` s'ouvre tout seul pour les `BastidePath` qui le traversent (`open_for_paths`, coché par défaut). La forme du portail est dans le volet **Wall** du style, groupe **Portails** : `gate_kind` (Auto, Couvert, Arc, Piliers), bois, vantaux, passage minimal.
+- Les couleurs, la hauteur, le garde-corps, les giboshi et les petits détails des terrasses sont dans le volet **Garden**, groupe **Terrasses**.
+
+En jeu, nouveau record `"terrace"` (quatre angles, `entry` facultatif). Les marches d'une terrasse sont déclarées comme une porte : un chemin qui arrive près d'elles les rejoint, avec sa lanterne.
+
+## Les règles « toujours beau » de l'étape 6
+
+- Une terrasse est toujours un rectangle, au quart de mètre ; ses planches ont une largeur régulière, des joints décalés d'une planche à l'autre, et courent dans le sens de la façade pour un engawa (du plus long côté sinon). Poteaux en nombre entier, jamais plus de 1,8 m entre deux, chacun sur sa pierre.
+- Un engawa est collé à la façade (6 cm de jour pour le soubassement), ne dépasse pas les angles, laisse 55 cm de part et d'autre de la porte. Ses marches (sa pierre de seuil) donnent toujours à l'opposé de la maison.
+- Les marches d'une terrasse isolée ont toutes la même hauteur (environ 17 cm) ; le garde-corps s'ouvre pile à leur droit.
+- Un portail est centré sur le chemin, assez large même en biais (2 m de passage libre au moins entre les montants), et deux chemins voisins partagent un seul portail. Près du bout d'un mur, on ne laisse jamais un bout de mur ridicule.
+- Le petit toit du portail est toujours au-dessus de ceux du mur ; l'arc médiéval naît sur la dalle des piliers, avec un nombre impair de claveaux et une clé au sommet.
+- Aucune plante sous une terrasse ; pas de pas japonais, de bordure ni de lanterne qui la chevauchent.
+- Les structures se voient dans le bon ordre : maisons, puis terrasses (elles se calent sur les maisons), puis chemins (ils rejoignent portes et marches), puis murs (ils s'ouvrent pour les chemins), puis clôtures et massifs, puis le jardin. Retirer une structure prévient aussi ses voisins (un portail se referme quand on annule son chemin).
 
 ## Le jardin japonais (étape 5)
 
@@ -208,7 +329,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (200 vérifications, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (276 vérifications, dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -226,6 +347,18 @@ Le décor de l'étape 5 a la sienne (chemin tracé jusqu'à une porte, torii aim
 godot --path . -s tools/garden_play.gd -- <dossier_des_captures>
 ```
 
+Et celui de l'étape 6 (engawa tiré contre une maison, terrasse isolée, chemin qui ouvre un second portail, passage en médiéval, annulations) :
+
+```
+godot --path . -s tools/terrace_play.gd -- <dossier_des_captures>
+```
+
+Et celle des forêts (forêt du hameau, vues au cœur de la forêt, forêt d'érables tracée à la souris, autres sortes, annulation) :
+
+```
+godot --path . -s tools/forest_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -235,18 +368,21 @@ addons/bastide/
   core/        logique pure, sans nœuds (utilisable sur un thread, en jeu, dans les tests)
     random/      hasard déterministe (seed + position)
     geometry/    polylignes, polygones, squelette droit pondéré (toits), tracés à main levée
-    rules/       assainissement du tracé et du contour, répartition « pile », règles du jardin
+    rules/       assainissement du tracé et du contour, répartition « pile », règles du jardin et des terrasses
     garden/      le voisinage vu par le décor (portes, chemins, murs…)
     generators/  Spec → Layout : murs, bâtiments, toits
     layout/      les plans sémantiques (mur, bâtiment, toit)
-    backends/    plan → géométrie (procedural/ : murs, bâtiments, toits, chemins, torii, clôtures, plantes ; kit/ à l'étape 6)
+    backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses)
+    kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
-               BastidePlanting, BastideGarden, base commune BastideStructure)
+               BastidePlanting, BastideTerrace, BastideForest, BastideGarden, base commune BastideStructure)
+  kit/nature/  modèles .glb des arbres et plantes d'Onsen, touffes peintes
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
-  shaders/     shaders pierre, bois, gravier ratissé et feuillage procéduraux (aucune texture)
+  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce et couronnes peintes
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)
+docs/onsen_ref/ sources d'Onsen gardées pour référence (ignorées par Godot)
 ```

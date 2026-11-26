@@ -335,44 +335,64 @@ static func grass(mb: BastideMeshBuilder, c: Vector3, size: float, gs: BastideGa
 
 ## Érable du Japon (momiji) : tronc fin, houppier en étages plats rouges et orangés.
 static func maple(mb: BastideMeshBuilder, c: Vector3, height: float, gs: BastideGardenStyle, key: int) -> void:
+	# Momiji : tronc qui se divise bas, large dôme en parasol fait de nombreuses
+	# touffes. Les touffes du dessus captent la lumière, celles du dedans et du
+	# dessous restent sombres : le volume se lit même sans ombre portée.
 	var trunk := gs.trunk_color
-	var top := c + Vector3(hs(key, 1) * 0.3, height * 0.55, hs(key, 2) * 0.3)
-	tube(mb, ROLE_FOLIAGE, c + Vector3(0, -0.05, 0), top, 0.11, 0.06, trunk, 6, 0.0)
-	var tiers := 3 + int(h(key, 3) * 2.0)
-	for t in tiers:
-		var ft := float(t) / maxf(tiers - 1, 1)
-		var y := lerpf(height * 0.5, height * 0.95, ft)
-		var spread := lerpf(1.25, 0.55, ft) * height * 0.38
-		var n := 4 - int(ft * 2.0)
-		for k in n:
-			var a := TAU * (float(k) / n + h(key, 10 + t * 7 + k) * 0.4)
-			var p := Vector3(cos(a), 0, sin(a)) * spread * (0.4 + h(key, 20 + t * 7 + k) * 0.6)
-			var col := tint(pick(gs.maple_colors, key, 30 + t * 7 + k, Color(0.8, 0.2, 0.12)), hs(key, 40 + t * 7 + k) * 0.06)
-			var r := spread * (0.55 + h(key, 50 + t * 7 + k) * 0.25)
-			if t == 0 and k < 2:
-				tube(mb, ROLE_FOLIAGE, top.lerp(c, 0.25), Vector3(top.x, y - 0.1, top.z) + p * 0.9, 0.05, 0.025, trunk, 5, 0.2)
-			blob(mb, ROLE_FOLIAGE, Vector3(top.x, y, top.z) + p, Vector3(r, r * 0.5, r), col,
-					BastideRng.combine(key, 60 + t * 7 + k), 5, 11, 0.35, 0.06, Color(0, 0, 0, 0), 1.0)
+	var lean := Vector3(hs(key, 1), 0, hs(key, 2)) * height * 0.08
+	var fork := c + lean * 0.5 + Vector3(0, height * 0.34, 0)
+	var tk := height / 3.7  # le tronc grossit avec l'arbre
+	tube(mb, ROLE_FOLIAGE, c + Vector3(0, -0.05, 0), fork, 0.13 * tk, 0.09 * tk, trunk, 7, 0.0)
+	var crown := c + lean + Vector3(0, height * 0.7, 0)
+	var rx := height * 0.5
+	var ry := height * 0.27
+	var limbs := 3 + int(h(key, 3) * 1.99)
+	for k in limbs:
+		var a := TAU * (float(k) / limbs + h(key, 4 + k) * 0.25)
+		var end := crown + Vector3(cos(a) * rx * 0.55, -ry * 0.35 + h(key, 9 + k) * ry * 0.3, sin(a) * rx * 0.55)
+		tube(mb, ROLE_FOLIAGE, fork, end, 0.075 * tk, 0.03 * tk, trunk, 5, 0.15)
+	var base := pick(gs.maple_colors, key, 30, Color(0.8, 0.2, 0.12))
+	# Cœur sombre : bouche les trous entre les touffes.
+	blob(mb, ROLE_FOLIAGE, crown + Vector3(0, -ry * 0.1, 0), Vector3(rx * 0.72, ry * 0.7, rx * 0.72),
+			base.darkened(0.42), BastideRng.combine(key, 31), 5, 10, 0.3, 0.1, Color(0, 0, 0, 0), 0.8)
+	var n := 13 + int(h(key, 32) * 5.0)
+	var turn := h(key, 33) * TAU
+	for i in n:
+		# Répartition en tournesol sur la calotte du dôme (un peu sous l'équateur).
+		var y := 1.0 - (float(i) + 0.5) / n * 1.25
+		var ring := sqrt(maxf(1.0 - y * y, 0.0))
+		var a := turn + float(i) * 2.39996
+		var j := Vector3(hs(key, 100 + i), hs(key, 120 + i) * 0.6, hs(key, 140 + i)) * 0.12
+		var p := crown + Vector3((cos(a) * ring + j.x) * rx * 0.8, (y + j.y) * ry * 0.85, (sin(a) * ring + j.z) * rx * 0.8)
+		var r := height * (0.15 + h(key, 160 + i) * 0.06) * (0.85 + ring * 0.25)
+		var col := pick(gs.maple_colors, key, 200 + i, base).lerp(base, 0.35)
+		# Lumière : le dessus éclairé (un peu plus orangé), les touffes basses sombres.
+		var light := clampf((y + 0.25) / 1.25, 0.0, 1.0)
+		col = col.darkened(0.28 * (1.0 - light)).lerp(Color(0.95, 0.55, 0.2), light * 0.12)
+		col = tint(col, hs(key, 220 + i) * 0.05)
+		blob(mb, ROLE_FOLIAGE, p, Vector3(r, r * 0.6, r), col, BastideRng.combine(key, 300 + i), 5, 10, 0.38, 0.12,
+				Color(0, 0, 0, 0), 1.0)
 
 
 ## Cerisier : tronc sombre qui se divise, large dôme rose.
 static func sakura(mb: BastideMeshBuilder, c: Vector3, height: float, gs: BastideGardenStyle, key: int) -> void:
 	var trunk := gs.trunk_color.darkened(0.15)
 	var fork := c + Vector3(hs(key, 1) * 0.2, height * 0.42, hs(key, 2) * 0.2)
-	tube(mb, ROLE_FOLIAGE, c + Vector3(0, -0.05, 0), fork, 0.17, 0.12, trunk, 7, 0.0)
+	var tk := height / 4.3
+	tube(mb, ROLE_FOLIAGE, c + Vector3(0, -0.05, 0), fork, 0.17 * tk, 0.12 * tk, trunk, 7, 0.0)
 	var n := 3 + int(h(key, 3) * 2.0)
 	for k in n:
 		var a := TAU * (float(k) / n + h(key, 10 + k) * 0.3)
 		var dir := Vector3(cos(a), 0, sin(a))
 		var end := fork + dir * height * (0.25 + h(key, 20 + k) * 0.15) + Vector3(0, height * 0.32, 0)
-		tube(mb, ROLE_FOLIAGE, fork, end, 0.09, 0.04, trunk, 5, 0.2)
+		tube(mb, ROLE_FOLIAGE, fork, end, 0.09 * tk, 0.04 * tk, trunk, 5, 0.2)
 		var r := height * (0.24 + h(key, 30 + k) * 0.08)
 		blob(mb, ROLE_FOLIAGE, end + Vector3(0, r * 0.25, 0), Vector3(r, r * 0.7, r),
 				tint(pick(gs.blossom_colors, key, 40 + k, Color(0.97, 0.78, 0.82)), hs(key, 50 + k) * 0.05),
-				BastideRng.combine(key, 60 + k), 5, 9, 0.3, 0.12, Color(1.0, 0.92, 0.94, 0.25), 1.0)
+				BastideRng.combine(key, 60 + k), 6, 12, 0.3, 0.1, Color(1.0, 0.92, 0.94, 0.25), 1.0)
 	var rr := height * 0.3
 	blob(mb, ROLE_FOLIAGE, fork + Vector3(0, height * 0.5, 0), Vector3(rr, rr * 0.65, rr),
-			pick(gs.blossom_colors, key, 70, Color(0.97, 0.78, 0.82)), BastideRng.combine(key, 71), 5, 9, 0.3, 0.12,
+			pick(gs.blossom_colors, key, 70, Color(0.97, 0.78, 0.82)), BastideRng.combine(key, 71), 6, 12, 0.3, 0.1,
 			Color(1.0, 0.92, 0.94, 0.25), 1.0)
 
 
@@ -387,7 +407,7 @@ static func pine(mb: BastideMeshBuilder, c: Vector3, height: float, gs: BastideG
 		var wig := Vector3(hs(key, 10 + k), 0, hs(key, 20 + k)) * height * 0.06
 		pts.append(c + lean * t * t * 3.0 + wig + Vector3(0, height * 0.82 * t, 0))
 	for k in range(pts.size() - 1):
-		tube(mb, ROLE_FOLIAGE, pts[k], pts[k + 1], lerpf(0.16, 0.06, float(k) / 4.0), lerpf(0.16, 0.06, float(k + 1) / 4.0),
+		tube(mb, ROLE_FOLIAGE, pts[k], pts[k + 1], lerpf(0.16, 0.06, float(k) / 4.0) * height / 3.1, lerpf(0.16, 0.06, float(k + 1) / 4.0) * height / 3.1,
 				trunk, 6, 0.0)
 	# Nuages : un au sommet, deux à quatre portés par des branches latérales.
 	var top := pts[pts.size() - 1]
@@ -401,7 +421,7 @@ static func pine(mb: BastideMeshBuilder, c: Vector3, height: float, gs: BastideG
 		var dir := Vector3(cos(a), 0, sin(a))
 		var reach := height * (0.32 - t * 0.12)
 		var end := base + dir * reach + Vector3(0, height * 0.08, 0)
-		tube(mb, ROLE_FOLIAGE, base, end, 0.06, 0.035, trunk, 5, 0.1)
+		tube(mb, ROLE_FOLIAGE, base, end, 0.06 * height / 3.1, 0.035 * height / 3.1, trunk, 5, 0.1)
 		var r := height * (0.24 - t * 0.08)
 		blob(mb, ROLE_FOLIAGE, end + Vector3(0, r * 0.2, 0), Vector3(r, r * 0.36, r), tint(needle, hs(key, 50 + k) * 0.06),
 				BastideRng.combine(key, 60 + k), 4, 9, 0.45, 0.1, Color(0, 0, 0, 0), 0.5)

@@ -126,13 +126,20 @@ func get_mesh_instance() -> MeshInstance3D:
 
 
 func _apply_look() -> void:
-	var mi := get_mesh_instance()
-	if mi == null:
-		return
-	mi.transparency = mesh_transparency
-	mi.material_overlay = mesh_overlay
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh_casts_shadow and mesh_transparency < 0.5 \
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for gi in BastideResultApplier.geometry(self):
+		gi.transparency = mesh_transparency
+		gi.material_overlay = mesh_overlay
+		var cast := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if mesh_casts_shadow and mesh_transparency < 0.5 \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if gi is MultiMeshInstance3D:
+			# Les groupes gardent leur réglage (couronnes sans ombre, silhouettes d'ombre seules),
+			# sauf pour un fantôme : rien ne porte d'ombre.
+			if cast == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				gi.cast_shadow = cast
+			elif gi.has_meta(&"cast"):
+				gi.cast_shadow = gi.get_meta(&"cast")
+		else:
+			gi.cast_shadow = cast
 
 
 ## Statistiques de la dernière génération (triangles, durée…).
@@ -145,9 +152,17 @@ var last_anchors := {}
 # une clôture s'ouvre là où passe un chemin, des plantes poussent au pied des murs.
 # Chaque structure a un « niveau » : quand elle change, seules celles de niveau
 # supérieur qui lisent le voisinage sont régénérées (jamais de boucle).
-#   0 : murs, maisons · 1 : chemins, torii · 2 : clôtures, massifs · 3 : jardin
+#   0 : maisons · 1 : terrasses (elles se calent sur les maisons) · 2 : chemins,
+#   torii (ils rejoignent portes et marches) · 3 : murs (ils s'ouvrent pour les
+#   chemins) · 4 : clôtures, massifs · 5 : jardin
 
 const GROUP := &"bastide_structures"
+const LEVEL_HOUSE := 0
+const LEVEL_TERRACE := 1
+const LEVEL_PATH := 2
+const LEVEL_WALL := 3
+const LEVEL_FENCE := 4
+const LEVEL_GARDEN := 5
 
 ## Faux pour un aperçu (fantôme) : les autres structures l'ignorent.
 var context_enabled := true:
@@ -155,7 +170,9 @@ var context_enabled := true:
 		if context_enabled == value:
 			return
 		context_enabled = value
-		_notify_dependents()
+		# Dans les deux sens : un voisin qui disparaît (fantôme, suppression) doit
+		# aussi être oublié par ceux qui le voyaient (portail qui se referme…).
+		_notify_dependents(true)
 
 
 ## Niveau dans le voisinage (voir plus haut). À surcharger.
@@ -194,8 +211,8 @@ func gather_context() -> BastideGardenContext:
 	return BastideGardenContext.from_entries(entries)
 
 
-func _notify_dependents() -> void:
-	if not is_inside_tree() or not context_enabled:
+func _notify_dependents(force := false) -> void:
+	if not is_inside_tree() or (not context_enabled and not force):
 		return
 	var lvl := context_level()
 	for n in get_tree().get_nodes_in_group(GROUP):
@@ -215,6 +232,8 @@ func _to_world(points: PackedVector3Array) -> PackedVector3Array:
 
 var _queued := false
 var _task_id := -1
+## Pose sur le relief à appliquer au prochain résultat (voir _prepare_job).
+var _pending_drape := {}
 var _dirty_while_running := false
 var _fallback_style: BastideStyle
 
@@ -299,7 +318,39 @@ func _prepare_job() -> Callable:
 	var st := get_effective_style()
 	# Volets du style et matériaux créés ici, sur le thread principal.
 	st.prepare()
-	return _make_job()
+	var job := _make_job()
+	# Relief : la génération se fait à plat, puis elle est posée sur le sol. La pose
+	# se fait sur le thread principal (voir _drape_result) : elle relit les maillages,
+	# et une relecture depuis un autre thread attend le serveur de rendu, donc le
+	# thread principal, qui peut lui-même attendre ce calcul (_exit_tree).
+	_pending_drape = {}
+	var field := BastideTerrain.field_for(self)
+	var mode := terrain_mode()
+	if field != null and mode != BastideDrape.Mode.NONE:
+		# Sans échelle : le chantier fait « sortir de terre » une structure en animant
+		# son échelle verticale, ce qui ne doit pas changer sa pose sur le sol.
+		_pending_drape = {"field": field, "mode": mode, "min_lift": _terrain_min_lift(),
+				"xf": Transform3D(global_transform.basis.orthonormalized(), global_transform.origin)}
+	return job
+
+
+func _drape_result(result: BastideBuildResult, drape: Dictionary) -> void:
+	if result == null or drape.is_empty():
+		return
+	var t0 := Time.get_ticks_usec()
+	BastideDrape.apply(result, drape["field"], drape["xf"], drape["mode"], drape["min_lift"])
+	result.stats["drape_ms"] = snappedf((Time.get_ticks_usec() - t0) / 1000.0, 0.1)
+
+
+## Comment la structure se pose sur le relief (voir BastideDrape) : par défaut elle
+## épouse la pente ; maisons, terrasses et torii restent d'aplomb.
+func terrain_mode() -> int:
+	return BastideDrape.Mode.FOLLOW
+
+
+## Hauteur de pose minimale (structures d'aplomb) : -INF si aucune.
+func _terrain_min_lift() -> float:
+	return -INF
 
 
 static func _timed(job: Callable) -> BastideBuildResult:
@@ -316,6 +367,7 @@ func _finish_build(result: BastideBuildResult) -> void:
 		WorkerThreadPool.wait_for_task_completion(_task_id)
 		_task_id = -1
 	if is_inside_tree():
+		_drape_result(result, _pending_drape)
 		_apply(result)
 	if _dirty_while_running:
 		_dirty_while_running = false
@@ -349,7 +401,9 @@ func get_effective_style() -> BastideStyle:
 func rebuild() -> void:
 	if not is_inside_tree():
 		return
-	_apply(_timed(_prepare_job()))
+	var r := _timed(_prepare_job())
+	_drape_result(r, _pending_drape)
+	_apply(r)
 
 
 func _randomize_seed() -> void:

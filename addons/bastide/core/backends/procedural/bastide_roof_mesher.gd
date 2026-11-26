@@ -302,24 +302,37 @@ static func _eave_lift(roof: BastideRoofLayout, curve: float, corner_lift: float
 			corners.append(outline[i])
 	var corner_r := reach * 3.5
 	var top := roof.base_y + reach * roof.tan_pitch + 0.5
+	# Segments précalculés (origine, direction, 1/longueur²) : la fonction est
+	# appelée pour chaque sommet du toit, elle doit rester légère.
+	var m := outline.size()
+	var seg_a := PackedVector2Array()
+	var seg_d := PackedVector2Array()
+	var seg_inv := PackedFloat32Array()
+	for i in m:
+		var a := outline[i]
+		var d := outline[(i + 1) % m] - a
+		seg_a.append(a)
+		seg_d.append(d)
+		seg_inv.append(1.0 / maxf(d.length_squared(), 1e-12))
+	var reach2 := reach * reach
 	return func(p: Vector3) -> Vector3:
 		if p.y > top:
 			return p
 		var q := Vector2(p.x, p.z)
-		var dist := INF
-		for i in outline.size():
-			var a := outline[i]
-			var b := outline[(i + 1) % outline.size()]
-			dist = minf(dist, q.distance_to(Geometry2D.get_closest_point_to_segment(q, a, b)))
-		var t := 1.0 - dist / reach
-		if t <= 0.0:
+		var d2 := INF
+		for i in m:
+			var rel := q - seg_a[i]
+			var t := clampf(rel.dot(seg_d[i]) * seg_inv[i], 0.0, 1.0)
+			d2 = minf(d2, (rel - seg_d[i] * t).length_squared())
+		if d2 >= reach2:
 			return p
+		var w := 1.0 - sqrt(d2) / reach
 		var boost := 0.0
 		for c in corners:
 			var k := 1.0 - q.distance_to(c) / corner_r
 			if k > boost:
 				boost = k
-		return p + Vector3(0.0, curve * t * t * (1.0 + corner_lift * boost * boost), 0.0)
+		return p + Vector3(0.0, curve * w * w * (1.0 + corner_lift * boost * boost), 0.0)
 
 
 ## Découpe un polygone convexe en morceaux (rangs de hauteur `dh` à partir de `base`,

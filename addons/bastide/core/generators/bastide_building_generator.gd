@@ -51,6 +51,7 @@ static func generate(spec: BastideBuildingSpec, style: BastideStyle) -> BastideB
 		layout.noren_color = bs.noren_colors[ni]
 	layout.timber = bs.facade_kind == BastideBuildingStyle.FacadeKind.TIMBER
 	layout.pent_roof = bs.pent_roof and layout.floors >= 2
+	layout.pent_levels = layout.floors - 1 if bs.pent_every_floor else 1
 
 	# --- Façades -------------------------------------------------------------------
 	var n := fp.size()

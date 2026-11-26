@@ -11,42 +11,53 @@ func _init() -> void:
 	root.name = "RuntimeDemo"
 	root.set_script(load("res://demos/04_runtime/runtime_demo.gd"))
 
-	# --- Lumière de fin d'après-midi à la campagne ---
+	# --- Lumière dorée de fin de journée à la campagne ---
 	var env := Environment.new()
 	var sky := Sky.new()
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.42, 0.6, 0.84)
-	sky_mat.sky_horizon_color = Color(0.93, 0.86, 0.78)
-	sky_mat.sky_curve = 0.12
-	sky_mat.ground_horizon_color = Color(0.86, 0.8, 0.7)
-	sky_mat.ground_bottom_color = Color(0.35, 0.38, 0.3)
-	sky_mat.sun_angle_max = 20.0
-	sky_mat.sun_curve = 0.08
+	sky_mat.sky_top_color = Color(0.46, 0.6, 0.8)
+	sky_mat.sky_horizon_color = Color(1.0, 0.8, 0.6)
+	sky_mat.sky_curve = 0.1
+	sky_mat.ground_horizon_color = Color(0.92, 0.76, 0.56)
+	sky_mat.ground_bottom_color = Color(0.32, 0.33, 0.24)
+	sky_mat.sun_angle_max = 32.0
+	sky_mat.sun_curve = 0.12
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.85
+	env.ambient_light_energy = 0.75
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.05
+	env.tonemap_exposure = 1.08
 	env.ssao_enabled = true
 	env.ssao_radius = 1.4
-	env.ssao_intensity = 2.2
+	env.ssao_intensity = 2.0
 	env.ssil_enabled = true
 	env.ssil_intensity = 0.6
+	# Halo doux autour des zones claires (ciel, pointes d'herbe au soleil).
 	env.glow_enabled = true
-	env.glow_intensity = 0.55
-	env.glow_bloom = 0.04
-	env.glow_hdr_threshold = 1.1
+	env.glow_intensity = 0.75
+	env.glow_bloom = 0.1
+	env.glow_hdr_threshold = 0.95
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	# Brume dorée au loin, et brume volumétrique où le soleil trace ses rayons.
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.9, 0.84, 0.76)
-	env.fog_density = 0.0045
-	env.fog_sun_scatter = 0.25
-	env.fog_aerial_perspective = 0.35
+	env.fog_light_color = Color(1.0, 0.82, 0.62)
+	env.fog_density = 0.0028
+	env.fog_sky_affect = 0.45
+	env.fog_sun_scatter = 0.45
+	env.fog_aerial_perspective = 0.5
+	env.volumetric_fog_enabled = true
+	env.volumetric_fog_density = 0.0025
+	env.volumetric_fog_albedo = Color(1.0, 0.88, 0.74)
+	env.volumetric_fog_anisotropy = 0.65
+	env.volumetric_fog_length = 110.0
+	env.volumetric_fog_sky_affect = 0.15
+	env.volumetric_fog_ambient_inject = 0.3
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
-	env.adjustment_contrast = 1.03
+	env.adjustment_saturation = 1.1
+	env.adjustment_contrast = 1.04
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
 	we.environment = env
@@ -54,18 +65,27 @@ func _init() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "Soleil"
-	sun.light_color = Color(1.0, 0.87, 0.7)
-	sun.light_energy = 1.55
+	sun.light_color = Color(1.0, 0.78, 0.55)
+	sun.light_energy = 1.9
+	sun.light_volumetric_fog_energy = 1.6
 	sun.shadow_enabled = true
-	sun.shadow_blur = 1.6
+	sun.shadow_blur = 1.4
 	sun.directional_shadow_max_distance = 150.0
-	sun.rotation_degrees = Vector3(-31, -38, 0)
+	# Soleil bas derrière le hameau (vu depuis la caméra de départ) : contre-jour doré.
+	sun.rotation_degrees = Vector3(-17, 152, 0)
 	_add(root, sun)
 
 	# --- Caméra douce ---
 	var cam := BastideOrbitCamera.new()
 	cam.name = "Camera"
 	cam.fov = 50
+	# Léger flou au loin ; la distance suit la caméra (voir runtime_demo.gd).
+	var attrs := CameraAttributesPractical.new()
+	attrs.dof_blur_far_enabled = true
+	attrs.dof_blur_far_distance = 80.0
+	attrs.dof_blur_far_transition = 50.0
+	attrs.dof_blur_amount = 0.06
+	cam.attributes = attrs
 	cam.target = Vector3(0, 0, 0)
 	cam.distance = 70.0
 	cam.yaw_degrees = -25.0
@@ -79,14 +99,14 @@ func _init() -> void:
 	decor.set_script(load("res://demos/04_runtime/scenery.gd"))
 	_add(root, decor)
 	decor.set("follow", cam)
-	var ground := StaticBody3D.new()
-	ground.name = "Sol"
-	ground.collision_layer = 2
-	_add(root, ground)
-	var gs := CollisionShape3D.new()
-	gs.name = "Shape"
-	gs.shape = WorldBoundaryShape3D.new()
-	_add(ground, gs, root)
+	# Le relief (collision du sol sur la couche 2) : clairière vallonnée, collines autour,
+	# l'étang sur un replat.
+	var terrain := BastideTerrain.new()
+	terrain.name = "Terrain"
+	terrain.flat_zones = [Vector4(-27, 16, 10.5, 7.0)] as Array[Vector4]
+	root.add_child(terrain)
+	terrain.owner = root
+	root.move_child(terrain, 0)
 
 	# --- Construction ---
 	var site := BastideBuildSite.new()
@@ -97,6 +117,20 @@ func _init() -> void:
 	_add(root, tool)
 	tool.site = site
 	tool.camera = cam
+
+	# --- Herbe haute qui suit la caméra et s'écarte des constructions ---
+	var grass := BastideGrass.new()
+	grass.name = "Herbe"
+	_add(root, grass)
+	grass.site = site
+	grass.camera = cam
+
+	# --- Vie du hameau : fumées, lanternes, oiseaux, papillons ---
+	var life := BastideLife.new()
+	life.name = "Vie"
+	_add(root, life)
+	life.site = site
+	life.camera = cam
 
 	var amb := Node.new()
 	amb.name = "Ambiance"

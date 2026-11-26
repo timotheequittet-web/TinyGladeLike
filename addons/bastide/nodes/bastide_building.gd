@@ -27,6 +27,13 @@ enum RoofChoice { STYLE, HIP, GABLE, IRIMOYA }
 		roof = value
 		queue_rebuild()
 
+## Volume du bâtiment, décliné du style : grande maison, petite maison, kura
+## (entrepôt), tour à étages. « Automatique » choisit d'après le tracé.
+@export var silhouette: BastideSilhouette.Kind = BastideSilhouette.Kind.AUTO:
+	set(value):
+		silhouette = value
+		queue_rebuild()
+
 ## Façade de la porte : numéro du côté du tracé (0 = du premier au deuxième point,
 ## 1 = du deuxième au troisième…). -1 = automatique (la plus longue façade sous égout).
 @export_range(-1, 64, 1) var door_facade := -1:
@@ -61,9 +68,22 @@ func clear_footprint() -> void:
 
 func _make_job() -> Callable:
 	var spec := build_spec()
-	var st := get_effective_style()
+	var kind := BastideSilhouette.resolve(silhouette, spec.footprint, spec.seed)
+	var st := BastideSilhouette.style_for(get_effective_style(), kind)
 	var with_collision := generate_collision
-	return func() -> BastideBuildResult: return compute(spec, st, with_collision)
+	return func() -> BastideBuildResult:
+		var r := compute(spec, st, with_collision)
+		r.stats["silhouette"] = BastideSilhouette.NAMES[kind]
+		# Entrepôt et tour de guet n'ont pas de foyer : pas de fumée.
+		if not BastideSilhouette.has_hearth(kind):
+			r.anchors["smoke"] = PackedVector3Array()
+		return r
+
+
+## Silhouette réellement utilisée (AUTO résolu d'après le tracé).
+func resolved_silhouette() -> int:
+	var spec := build_spec()
+	return BastideSilhouette.resolve(silhouette, spec.footprint, spec.seed)
 
 
 ## Calcul pur (aucun accès à l'arbre de scène) : peut tourner sur n'importe quel thread.
@@ -107,3 +127,8 @@ func build_spec() -> BastideBuildingSpec:
 		RoofChoice.IRIMOYA:
 			roof_type = BastideRoofStyle.RoofType.IRIMOYA
 	return BastideBuildingSpec.from_points(pts, seed, floors, roof_type, door_facade)
+
+
+## Une maison reste d'aplomb : un soubassement rattrape la pente.
+func terrain_mode() -> int:
+	return BastideDrape.Mode.RIGID

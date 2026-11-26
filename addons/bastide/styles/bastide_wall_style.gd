@@ -7,6 +7,9 @@ extends Resource
 ## Matière du corps du mur : pierres apparentes partout, ou enduit au-dessus
 ## d'un soubassement de pierres (muret japonais, mur de jardin…).
 enum BodyKind { STONE, PLASTER }
+## Portail ouvert là où un chemin traverse le mur. AUTO : portail couvert (petit
+## toit de tuiles) si le mur a un petit toit, sinon piliers et arc de pierre.
+enum GateKind { AUTO, ROOFED, ARCH, PILLARS }
 
 @export_group("Corps du mur")
 @export var body_kind: BodyKind = BodyKind.STONE:
@@ -177,6 +180,34 @@ enum BodyKind { STONE, PLASTER }
 	set(value):
 		miter_limit = value
 		emit_changed()
+@export_group("Portails")
+## Forme du portail quand un chemin traverse le mur.
+@export var gate_kind: GateKind = GateKind.AUTO:
+	set(value):
+		gate_kind = value
+		emit_changed()
+## Bois des poteaux, des vantaux et du dessous du toit du portail.
+@export var gate_wood_color: Color = Color(0.3, 0.22, 0.16):
+	set(value):
+		gate_wood_color = value
+		emit_changed()
+## Vantaux de bois ouverts contre le mur (portail couvert).
+@export var gate_leaves: bool = true:
+	set(value):
+		gate_leaves = value
+		emit_changed()
+## Passage libre minimal entre les montants du portail.
+@export_range(0.8, 4.0, 0.05, "suffix:m") var gate_min_clear: float = 1.6:
+	set(value):
+		gate_min_clear = value
+		emit_changed()
+
+## Forme effective du portail (AUTO résolu).
+func effective_gate_kind() -> GateKind:
+	if gate_kind != GateKind.AUTO:
+		return gate_kind
+	return GateKind.ROOFED if cap_roof else GateKind.ARCH
+
 @export_group("Tracé")
 ## Points du tracé plus proches que ça : fusionnés.
 @export_range(0.01, 5.0, 0.01, "suffix:m") var min_segment: float = 0.3:

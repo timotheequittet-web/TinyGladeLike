@@ -1,9 +1,10 @@
 extends Node3D
-## Démo des étapes 4 et 5 : construire soi-même, en jeu, à la souris.
+## Démo des étapes 4 à 6 : construire soi-même, en jeu, à la souris.
 ##
 ## Le hameau de départ sort de terre au lancement ; ensuite, à toi : dessine des
 ## murets, tire des maisons, agrandis-les en L, trace des chemins, pose des torii,
-## plante des massifs et des arbres, retouche avec les poignées. Le jardin
+## plante des massifs et des arbres, pose des terrasses et des engawa, retouche
+## avec les poignées. Un muret traversé par un chemin s'ouvre en portail. Le jardin
 ## (galets, plantes au pied des murs) pousse tout seul.
 ## L'interface est construite ici, en code, pour rester légère et discrète.
 
@@ -22,9 +23,12 @@ var _hint_tween: Tween
 var _mode_buttons := {}
 var _variant_buttons := {}
 var _variant_panel: PanelContainer
+var _forest_buttons := {}
+var _forest_panel: PanelContainer
 var _style_buttons := {}
 var _undo_btn: Button
 var _redo_btn: Button
+var _walk_btn: Button
 var _sel_panel: PanelContainer
 var _floor_box: HBoxContainer
 var _toast: Label
@@ -39,10 +43,12 @@ func _starting_village() -> Array:
 			"points": [[-9, 0, -6], [1, 0, -6], [1, 0, 0], [-9, 0, 0]]},
 		{"kind": "house", "seed": 31, "floors": 1, "style": j, "door": 2,
 			"points": [[6, 0, -11], [14, 0, -11], [14, 0, 3], [9, 0, 3], [9, 0, -5], [6, 0, -5]]},
+		# Le grand muret à petit toit : le chemin le traverse, un portail s'y ouvre.
 		{"kind": "wall", "seed": 4, "height": 1.9, "style": j, "closed": false,
-			"points": [[-13, 0, -1], [-13.5, 0, 5], [-10, 0, 8.5], [-4, 0, 9]]},
-		{"kind": "wall", "seed": 8, "height": 1.9, "style": j, "closed": false,
-			"points": [[2, 0, 9], [7, 0, 8.4], [10.5, 0, 6.5]]},
+			"points": [[-13, 0, -1], [-13.5, 0, 5], [-10, 0, 8.5], [-4, 0, 9], [2, 0, 9], [7, 0, 8.4], [10.5, 0, 6.5]]},
+		# Engawa le long de la façade de la grande maison, à gauche de la porte.
+		{"kind": "terrace", "seed": 8, "style": j, "entry": -1,
+			"points": [[-8.7, 0, 0.3], [-4.6, 0, 0.3], [-4.6, 0, 1.8], [-8.7, 0, 1.8]]},
 		# Le chemin qui monte vers le hameau, et sa branche vers la seconde maison.
 		{"kind": "path", "seed": 5, "style": j,
 			"points": [[-1, 0, 26], [0.5, 0, 18], [-0.6, 0, 11], [-2.2, 0, 5], [-4, 0, 2.6]]},
@@ -56,9 +62,23 @@ func _starting_village() -> Array:
 		{"kind": "fence", "seed": 9, "variant": 0, "style": j, "closed": false,
 			"points": [[-5, 0, 17], [-10, 0, 15.5], [-14.5, 0, 12], [-17, 0, 7]]},
 		{"kind": "plants", "seed": 21, "style": j, "points": [[5, 0, 12.5], [8.5, 0, 11.5], [12, 0, 9]]},
-		{"kind": "plants", "seed": 14, "style": j, "points": [[-6.8, 0, 6.2]]},
+		{"kind": "plants", "seed": 14, "style": j, "points": [[-9.8, 0, 4.4]]},
 		{"kind": "plants", "seed": 27, "style": j, "points": [[4.2, 0, 16.5]]},
 		{"kind": "plants", "seed": 33, "style": j, "points": [[-11.5, 0, -4.5]]},
+		# Terrasse au bord de l'étang, et le chemin qui y mène.
+		{"kind": "terrace", "seed": 17, "style": j, "entry": -1,
+			"points": [[-22.8, 0, 13.8], [-18.8, 0, 13.8], [-18.8, 0, 16.8], [-22.8, 0, 16.8]]},
+		{"kind": "path", "seed": 19, "style": j,
+			"points": [[0.3, 0, 20], [-6, 0, 20.8], [-12, 0, 19.2], [-16.8, 0, 16.4]]},
+		# La forêt mêlée qui ferme le hameau au nord (arbres d'Onsen) : on peut s'y promener.
+		{"kind": "forest", "seed": 41, "style": j, "closed": true, "forest_kind": 0,
+			"points": [[-34, 0, -16], [-12, 0, -15], [4, 0, -17], [22, 0, -16], [36, 0, -20], [38, 0, -44], [10, 0, -52], [-20, 0, -50], [-38, 0, -38]]},
+		# Silhouettes : une tour de guet à l'ouest (choisie d'office par sa petite base
+		# carrée), un kura à l'est de la longue maison.
+		{"kind": "house", "seed": 23, "style": j, "door": 2,
+			"points": [[-18.5, 0, -9], [-14.3, 0, -9], [-14.3, 0, -4.8], [-18.5, 0, -4.8]]},
+		{"kind": "house", "seed": 44, "style": j, "door": 3, "shape": BastideSilhouette.Kind.KURA,
+			"points": [[19.5, 0, -7], [25.5, 0, -7], [25.5, 0, -2.6], [19.5, 0, -2.6]]},
 	]
 
 
@@ -66,9 +86,12 @@ func _ready() -> void:
 	_build_ui()
 	tool.style = JAPANESE
 	site.garden_style = JAPANESE
-	tool.hint_changed.connect(_show_hint)
+	tool.hint_changed.connect(func(t: String) -> void:
+		if not camera.walking:
+			_show_hint(t))
 	tool.mode_changed.connect(func(_m: int) -> void: _refresh_mode())
 	tool.variant_changed.connect(func(_v: int) -> void: _refresh_mode())
+	tool.forest_kind_changed.connect(func(_k: int) -> void: _refresh_mode())
 	tool.selection_changed.connect(func(_id: int) -> void: _refresh_selection())
 	tool.history_changed.connect(func(u: bool, r: bool) -> void:
 		_undo_btn.disabled = not u
@@ -77,6 +100,7 @@ func _ready() -> void:
 	tool.edited.connect(func() -> void: ambience.play_edit())
 	tool.removed.connect(func(_k: String) -> void: ambience.play_remove())
 	site.structure_changed.connect(func(_id: int) -> void: _refresh_selection())
+	camera.walking_changed.connect(_on_walking)
 	_refresh_mode()
 	_refresh_selection()
 	_undo_btn.disabled = true
@@ -90,6 +114,15 @@ func _ready() -> void:
 			data[i]["id"] = i + 1
 		site.from_data(data, true, 0.3))
 	_show_hint(tool.current_hint())
+
+
+## Le flou lointain commence juste derrière ce qu'on regarde : le hameau reste net,
+## les collines et la forêt du fond s'adoucissent.
+func _process(_delta: float) -> void:
+	var attrs := camera.attributes as CameraAttributesPractical
+	if attrs:
+		var focus := 38.0 if camera.walking else camera.distance + 28.0
+		attrs.dof_blur_far_distance = lerpf(attrs.dof_blur_far_distance, focus, 0.1)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -229,12 +262,16 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.PATH] = _button(hb, "Chemin  3", func() -> void: tool.mode = BastideBuildTool.Mode.PATH, true)
 	_mode_buttons[BastideBuildTool.Mode.TORII] = _button(hb, "Torii  4", func() -> void: tool.mode = BastideBuildTool.Mode.TORII, true)
 	_mode_buttons[BastideBuildTool.Mode.PLANTS] = _button(hb, "Plantes  5", func() -> void: tool.mode = BastideBuildTool.Mode.PLANTS, true)
+	_mode_buttons[BastideBuildTool.Mode.TERRACE] = _button(hb, "Terrasse  T", func() -> void: tool.mode = BastideBuildTool.Mode.TERRACE, true)
+	_mode_buttons[BastideBuildTool.Mode.FOREST] = _button(hb, "Forêt  B", func() -> void: tool.mode = BastideBuildTool.Mode.FOREST, true)
 	_sep(hb)
 	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
 	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
 	_sep(hb)
 	_undo_btn = _button(hb, "Annuler", tool.undo)
 	_redo_btn = _button(hb, "Rétablir", tool.redo)
+	_sep(hb)
+	_walk_btn = _button(hb, "Promenade  P", func() -> void: camera.set_walking(not camera.walking), true)
 
 	# Variantes du muret (touche V), juste au-dessus quand le mode Muret est actif.
 	_variant_panel = PanelContainer.new()
@@ -252,6 +289,19 @@ func _build_ui() -> void:
 	_variant_buttons[BastideBuildTool.WallVariant.BAMBOO] = _button(vhb, "Bambou",
 			func() -> void: tool.wall_variant = BastideBuildTool.WallVariant.BAMBOO, true)
 
+	# Sortes de forêt (touche V en mode Forêt), au même endroit.
+	_forest_panel = PanelContainer.new()
+	_forest_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
+	_forest_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_forest_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(_forest_panel)
+	var fhb := HBoxContainer.new()
+	fhb.add_theme_constant_override("separation", 4)
+	_forest_panel.add_child(fhb)
+	var fnames := ["Mêlée", "Cèdres", "Chênaie", "Érables", "Cerisiers", "Pinède"]
+	for k in fnames.size():
+		_forest_buttons[k] = _button(fhb, fnames[k], func() -> void: tool.forest_kind = k as BastideForestBuilder.Kind, true)
+
 	# Panneau de la structure sélectionnée, juste au-dessus.
 	_sel_panel = PanelContainer.new()
 	_sel_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
@@ -265,6 +315,7 @@ func _build_ui() -> void:
 	shb.add_child(_floor_box)
 	_button(_floor_box, "Étage −", func() -> void: tool.change_floors(-1))
 	_button(_floor_box, "Étage +", func() -> void: tool.change_floors(1))
+	_button(_floor_box, "Silhouette  G", tool.cycle_silhouette)
 	_button(shb, "Autre variation  R", tool.reroll_selected)
 	_button(shb, "Retirer", tool.delete_selected)
 
@@ -283,24 +334,38 @@ func _build_ui() -> void:
 	root.add_child(_hint)
 
 	# Titre discret et rappel des commandes de la caméra.
+	# Un voile chaud et discret derrière le texte, lisible sur un ciel clair comme sur les cerisiers.
+	var card := PanelContainer.new()
+	card.position = Vector2(16, 12)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var veil := StyleBoxFlat.new()
+	veil.bg_color = Color(0.13, 0.1, 0.07, 0.32)
+	veil.set_corner_radius_all(12)
+	veil.set_content_margin_all(12)
+	veil.content_margin_left = 14
+	veil.content_margin_right = 16
+	card.add_theme_stylebox_override("panel", veil)
+	root.add_child(card)
+	var card_box := VBoxContainer.new()
+	card_box.add_theme_constant_override("separation", 4)
+	card_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(card_box)
 	var title := Label.new()
-	title.position = Vector2(26, 20)
 	title.text = "Bastide · hameau de campagne"
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Color(1, 0.98, 0.94))
 	title.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
 	title.add_theme_constant_override("shadow_outline_size", 6)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(title)
+	card_box.add_child(title)
 	var keys := Label.new()
-	keys.position = Vector2(28, 54)
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5 : outils   ·   V : variante du muret\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   G : silhouette   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
-	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.85))
+	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.92))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
 	keys.add_theme_constant_override("shadow_outline_size", 5)
 	keys.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(keys)
+	card_box.add_child(keys)
 
 	# Petit bouton « tout retirer », en haut à droite.
 	var tr := PanelContainer.new()
@@ -337,6 +402,8 @@ func _refresh_mode() -> void:
 		(_mode_buttons[m] as Button).set_pressed_no_signal(m == tool.mode)
 	for v: int in _variant_buttons:
 		(_variant_buttons[v] as Button).set_pressed_no_signal(v == tool.wall_variant)
+	for k: int in _forest_buttons:
+		(_forest_buttons[k] as Button).set_pressed_no_signal(k == int(tool.forest_kind))
 	_refresh_style_buttons()
 	_refresh_selection()
 
@@ -350,6 +417,12 @@ func _refresh_selection() -> void:
 	_variant_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_variants else Control.MOUSE_FILTER_IGNORE
 	for b in _variant_panel.find_children("*", "Button", true, false):
 		(b as Button).disabled = not show_variants
+	var show_forests := tool.mode == BastideBuildTool.Mode.FOREST and not has
+	var tf := create_tween()
+	tf.tween_property(_forest_panel, "modulate:a", 1.0 if show_forests else 0.0, 0.25)
+	_forest_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_forests else Control.MOUSE_FILTER_IGNORE
+	for b in _forest_panel.find_children("*", "Button", true, false):
+		(b as Button).disabled = not show_forests
 	var tw := create_tween()
 	tw.tween_property(_sel_panel, "modulate:a", 1.0 if has else 0.0, 0.25)
 	_sel_panel.mouse_filter = Control.MOUSE_FILTER_STOP if has else Control.MOUSE_FILTER_IGNORE
@@ -365,6 +438,19 @@ func _refresh_selection() -> void:
 				(_style_buttons[s] as Button).set_pressed_no_signal(s.resource_path == st.resource_path)
 	else:
 		_refresh_style_buttons()
+
+
+## En promenade, on ne construit pas : l'outil se tait et la barre s'efface un peu.
+func _on_walking(on: bool) -> void:
+	_walk_btn.set_pressed_no_signal(on)
+	if on:
+		tool.cancel_draft()
+		tool.select(-1)
+	tool.set_process_unhandled_input(not on)
+	if on:
+		_show_hint("Promenade : ZQSD pour marcher (Maj pour courir) · clic droit + souris pour regarder · P ou Échap pour remonter")
+	else:
+		_show_hint(tool.current_hint())
 
 
 func _show_hint(text: String) -> void:

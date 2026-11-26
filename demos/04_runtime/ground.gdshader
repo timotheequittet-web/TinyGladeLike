@@ -10,6 +10,11 @@ uniform vec3 path_color : source_color = vec3(0.7, 0.63, 0.5);
 uniform float wind_speed = 0.35;
 // Ancien sentier peint dans l'herbe (remplacé par les vrais chemins de l'étape 5).
 uniform float painted_path = 0.0;
+// Sous l'herbe haute (près du centre suivi), le sol est l'ombre entre les brins.
+uniform vec3 grass_center = vec3(0.0, -1000.0, 0.0);
+uniform float grass_far = 70.0;
+uniform vec3 under_grass : source_color = vec3(0.3, 0.45, 0.16);
+uniform vec3 far_tint : source_color = vec3(0.55, 0.62, 0.27);
 
 varying vec3 wp;
 
@@ -48,6 +53,12 @@ void fragment() {
 	// Vent sur l'herbe : de longues vagues de lumière qui traversent la prairie.
 	float wave = sin(dot(p, vec2(0.08, 0.05)) - TIME * wind_speed * 2.0 + fbm(p * 0.05) * 4.0);
 	col *= 1.0 + wave * 0.035;
+	// Au loin, la prairie prend la teinte moyenne de l'herbe dorée ; sous les brins, elle s'assombrit.
+	col = mix(col, far_tint * (0.85 + big * 0.3), 0.45);
+	if (grass_center.y > -999.0) {
+		float gd = length(wp.xz - grass_center.xz);
+		col = mix(under_grass * (0.85 + mid * 0.3), col, smoothstep(grass_far * 0.55, grass_far, gd));
+	}
 	// Sentier de terre qui serpente vers le hameau.
 	float path_x = sin(wp.z * 0.045) * 7.0 + 3.0;
 	float d = abs(wp.x - path_x);

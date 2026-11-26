@@ -18,6 +18,9 @@ class Run:
 	var s1 := 0.0
 	var start_kind := EndKind.OPEN
 	var end_kind := EndKind.OPEN
+	## Vrai si ce bout du tronçon borde un portail (pas de pignon de petit toit).
+	var start_gate := false
+	var end_gate := false
 	## Stations : abscisse, position du pied (axe du mur) et décalage latéral par mètre de demi-épaisseur.
 	var s := PackedFloat32Array()
 	var pos := PackedVector3Array()
@@ -77,6 +80,9 @@ var courses := PackedFloat32Array()  # limites d'assises (y relatif)
 var stones: Array = []        # { run, side, s0, s1, y0, y1a, y1b, quoin, tint, alt, bulge }
 var coping: Array = []        # { run, s0, s1, dy, thickness }
 var merlons: Array = []       # { run, s0, s1, height, depth }
+## Portails là où un chemin traverse le mur :
+## { s0, s1, a, b (pieds sur l'axe), dir, right, width, kind (GateKind), wall_h, pillar_w, arch }
+var gates: Array = []
 
 var coping_thickness := 0.16
 var coping_overhang := 0.07

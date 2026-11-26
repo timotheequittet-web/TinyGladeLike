@@ -139,6 +139,16 @@ static func build(layout: BastideWallLayout, style: BastideStyle, with_collision
 		for run in layout.runs:
 			_cap_roof(mb, layout, run, ws)
 	timings["cap"] = Time.get_ticks_usec() - _t; _t = Time.get_ticks_usec()
+	# --- Portails (là où un chemin traverse le mur) ---
+	for gi in layout.gates.size():
+		var g: Dictionary = layout.gates[gi]
+		match int(g.kind):
+			BastideWallStyle.GateKind.ROOFED:
+				_roofed_gate(mb, col, layout, g, gi, ws, with_collision)
+			BastideWallStyle.GateKind.ARCH:
+				if g.arch:
+					_arch_gate(mb, col, layout, g, gi, ws, with_collision)
+	timings["gates"] = Time.get_ticks_usec() - _t; _t = Time.get_ticks_usec()
 	result.mesh = mb.commit({
 		ROLE_BODY: style.get_material(),
 		ROLE_ROOF: style.get_roof_material(),
@@ -150,6 +160,7 @@ static func build(layout: BastideWallLayout, style: BastideStyle, with_collision
 		"merlons": layout.merlons.size(),
 		"pillars": layout.pillars.size(),
 		"runs": layout.runs.size(),
+		"gates": layout.gates.size(),
 		"triangles": mb.triangle_count,
 		"length_m": snappedf(layout.length, 0.01),
 		"timings_us": timings,
@@ -224,7 +235,8 @@ static func _cap_roof(mb: BastideMeshBuilder, layout: BastideWallLayout, run: Ba
 	# Pignons du petit toit aux bouts ouverts.
 	for end in 2:
 		var kind: int = run.start_kind if end == 0 else run.end_kind
-		if kind != EndKind.OPEN:
+		var gate: bool = run.start_gate if end == 0 else run.end_gate
+		if kind != EndKind.OPEN or gate:
 			continue
 		var sv: float = run.s0 if end == 0 else run.s1
 		var outward: Vector3 = -run.dir_at(sv) if end == 0 else run.dir_at(sv)
@@ -339,6 +351,11 @@ static func _add_pillar(mb: BastideMeshBuilder, col: BastideBuildResult, layout:
 	var slab_half := w * 0.5 + 0.08
 	var cap_color := ws.quoin_color.lightened(0.04)
 	mb.add_block(ROLE_BODY, corners_at.call(slab_half, body_top, top, Vector3.ZERO), 0.035, 0.008, cap_color, mortar.lerp(cap_color, 0.45), true)
+	if p.get("arch", false):
+		# Pilier de portail : l'arc prend appui sur la dalle, pas de pyramide.
+		if with_collision:
+			_box_faces(col, corners_at.call(w * 0.5, layout.footing, top, Vector3.ZERO))
+		return
 	var apex := base + Vector3(0, top + w * 0.32, 0)
 	var ring: Array = (corners_at.call(slab_half - 0.04, top, top, Vector3.ZERO) as Array).slice(0, 4)
 	for i in 4:
@@ -370,3 +387,231 @@ static func _add_run_collision(col: BastideBuildResult, layout: BastideWallLayou
 ## Ajoute un bloc à 8 coins aux faces de collision.
 static func _box_faces(col: BastideBuildResult, k: Array) -> void:
 	col.add_box(k)
+
+
+# --- Portails ----------------------------------------------------------------------
+
+## Repère d'un portail : point au sol à l'abscisse u (le long du mur, 0 = milieu),
+## au décalage v (en travers) et à la hauteur y.
+static func _gate_point(g: Dictionary, u: float, v: float, y: float) -> Vector3:
+	var c: Vector3 = ((g.a as Vector3) + (g.b as Vector3)) * 0.5
+	return c + (g.dir as Vector3) * u + (g.right as Vector3) * v + Vector3(0.0, y, 0.0)
+
+
+## Bloc droit dans le repère du portail : u0..u1 le long, v0..v1 en travers, y0..y1.
+static func _gate_box(g: Dictionary, u0: float, u1: float, v0: float, v1: float, y0: float, y1: float) -> Array:
+	return [
+		_gate_point(g, u0, v0, y0), _gate_point(g, u1, v0, y0), _gate_point(g, u1, v1, y0), _gate_point(g, u0, v1, y0),
+		_gate_point(g, u0, v0, y1), _gate_point(g, u1, v0, y1), _gate_point(g, u1, v1, y1), _gate_point(g, u0, v1, y1),
+	]
+
+
+## Portail couvert (style japonais) : deux poteaux de bois sur pierres, poutre de
+## liaison, petit toit de tuiles rondes à deux pentes un peu plus haut et plus
+## large que celui du mur, vantaux de planches ouverts contre le mur, seuil de pierre.
+static func _roofed_gate(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideWallLayout,
+		g: Dictionary, gi: int, ws: BastideWallStyle, with_collision: bool) -> void:
+	var w: float = g.width
+	var half := w * 0.5
+	var wood := ws.gate_wood_color
+	var key := BastideRng.key(layout.seed, "gate", gi)
+	var ps := 0.1  # demi-section des poteaux
+	var pu := half - ps - 0.02
+	var wall_h: float = g.wall_h
+	var post_h := maxf(wall_h + 0.62, 2.3)
+	var stone := ws.quoin_color
+	var mortar := ws.mortar_color
+	for e in [-1.0, 1.0]:
+		var u: float = e * pu
+		var tint := BastideRng.signed_at(layout.seed, "gate_post", gi * 2 + int(e > 0.0)) * 0.05
+		var c := wood.lightened(tint) if tint > 0.0 else wood.darkened(-tint)
+		# Pierre d'assise, puis poteau.
+		mb.add_block(ROLE_BODY, _gate_box(g, u - 0.19, u + 0.19, -0.19, 0.19, -0.06, 0.1), 0.04, 0.02,
+				stone.darkened(0.05), mortar.lerp(stone, 0.4))
+		mb.add_block(ROLE_WOOD, _gate_box(g, u - ps, u + ps, -ps, ps, 0.08, post_h + 0.02), 0.0, 0.0, c, c.darkened(0.1))
+		if with_collision:
+			col.add_box(_gate_box(g, u - ps, u + ps, -ps, ps, 0.0, post_h))
+	# Poutre haute (entre les poteaux, dépasse un peu) et traverse plus bas.
+	var beam := wood.darkened(0.08)
+	mb.add_block(ROLE_WOOD, _gate_box(g, -pu - 0.24, pu + 0.24, -0.08, 0.08, post_h - 0.3, post_h - 0.1), 0.0, 0.0, beam, beam)
+	mb.add_block(ROLE_WOOD, _gate_box(g, -pu + ps, pu - ps, -0.05, 0.05, post_h - 0.62, post_h - 0.5), 0.0, 0.0, beam, beam)
+	# Deux sablières en travers, sur les poteaux, qui portent le toit.
+	var ho := layout.half_top + layout.cap_overhang + 0.14
+	var eave_y := post_h + 0.03
+	for e in [-1.0, 1.0]:
+		var u: float = e * pu
+		mb.add_block(ROLE_WOOD, _gate_box(g, u - 0.07, u + 0.07, -ho + 0.12, ho - 0.12, post_h - 0.1, eave_y), 0.0, 0.0, beam, beam)
+	# Toit : faîtage dans l'axe du mur, débordant au-dessus des petits toits du mur.
+	var reach := half + 0.5
+	var tan_p := layout.cap_tan * 1.08
+	var rise := ho * tan_p
+	var ridge := func(u: float) -> Vector3: return _gate_point(g, u, 0.0, eave_y + rise)
+	var eave := func(u: float, side: float) -> Vector3: return _gate_point(g, u, side * ho, eave_y)
+	_tiled_gable(mb, ridge, eave, -reach, reach, ws, key, tan_p, g.right, true, true)
+	if with_collision:
+		col.add_box(_gate_box(g, -reach, reach, -ho, ho, eave_y - 0.08, eave_y + rise))
+	# Seuil de pierre en travers du passage.
+	mb.add_block(ROLE_BODY, _gate_box(g, -pu + ps + 0.02, pu - ps - 0.02, -0.24, 0.24, -0.08, 0.07), 0.035, 0.015,
+			stone.lightened(0.03), mortar.lerp(stone, 0.4))
+	# Vantaux de planches, grands ouverts contre le mur, d'un côté tiré par la seed.
+	if ws.gate_leaves:
+		var side := 1.0 if BastideRng.unit(BastideRng.combine(key, 3)) < 0.5 else -1.0
+		var leaf_w := pu - ps - 0.04
+		var leaf_top := post_h - 0.66
+		var face := layout.half_top + 0.06
+		var light := wood.lightened(0.12)
+		for e in [-1.0, 1.0]:
+			var hu: float = e * (pu - ps - 0.02)
+			var open := deg_to_rad(96.0 + BastideRng.signed_at(layout.seed, "gate_leaf", gi * 2 + int(e > 0.0)) * 5.0)
+			# Direction du vantail fermé (vers le milieu), puis ouvert de `open` vers `side`.
+			var du: float = -e * cos(open)
+			var dv := side * sin(open)
+			var nu := -dv
+			var nv := du
+			var leaf_pt := func(along: float, thick: float, y: float) -> Vector3:
+				return _gate_point(g, hu + du * along + nu * thick, side * face + dv * along + nv * thick, y)
+			var planks := maxi(3, roundi(leaf_w / 0.17))
+			for k in planks:
+				var a0 := float(k) / planks * leaf_w
+				var a1 := float(k + 1) / planks * leaf_w - 0.012
+				var tint := BastideRng.signed_at(layout.seed, "gate_plank", BastideRng.combine(gi, k + int(e > 0.0) * 50)) * 0.05
+				var pc := light.lightened(tint) if tint > 0.0 else light.darkened(-tint)
+				var top := leaf_top + BastideRng.signed_at(layout.seed, "gate_plank_h", BastideRng.combine(gi, k)) * 0.015
+				var pts: Array = []
+				for yy in [0.12, top]:
+					for q in [[a0, -0.022], [a1, -0.022], [a1, 0.022], [a0, 0.022]]:
+						pts.append(leaf_pt.call(q[0], q[1], yy))
+				mb.add_block(ROLE_WOOD, pts, 0.0, 0.0, pc, pc.darkened(0.15))
+			# Deux traverses horizontales, sur les deux faces.
+			for yb in [0.38, leaf_top - 0.32]:
+				for tside in [-1.0, 1.0]:
+					var pts2: Array = []
+					for yy in [yb, yb + 0.09]:
+						for q in [[0.02, 0.022], [leaf_w - 0.02, 0.022], [leaf_w - 0.02, 0.05], [0.02, 0.05]]:
+							pts2.append(leaf_pt.call(q[0], q[1] * tside, yy))
+					mb.add_block(ROLE_WOOD, pts2, 0.0, 0.0, beam, beam)
+
+
+## Petit toit de tuiles rondes à deux pentes entre les abscisses u0 et u1, donné par
+## deux fonctions : ridge(u) (faîte) et eave(u, côté) (égout). Côtes de tuiles en
+## travers des pentes, faîtage maçonné, dessous et planches de rive en bois,
+## pignons de bois aux bouts demandés.
+static func _tiled_gable(mb: BastideMeshBuilder, ridge: Callable, eave: Callable, u0: float, u1: float,
+		ws: BastideWallStyle, key: int, tan_p: float, across: Vector3, gable0: bool, gable1: bool) -> void:
+	var under := ws.cap_wood_color
+	var tile := ws.cap_color
+	var channel := tile.darkened(0.22)
+	var steps := maxi(1, ceili((u1 - u0) / 0.5))
+	for i in steps:
+		var sa := lerpf(u0, u1, float(i) / steps)
+		var sb := lerpf(u0, u1, float(i + 1) / steps)
+		var ra: Vector3 = ridge.call(sa)
+		var rb: Vector3 = ridge.call(sb)
+		for side in [-1.0, 1.0]:
+			var ea: Vector3 = eave.call(sa, side)
+			var eb: Vector3 = eave.call(sb, side)
+			mb.add_quad(ROLE_ROOF, ra, rb, eb, ea, across * side + Vector3.UP, channel, channel, channel.darkened(0.1), channel.darkened(0.1))
+			var da := ea - Vector3(0, 0.08, 0)
+			var db := eb - Vector3(0, 0.08, 0)
+			var wa := ra.lerp(ea, 0.85) - Vector3(0, 0.08, 0)
+			var wb := rb.lerp(eb, 0.85) - Vector3(0, 0.08, 0)
+			mb.add_quad(ROLE_WOOD, da, db, wb, wa, Vector3.DOWN, under, under, under.darkened(0.25), under.darkened(0.25))
+			mb.add_quad(ROLE_WOOD, ea, eb, db, da, across * side, under, under, under, under)
+		BastideRoofMesher.stacked_ridge(mb, ra, rb, tan_p, tile.darkened(0.08), 0.15, 0.13, false)
+	var w := ws.cap_tile_width
+	var count := maxi(1, floori((u1 - u0) / w))
+	var rw := w * BastideRoofMesher.RIB_HALF
+	var h := w * BastideRoofMesher.RIB_HEIGHT
+	var s_start := u0 + ((u1 - u0) - count * w) * 0.5 + w * 0.5
+	var knots := [-rw, -rw * BastideRoofMesher.RIB_TOP, rw * BastideRoofMesher.RIB_TOP, rw]
+	for k in count:
+		var sc := s_start + k * w
+		var tint := BastideRng.unit(BastideRng.combine(key, 100 + k)) * 0.12 - 0.06
+		var c := tile.lightened(tint) if tint > 0.0 else tile.darkened(-tint)
+		var dark := c.darkened(0.12)
+		for side in [-1.0, 1.0]:
+			var rc: Vector3 = ridge.call(sc)
+			var ec: Vector3 = eave.call(sc, side)
+			var along := ((ridge.call(sc + rw) as Vector3) - (ridge.call(sc - rw) as Vector3)).normalized()
+			var nrm := along.cross(ec - rc).normalized()
+			if nrm.y < 0.0:
+				nrm = -nrm
+			var rs: Array = []
+			var es: Array = []
+			for kn: float in knots:
+				var u := BastideRoofMesher.rib_profile(absf(kn), rw)
+				rs.append((ridge.call(sc + kn) as Vector3) + nrm * h * u)
+				es.append((eave.call(sc + kn, side) as Vector3) + nrm * h * u)
+			for part in 3:
+				var cc := c if part == 1 else dark
+				mb.add_quad(ROLE_ROOF, rs[part], es[part], es[part + 1], rs[part + 1], nrm + along * float(part - 1), cc, cc, cc, cc)
+			var cap := c.lightened(0.1)
+			mb.add_quad(ROLE_ROOF, es[0], es[1], es[2], es[3], ec - rc, cap, cap, cap, cap)
+	# Pignons de bois et tuiles d'about (onigawara) aux bouts.
+	for end in 2:
+		if (end == 0 and not gable0) or (end == 1 and not gable1):
+			continue
+		var sv := u0 if end == 0 else u1
+		var outward: Vector3 = ((ridge.call(u0) as Vector3) - (ridge.call(u1) as Vector3)).normalized()
+		if end == 1:
+			outward = -outward
+		var r: Vector3 = ridge.call(sv)
+		var l: Vector3 = eave.call(sv, -1.0)
+		var rr: Vector3 = eave.call(sv, 1.0)
+		var face := under.lightened(0.06)
+		mb.add_tri(ROLE_WOOD, l - Vector3(0, 0.08, 0), rr - Vector3(0, 0.08, 0), r, outward, face, face, face.lightened(0.1))
+		# Planches de rive (hafu) sur les deux rampants.
+		for side_pt: Vector3 in [l, rr]:
+			var a0 := side_pt + outward * 0.03 - Vector3(0, 0.1, 0)
+			var a1 := r + outward * 0.03 - Vector3(0, 0.02, 0)
+			var up := Vector3(0, 0.09, 0)
+			mb.add_quad(ROLE_WOOD, a0, a1, a1 + up, a0 + up, outward, under.darkened(0.2), under.darkened(0.2), under, under)
+		var oni := tile.darkened(0.12)
+		var top := r + Vector3(0, 0.15, 0)
+		var k := [top + outward * 0.02 - across * 0.09 - Vector3(0, 0.12, 0), top + outward * 0.02 + across * 0.09 - Vector3(0, 0.12, 0),
+			top - outward * 0.18 + across * 0.09 - Vector3(0, 0.12, 0), top - outward * 0.18 - across * 0.09 - Vector3(0, 0.12, 0),
+			top + outward * 0.04 - across * 0.11 + Vector3(0, 0.1, 0), top + outward * 0.04 + across * 0.11 + Vector3(0, 0.1, 0),
+			top - outward * 0.18 + across * 0.11 + Vector3(0, 0.08, 0), top - outward * 0.18 - across * 0.11 + Vector3(0, 0.08, 0)]
+		mb.add_block(ROLE_ROOF, k, 0.025, 0.01, oni, oni.darkened(0.1))
+
+
+## Arc de pierre (style médiéval) entre les deux piliers du portail : claveaux en
+## nombre impair, clé un peu plus grande et plus claire au sommet.
+static func _arch_gate(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideWallLayout,
+		g: Dictionary, gi: int, ws: BastideWallStyle, with_collision: bool) -> void:
+	var w: float = g.width
+	var radius := w * 0.5
+	var pw: float = g.pillar_w
+	# L'arc naît sur la dalle des piliers (la plus haute des deux).
+	var spring := 0.0
+	for p: Dictionary in layout.pillars:
+		if p.get("gate", false) and (absf(float(p.s) - (float(g.s0) - pw * 0.5)) < 0.05 or absf(float(p.s) - (float(g.s1) + pw * 0.5)) < 0.05):
+			spring = maxf(spring, float(p.top))
+	if spring <= 0.0:
+		spring = float(g.wall_h) + 0.9
+	var ring := 0.42
+	var depth := layout.half_top + 0.05
+	var count := maxi(5, roundi(PI * (radius + ring * 0.5) / 0.38))
+	if count % 2 == 0:
+		count += 1
+	var mortar := ws.mortar_color
+	var gap := 0.012
+	for i in count:
+		var f0 := PI - PI * i / count
+		var f1 := PI - PI * (i + 1) / count
+		var key_stone := i == count / 2
+		var r1 := radius + ring + (0.1 if key_stone else BastideRng.randf_at(layout.seed, "voussoir", gi * 64 + i) * 0.05)
+		var d0 := depth + (0.03 if key_stone else 0.0)
+		var pts: Array = []
+		for v in [-d0, d0]:
+			for q in [[f0, radius], [f1, radius], [f1, r1], [f0, r1]]:
+				var f: float = q[0] + (-gap if q[0] == f0 else gap) / maxf(q[1], 0.1) * (1.0 if f0 > f1 else -1.0)
+				var rr: float = q[1]
+				pts.append(_gate_point(g, cos(f) * rr, v, spring + sin(f) * rr))
+		var tint := BastideRng.signed_at(layout.seed, "voussoir_t", gi * 64 + i)
+		var c := _stone_color(ws, tint, 0.0, true)
+		if key_stone:
+			c = c.lightened(0.06)
+		mb.add_block(ROLE_BODY, pts, ws.stone_bevel * 0.8, 0.02, c, mortar.lerp(c, 0.35))
+		if with_collision:
+			col.add_box(pts)

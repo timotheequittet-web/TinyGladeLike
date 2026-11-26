@@ -17,7 +17,7 @@ var _use_override := false
 
 
 func context_level() -> int:
-	return 1
+	return LEVEL_PATH
 
 
 func _default_curve() -> Curve3D:
@@ -87,3 +87,7 @@ func align_to_path() -> void:
 	else:
 		for i in 2:
 			curve.set_point_position(i, np[i])
+
+
+func terrain_mode() -> int:
+	return BastideDrape.Mode.RIGID

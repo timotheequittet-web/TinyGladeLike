@@ -9,16 +9,19 @@ extends Node3D
 ## (to_data / from_data ne manipulent que des records).
 ##
 ## Format d'un record :
-##   kind    : "wall", "house", "path" (chemin), "torii", "fence" (clôture basse)
-##             ou "plants" (massif ; un seul point = un arbre)
+##   kind    : "wall", "house", "path" (chemin), "torii", "fence" (clôture basse),
+##             "plants" (massif ; un seul point = un arbre) ou "terrace" (terrasse
+##             de bois ; contre une maison, un engawa)
 ##   points  : PackedVector3Array, en coordonnées du chantier (points de contrôle
 ##             du mur, angles de la maison). Chantier à l'origine = coordonnées monde.
 ##   closed  : bool (murs : enceinte fermée)
 ##   seed    : int
 ##   floors  : int (maisons ; 0 = style)
+##   shape   : int (maisons ; BastideSilhouette.Kind, 0 = automatique)
 ##   door    : int (maisons, facultatif : côté de la porte, -1 = automatique)
 ##   height  : float (murs ; 0 = style)
 ##   variant : int (clôtures : 0 pierres sèches, 1 bambou)
+##   entry   : int (terrasses, facultatif : côté des marches, -1 = automatique)
 ##   style   : chemin du .tres de style
 
 signal structure_added(id: int)
@@ -193,6 +196,12 @@ func make_node(rec: Dictionary) -> BastideStructure:
 		"plants":
 			node = BastidePlanting.new()
 			node.name = "Massif"
+		"terrace":
+			node = BastideTerrace.new()
+			node.name = "Terrasse"
+		"forest":
+			node = BastideForest.new()
+			node.name = "Foret"
 		_:
 			node = BastideWall.new()
 			node.name = "Mur"
@@ -220,6 +229,9 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		var f := int(rec.get("floors", 0))
 		if b.floors != f:
 			b.floors = f
+		var shape := int(rec.get("shape", BastideSilhouette.Kind.AUTO))
+		if b.silhouette != shape:
+			b.silhouette = shape
 		var door := int(rec.get("door", -1))
 		if b.door_facade != door:
 			b.door_facade = door
@@ -243,6 +255,18 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 	elif node is BastideTorii:
 		if local.size() >= 2:
 			(node as BastideTorii).set_points(BastideGardenRules.fit_torii(local[0], local[1]))
+	elif node is BastideTerrace:
+		var t := node as BastideTerrace
+		var e := int(rec.get("entry", -1))
+		if t.entry_side != e:
+			t.entry_side = e
+		t.set_footprint(local)
+	elif node is BastideForest:
+		var fo := node as BastideForest
+		var fk := int(rec.get("forest_kind", 0))
+		if int(fo.forest_kind) != fk:
+			fo.forest_kind = fk
+		fo.set_footprint(local)
 	elif node is BastidePlanting:
 		(node as BastidePlanting).set_points(local if local.size() < 2 else BastideStroke.wall_path(local, false, 0.5))
 
@@ -357,7 +381,7 @@ func _puff(rec: Dictionary) -> void:
 		pts = PackedVector3Array([pts[0] + Vector3(-0.8, 0, 0), pts[0] + Vector3(0.8, 0, 0)])
 	if pts.size() < 2:
 		return
-	var closed: bool = rec.get("kind", "") == "house" or bool(rec.get("closed", false))
+	var closed: bool = rec.get("kind", "") in ["house", "terrace", "forest"] or bool(rec.get("closed", false))
 	var emit_pts := PackedVector3Array()
 	var path := BastideStroke.resample(pts, 0.6, closed)
 	for p in path:

@@ -14,7 +14,7 @@ var _use_override := false
 
 
 func context_level() -> int:
-	return 2
+	return LEVEL_FENCE
 
 
 func uses_context() -> bool:

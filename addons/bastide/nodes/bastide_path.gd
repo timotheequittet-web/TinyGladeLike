@@ -23,7 +23,7 @@ var _use_override := false
 
 
 func context_level() -> int:
-	return 1
+	return LEVEL_PATH
 
 
 func uses_context() -> bool:

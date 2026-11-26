@@ -15,6 +15,9 @@ extends Node3D
 ## - Mode TERRASSE : tire un rectangle ; contre une maison, il devient un engawa
 ##   collé à la façade (jamais devant la porte). Isolée, la terrasse a un
 ##   garde-corps et ses marches donnent vers la caméra.
+## - Mode ÉTANG (touche J) : fais le tour d'une zone ; la rive s'arrondit toute
+##   seule, le sol se creuse, l'eau reste à plat sur la pente. V : étang de jardin,
+##   source chaude (onsen) ou mare sauvage.
 ## - Variantes du mode MUR (touche V) : muret à petit toit, muret de pierres sèches,
 ##   clôture de bambou.
 ## - Clic sur une structure : la sélectionne. Des poignées apparaissent : on tire
@@ -30,13 +33,15 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST, POND, FARM }
 ## Variantes du mode MUR.
 enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
 signal mode_changed(mode: Mode)
 signal variant_changed(variant: WallVariant)
 signal forest_kind_changed(kind: int)
+signal pond_kind_changed(kind: int)
+signal farm_kind_changed(kind: int)
 signal selection_changed(id: int)
 ## Une structure vient d'être posée ou retirée (pour jouer un son, par exemple).
 signal placed(kind: String)
@@ -77,6 +82,28 @@ signal history_changed(can_undo: bool, can_redo: bool)
 		_emit_hint()
 ## Surface minimale d'une forêt (m²).
 @export var forest_min_area := 60.0
+## Sorte des étangs tracés en mode ÉTANG (voir BastidePondBuilder.Kind).
+@export var pond_kind := BastidePondBuilder.Kind.GARDEN:
+	set(value):
+		if pond_kind == value:
+			return
+		cancel_draft()
+		pond_kind = value
+		pond_kind_changed.emit(int(pond_kind))
+		_emit_hint()
+## Surface minimale d'un étang (m²).
+@export var pond_min_area := 6.0
+## Sorte des champs tracés en mode CHAMP (voir BastideFarmBuilder.Kind).
+@export var farm_kind := BastideFarmBuilder.Kind.VEGETABLE:
+	set(value):
+		if farm_kind == value:
+			return
+		cancel_draft()
+		farm_kind = value
+		farm_kind_changed.emit(int(farm_kind))
+		_emit_hint()
+## Surface minimale d'un champ (m²).
+@export var farm_min_area := 10.0
 ## Hauteur des murets posés (0 = celle du style).
 @export var wall_height := 1.9
 ## Hauteur du sol (plan de construction).
@@ -351,6 +378,18 @@ func cycle_forest_kind() -> void:
 	forest_kind = ((int(forest_kind) + 1) % BastideForestBuilder.Kind.size()) as BastideForestBuilder.Kind
 
 
+## Sorte d'étang suivante (et passe en mode ÉTANG).
+func cycle_pond_kind() -> void:
+	mode = Mode.POND
+	pond_kind = ((int(pond_kind) + 1) % BastidePondBuilder.Kind.size()) as BastidePondBuilder.Kind
+
+
+## Sorte de champ suivante (et passe en mode CHAMP).
+func cycle_farm_kind() -> void:
+	mode = Mode.FARM
+	farm_kind = ((int(farm_kind) + 1) % BastideFarmBuilder.Kind.size()) as BastideFarmBuilder.Kind
+
+
 ## Variante suivante du mode MUR (et passe en mode MUR).
 func cycle_wall_variant() -> void:
 	mode = Mode.WALL
@@ -436,6 +475,10 @@ func _on_key(k: InputEventKey) -> void:
 					mode = Mode.TERRACE
 				elif k.keycode == KEY_B:
 					mode = Mode.FOREST
+				elif k.keycode == KEY_J:
+					mode = Mode.POND
+				elif k.keycode == KEY_H:
+					mode = Mode.FARM
 				elif k.keycode == KEY_R:
 					reroll_selected()
 				elif k.keycode == KEY_G:
@@ -443,6 +486,10 @@ func _on_key(k: InputEventKey) -> void:
 				elif k.keycode == KEY_V:
 					if mode == Mode.FOREST:
 						cycle_forest_kind()
+					elif mode == Mode.POND:
+						cycle_pond_kind()
+					elif mode == Mode.FARM:
+						cycle_farm_kind()
 					else:
 						cycle_wall_variant()
 				else:
@@ -538,6 +585,10 @@ func _draw_kind() -> String:
 			return "terrace"
 		Mode.FOREST:
 			return "forest"
+		Mode.POND:
+			return "pond"
+		Mode.FARM:
+			return "farm"
 	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
 
 
@@ -557,6 +608,12 @@ func _new_record(kind: String) -> Dictionary:
 		rec["entry"] = -1
 	if kind == "forest":
 		rec["forest_kind"] = int(forest_kind)
+		rec["closed"] = true
+	if kind == "pond":
+		rec["pond_kind"] = int(pond_kind)
+		rec["closed"] = true
+	if kind == "farm":
+		rec["farm_kind"] = int(farm_kind)
 		rec["closed"] = true
 	return rec
 
@@ -586,6 +643,19 @@ func _draw_wall(g: Vector3) -> void:
 	var closed := closable and total > 10.0 and g.distance_to(_raw[0]) < 1.6 and control.size() >= 4
 	if closed:
 		control.remove_at(control.size() - 1)
+	if _draft_rec["kind"] in ["pond", "farm"]:
+		# Un étang (ou un champ) est une zone : on montre déjà sa rive arrondie, telle qu'elle sera.
+		_draft_rec["points"] = control
+		_draft_rec["closed"] = true
+		var shore := PackedVector3Array()
+		if control.size() >= 3:
+			for q in BastidePondShape.outline(control, int(_draft_rec["seed"])):
+				shore.append(Vector3(q.x, 0.0, q.y))
+		if shore.size() >= 3:
+			_draw_ink(shore, true)
+		else:
+			_draw_ink(BastideStroke.wall_path(control, false, 0.6), false)
+		return
 	if _draft_rec["kind"] == "forest":
 		# Une forêt est toujours une zone : le contour se referme tout seul. Elle
 		# n'apparaît qu'au relâcher (des centaines d'arbres : pas de fantôme en direct).
@@ -756,8 +826,9 @@ func _finish_draw() -> void:
 	_ink_mesh.clear_surfaces()
 	var rec := _draft_rec
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
-	if rec.get("kind") == "forest":
-		if pts.size() >= 3 and absf(BastideStroke.signed_area(pts)) >= forest_min_area:
+	if rec.get("kind") in ["forest", "pond", "farm"]:
+		var min_area: float = {"forest": forest_min_area, "pond": pond_min_area, "farm": farm_min_area}[rec.get("kind")]
+		if pts.size() >= 3 and absf(BastideStroke.signed_area(pts)) >= min_area:
 			rec["points"] = BastideStroke.ensure_direct(pts)
 			_update_draft()
 			_draft.mesh_transparency = 0.0
@@ -1173,6 +1244,10 @@ func current_hint() -> String:
 				return "Dessine le tracé, relâche pour le poser"
 			if mode == Mode.FOREST:
 				return "Fais le tour de la forêt, relâche pour la planter"
+			if mode == Mode.POND:
+				return "Fais le tour de l'étang, relâche pour le creuser"
+			if mode == Mode.FARM:
+				return "Fais le tour du champ, relâche pour le cultiver"
 			if mode == Mode.TERRACE:
 				if _terrace_engawa:
 					return "Relâche : un engawa le long de la façade"
@@ -1215,4 +1290,12 @@ func current_hint() -> String:
 		Mode.FOREST:
 			var fnames := ["forêt mêlée", "forêt de cèdres", "chênaie", "érables d'automne", "cerisiers", "pinède"]
 			return "Maintiens le clic et fais le tour d'une %s  ·  V : changer" % fnames[int(forest_kind)]
+		Mode.FARM:
+			var fnames2 := ["potager", "rizière en terrasses", "champ de thé"]
+			return "Maintiens le clic et fais le tour d'un %s  ·  sur une pente : des terrasses  ·  V : changer" % fnames2[int(farm_kind)] \
+					if int(farm_kind) != 1 else "Maintiens le clic et fais le tour d'une rizière  ·  sur une pente : des terrasses  ·  V : changer"
+		Mode.POND:
+			var pnames := ["étang de jardin", "source chaude", "mare sauvage"]
+			return "Maintiens le clic et fais le tour d'un %s  ·  un chemin qui le traverse aura son pont  ·  V : changer" % pnames[int(pond_kind)] \
+					if int(pond_kind) != 1 else "Maintiens le clic et fais le tour d'une source chaude  ·  V : changer"
 	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"

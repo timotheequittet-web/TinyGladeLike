@@ -70,6 +70,13 @@ func _make_job() -> Callable:
 	return func() -> BastideBuildResult: return BastidePathMesher.build(pts, s, st, ctx, col, w)
 
 
+## Sur le relief : ce qui passe sous l'eau d'un étang disparaît (l'étang y pose un pont).
+func _drape_result(result: BastideBuildResult, drape: Dictionary) -> void:
+	super(result, drape)
+	if not drape.is_empty():
+		BastideDrape.clip_water(result, drape["field"], drape["xf"])
+
+
 ## Pour les voisins : l'axe réellement dessiné (après raccords) et la largeur.
 func describe() -> Dictionary:
 	var center: PackedVector3Array = last_anchors.get("center", get_points())

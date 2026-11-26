@@ -16,7 +16,8 @@ var stats := {}
 var anchors := {}
 ## Maillages posés en grand nombre (arbres et plantes d'une forêt) : chaque entrée
 ## {mesh, material, transforms: Array[Transform3D], shadow (ShadowCastingSetting),
-## vis_begin, vis_end (m, 0 = sans limite)} devient un MultiMeshInstance3D.
+## vis_begin, vis_end (m, 0 = sans limite), custom (facultatif : Array[Color], une
+## donnée par instance pour le shader)} devient un MultiMeshInstance3D.
 var instances: Array = []
 
 

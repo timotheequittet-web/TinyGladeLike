@@ -66,18 +66,32 @@ const GROUP := &"bastide_terrain"
 @export var material: Material:
 	set(v):
 		material = v
-		if _mesh_instance:
-			_mesh_instance.material_override = v
+		for mi: MeshInstance3D in _chunks.values():
+			mi.material_override = v
 @export_flags_3d_physics var collision_layer := 2:
 	set(v):
 		collision_layer = v
 		if _body:
 			_body.collision_layer = v
 
+## Le relief tel qu'on le lit (étangs creusés compris).
 var field: BastideHeightField
+## Le relief d'origine, avant les étangs (les étangs se calent dessus).
+var base_field: BastideHeightField
 var height_texture: ImageTexture
 
-var _mesh_instance: MeshInstance3D
+## Côté d'un morceau de maillage du sol, en cases : un étang ne reconstruit que
+## les morceaux qu'il touche.
+const CHUNK := 32
+
+## Étangs creusés dans le relief : clé -> {poly, level, depth, shelf, bank, rect} (monde).
+var _carves := {}
+var _carve_dirty := Rect2()
+var _carve_queued := false
+## Couleur du sol par point de grille : r = berge mouillée, g = lit d'étang.
+var _paint := PackedColorArray()
+var _chunks := {}  # Vector2i -> MeshInstance3D
+
 var _body: StaticBody3D
 var _shape: CollisionShape3D
 var _queued := false
@@ -121,13 +135,134 @@ func height_at(p: Vector3) -> float:
 
 func rebuild() -> void:
 	var had := field != null
-	field = generate()
+	base_field = generate()
+	field = _carved(base_field)
 	_build_mesh()
 	_build_collision()
 	height_texture = ImageTexture.create_from_image(field.to_image())
 	if had and is_inside_tree():
 		_rebuild_structures(get_tree().root)
 	changed.emit()
+
+
+# --- Étangs ------------------------------------------------------------------------
+
+## Creuse (ou recreuse) l'étang `key` : description de BastidePondShape.carve_info(),
+## en monde. Le sol, sa collision et sa texture de hauteurs sont mis à jour à la
+## frame suivante, puis les structures voisines se reposent dessus.
+func set_carve(key: int, carve: Dictionary) -> void:
+	var old: Variant = _carves.get(key)
+	if old != null and _same_carve(old, carve):
+		return
+	if old != null:
+		_mark_dirty(old["rect"])
+	_carves[key] = carve
+	_mark_dirty(carve["rect"])
+
+
+func clear_carve(key: int) -> void:
+	if not _carves.has(key):
+		return
+	_mark_dirty(_carves[key]["rect"])
+	_carves.erase(key)
+
+
+func has_carve(key: int) -> bool:
+	return _carves.has(key)
+
+
+static func _same_carve(a: Dictionary, b: Dictionary) -> bool:
+	if a.get("type", "pond") != b.get("type", "pond"):
+		return false
+	if a.get("type", "pond") == "floor":
+		return a["i0"] == b["i0"] and a["j0"] == b["j0"] and a["w"] == b["w"] and a["heights"] == b["heights"]
+	return is_equal_approx(float(a["level"]), float(b["level"])) and a["poly"] == b["poly"] \
+			and is_equal_approx(float(a["depth"]), float(b["depth"]))
+
+
+func _mark_dirty(r: Rect2) -> void:
+	_carve_dirty = r if _carve_dirty.size == Vector2.ZERO else _carve_dirty.merge(r)
+	if _carve_queued or not is_inside_tree():
+		return
+	_carve_queued = true
+	_apply_carves.call_deferred()
+
+
+## Relief d'origine + étangs (et la couleur du sol qui va avec).
+func _carved(base: BastideHeightField) -> BastideHeightField:
+	var f := BastideHeightField.flat(base.origin, base.cell, base.width, base.depth)
+	f.heights = base.heights.duplicate()
+	_paint = PackedColorArray()
+	_paint.resize(f.width * f.depth)
+	_paint.fill(Color(0, 0, 0, 1))
+	# Les champs d'abord (sol abaissé sous la terre cultivée), puis les étangs.
+	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") == "floor":
+			_apply_floor(f, c)
+	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") == "floor":
+			continue
+		BastidePondShape.apply(f, base, _paint, c)
+		f.waters.append({"poly": c["poly"], "level": c["level"], "rect": BastidePondShape.rect_of(c["poly"])})
+	return f
+
+
+## Sol abaissé sous un champ : chaque sommet descend à la hauteur donnée (NAN : intact).
+static func _apply_floor(f: BastideHeightField, c: Dictionary) -> void:
+	var hs: PackedFloat32Array = c["heights"]
+	var i0: int = c["i0"]
+	var j0: int = c["j0"]
+	var w: int = c["w"]
+	var d: int = c["d"]
+	for jj in d:
+		var j := j0 + jj
+		if j < 0 or j >= f.depth:
+			continue
+		for ii in w:
+			var i := i0 + ii
+			var h := hs[jj * w + ii]
+			if is_nan(h) or i < 0 or i >= f.width:
+				continue
+			var k := j * f.width + i
+			f.heights[k] = minf(f.heights[k], h)
+
+
+func _apply_carves() -> void:
+	_carve_queued = false
+	if base_field == null:
+		return
+	var dirty := _carve_dirty
+	_carve_dirty = Rect2()
+	field = _carved(base_field)
+	# Seuls les morceaux du sol touchés sont reconstruits.
+	var c0 := Vector2i(floori((dirty.position.x - field.origin.x) / field.cell / CHUNK), floori((dirty.position.y - field.origin.y) / field.cell / CHUNK))
+	var c1 := Vector2i(floori((dirty.end.x - field.origin.x) / field.cell / CHUNK), floori((dirty.end.y - field.origin.y) / field.cell / CHUNK))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			if _chunks.has(Vector2i(cx, cz)):
+				_build_chunk(Vector2i(cx, cz))
+	_build_collision()
+	height_texture.update(field.to_image())
+	_rebuild_near(get_tree().root, dirty)
+	changed.emit()
+
+
+## Les structures posées sur la zone creusée se reposent sur le nouveau sol (sauf
+## les étangs : ils se calent sur le sol d'origine).
+func _rebuild_near(n: Node, r: Rect2) -> void:
+	if n is BastideStructure and not n is BastidePond and not n is BastideFarm:
+		var s := n as BastideStructure
+		var mi := s.get_mesh_instance()
+		var hit := false
+		if mi and mi.mesh:
+			var box := mi.global_transform * mi.get_aabb()
+			hit = Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(0.5).intersects(r)
+		elif s.last_stats.is_empty():
+			hit = false
+		if hit:
+			s.queue_rebuild()
+	for c in n.get_children():
+		_rebuild_near(c, r)
 
 
 static func _rebuild_structures(n: Node) -> void:
@@ -185,29 +320,55 @@ static func _flatten(f: BastideHeightField, z4: Vector4) -> void:
 
 
 func _build_mesh() -> void:
-	if _mesh_instance == null:
-		_mesh_instance = MeshInstance3D.new()
-		_mesh_instance.name = "Sol"
-		add_child(_mesh_instance, false, Node.INTERNAL_MODE_FRONT)
-	_mesh_instance.material_override = material
-	var w := field.width
-	var d := field.depth
+	for mi: MeshInstance3D in _chunks.values():
+		mi.queue_free()
+	_chunks.clear()
+	var nx := ceili(float(field.width - 1) / CHUNK)
+	var nz := ceili(float(field.depth - 1) / CHUNK)
+	for cz in nz:
+		for cx in nx:
+			_build_chunk(Vector2i(cx, cz))
+
+
+## Un morceau du sol : (CHUNK + 1)² sommets, normales et couleurs lues sur toute la
+## grille (pas de couture visible entre deux morceaux).
+func _build_chunk(c: Vector2i) -> void:
+	var mi: MeshInstance3D = _chunks.get(c)
+	if mi == null:
+		mi = MeshInstance3D.new()
+		mi.name = "Sol_%d_%d" % [c.x, c.y]
+		add_child(mi, false, Node.INTERNAL_MODE_FRONT)
+		_chunks[c] = mi
+	mi.material_override = material
+	var i0 := c.x * CHUNK
+	var j0 := c.y * CHUNK
+	var w := mini(CHUNK, field.width - 1 - i0) + 1
+	var d := mini(CHUNK, field.depth - 1 - j0) + 1
+	if w < 2 or d < 2:
+		mi.mesh = null
+		return
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
 	verts.resize(w * d)
 	normals.resize(w * d)
 	uvs.resize(w * d)
+	cols.resize(w * d)
+	var painted := _paint.size() == field.width * field.depth
 	for j in d:
 		for i in w:
 			var k := j * w + i
-			var x := field.origin.x + i * field.cell
-			var z := field.origin.y + j * field.cell
-			verts[k] = Vector3(x, field.at(i, j), z)
-			var dx := field.at(i + 1, j) - field.at(i - 1, j)
-			var dz := field.at(i, j + 1) - field.at(i, j - 1)
+			var gi := i0 + i
+			var gj := j0 + j
+			var x := field.origin.x + gi * field.cell
+			var z := field.origin.y + gj * field.cell
+			verts[k] = Vector3(x, field.at(gi, gj), z)
+			var dx := field.at(gi + 1, gj) - field.at(gi - 1, gj)
+			var dz := field.at(gi, gj + 1) - field.at(gi, gj - 1)
 			normals[k] = Vector3(-dx, 2.0 * field.cell, -dz).normalized()
 			uvs[k] = Vector2(x, z)
+			cols[k] = _paint[gj * field.width + gi] if painted else Color(0, 0, 0, 1)
 	var idx := PackedInt32Array()
 	idx.resize((w - 1) * (d - 1) * 6)
 	var t := 0
@@ -222,10 +383,11 @@ func _build_mesh() -> void:
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = normals
 	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	_mesh_instance.mesh = m
+	mi.mesh = m
 
 
 func _build_collision() -> void:

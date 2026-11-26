@@ -25,6 +25,10 @@ var _variant_buttons := {}
 var _variant_panel: PanelContainer
 var _forest_buttons := {}
 var _forest_panel: PanelContainer
+var _pond_buttons := {}
+var _pond_panel: PanelContainer
+var _farm_buttons := {}
+var _farm_panel: PanelContainer
 var _style_buttons := {}
 var _undo_btn: Button
 var _redo_btn: Button
@@ -79,6 +83,14 @@ func _starting_village() -> Array:
 			"points": [[-18.5, 0, -9], [-14.3, 0, -9], [-14.3, 0, -4.8], [-18.5, 0, -4.8]]},
 		{"kind": "house", "seed": 44, "style": j, "door": 3, "shape": BastideSilhouette.Kind.KURA,
 			"points": [[19.5, 0, -7], [25.5, 0, -7], [25.5, 0, -2.6], [19.5, 0, -2.6]]},
+		# (en dernier : les parties scriptées repèrent les autres structures par leur rang)
+		# L'étang du jardin, creusé dans le replat à l'ouest : koï, iris, nénuphars.
+		{"kind": "pond", "seed": 52, "style": j, "closed": true, "pond_kind": 0,
+			"points": [[-35, 0, 12.5], [-31, 0, 9.6], [-25.5, 0, 10.2], [-22, 0, 12.0], [-21.4, 0, 15.2],
+				[-22.8, 0, 19.6], [-27.5, 0, 22.2], [-33.5, 0, 20.5], [-36.2, 0, 16.5]]},
+		# Le potager du hameau, au sud de l'étang : planches, légumes, clôture de bambou.
+		{"kind": "farm", "seed": 58, "style": j, "closed": true, "farm_kind": 0,
+			"points": [[-24.5, 0, 26.5], [-12.5, 0, 26.0], [-11.8, 0, 34.0], [-24.0, 0, 34.5]]},
 	]
 
 
@@ -92,6 +104,8 @@ func _ready() -> void:
 	tool.mode_changed.connect(func(_m: int) -> void: _refresh_mode())
 	tool.variant_changed.connect(func(_v: int) -> void: _refresh_mode())
 	tool.forest_kind_changed.connect(func(_k: int) -> void: _refresh_mode())
+	tool.pond_kind_changed.connect(func(_k: int) -> void: _refresh_mode())
+	tool.farm_kind_changed.connect(func(_k: int) -> void: _refresh_mode())
 	tool.selection_changed.connect(func(_id: int) -> void: _refresh_selection())
 	tool.history_changed.connect(func(u: bool, r: bool) -> void:
 		_undo_btn.disabled = not u
@@ -264,6 +278,8 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.PLANTS] = _button(hb, "Plantes  5", func() -> void: tool.mode = BastideBuildTool.Mode.PLANTS, true)
 	_mode_buttons[BastideBuildTool.Mode.TERRACE] = _button(hb, "Terrasse  T", func() -> void: tool.mode = BastideBuildTool.Mode.TERRACE, true)
 	_mode_buttons[BastideBuildTool.Mode.FOREST] = _button(hb, "Forêt  B", func() -> void: tool.mode = BastideBuildTool.Mode.FOREST, true)
+	_mode_buttons[BastideBuildTool.Mode.POND] = _button(hb, "Étang  J", func() -> void: tool.mode = BastideBuildTool.Mode.POND, true)
+	_mode_buttons[BastideBuildTool.Mode.FARM] = _button(hb, "Champ  H", func() -> void: tool.mode = BastideBuildTool.Mode.FARM, true)
 	_sep(hb)
 	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
 	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
@@ -301,6 +317,32 @@ func _build_ui() -> void:
 	var fnames := ["Mêlée", "Cèdres", "Chênaie", "Érables", "Cerisiers", "Pinède"]
 	for k in fnames.size():
 		_forest_buttons[k] = _button(fhb, fnames[k], func() -> void: tool.forest_kind = k as BastideForestBuilder.Kind, true)
+
+	# Sortes d'étang (touche V en mode Étang), au même endroit.
+	_pond_panel = PanelContainer.new()
+	_pond_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
+	_pond_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_pond_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(_pond_panel)
+	var phb := HBoxContainer.new()
+	phb.add_theme_constant_override("separation", 4)
+	_pond_panel.add_child(phb)
+	var pnames := ["Étang de jardin", "Source chaude", "Mare sauvage"]
+	for k in pnames.size():
+		_pond_buttons[k] = _button(phb, pnames[k], func() -> void: tool.pond_kind = k as BastidePondBuilder.Kind, true)
+
+	# Sortes de champ (touche V en mode Champ), au même endroit.
+	_farm_panel = PanelContainer.new()
+	_farm_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_KEEP_SIZE, 84)
+	_farm_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_farm_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(_farm_panel)
+	var chb := HBoxContainer.new()
+	chb.add_theme_constant_override("separation", 4)
+	_farm_panel.add_child(chb)
+	var cnames := ["Potager", "Rizière", "Champ de thé"]
+	for k in cnames.size():
+		_farm_buttons[k] = _button(chb, cnames[k], func() -> void: tool.farm_kind = k as BastideFarmBuilder.Kind, true)
 
 	# Panneau de la structure sélectionnée, juste au-dessus.
 	_sel_panel = PanelContainer.new()
@@ -404,6 +446,10 @@ func _refresh_mode() -> void:
 		(_variant_buttons[v] as Button).set_pressed_no_signal(v == tool.wall_variant)
 	for k: int in _forest_buttons:
 		(_forest_buttons[k] as Button).set_pressed_no_signal(k == int(tool.forest_kind))
+	for k: int in _pond_buttons:
+		(_pond_buttons[k] as Button).set_pressed_no_signal(k == int(tool.pond_kind))
+	for k: int in _farm_buttons:
+		(_farm_buttons[k] as Button).set_pressed_no_signal(k == int(tool.farm_kind))
 	_refresh_style_buttons()
 	_refresh_selection()
 
@@ -423,6 +469,18 @@ func _refresh_selection() -> void:
 	_forest_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_forests else Control.MOUSE_FILTER_IGNORE
 	for b in _forest_panel.find_children("*", "Button", true, false):
 		(b as Button).disabled = not show_forests
+	var show_ponds := tool.mode == BastideBuildTool.Mode.POND and not has
+	var tp := create_tween()
+	tp.tween_property(_pond_panel, "modulate:a", 1.0 if show_ponds else 0.0, 0.25)
+	_pond_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_ponds else Control.MOUSE_FILTER_IGNORE
+	for b in _pond_panel.find_children("*", "Button", true, false):
+		(b as Button).disabled = not show_ponds
+	var show_farms := tool.mode == BastideBuildTool.Mode.FARM and not has
+	var tc := create_tween()
+	tc.tween_property(_farm_panel, "modulate:a", 1.0 if show_farms else 0.0, 0.25)
+	_farm_panel.mouse_filter = Control.MOUSE_FILTER_STOP if show_farms else Control.MOUSE_FILTER_IGNORE
+	for b in _farm_panel.find_children("*", "Button", true, false):
+		(b as Button).disabled = not show_farms
 	var tw := create_tween()
 	tw.tween_property(_sel_panel, "modulate:a", 1.0 if has else 0.0, 0.25)
 	_sel_panel.mouse_filter = Control.MOUSE_FILTER_STOP if has else Control.MOUSE_FILTER_IGNORE

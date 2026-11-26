@@ -4,7 +4,7 @@
 
 ![Le chemin traverse le muret : un portail couvert de tuiles s'y ouvre tout seul, vantaux grands ouverts](docs/captures/etape6_portail.jpg)
 
-État : **forêts et arbres d'Onsen** (grands arbres à couronnes peintes, outil Forêt, sous-bois), après l'**étape 6** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
+État : **jardins d'eau** (étangs tracés à la souris, creusés dans le relief, avec koï, nénuphars, iris, rochers moussus, ponts arqués et sources chaudes), après les **forêts et arbres d'Onsen** (grands arbres à couronnes peintes, outil Forêt, sous-bois), après l'**étape 6** (terrasses de bois et engawa le long des maisons, portails qui s'ouvrent tout seuls dans les murets là où passe un chemin), après l'étape 5 (décor japonais de campagne : chemins de gravier ratissé et pas japonais qui rejoignent les portes, torii, lanternes de pierre, muret de pierres sèches, clôture de bambou, massifs, arbres et jardin qui pousse tout seul), l'étape 4 (construction en jeu à la souris : on dessine murets et maisons soi-même, comme dans Tiny Glade), l'étape 3 (styles « médiéval pierre » et « japonais traditionnel bois »), l'étape 2 (bâtiments sur contour avec toits calculés) et l'étape 1 (murs procéduraux sur Path3D). Prochaine étape : mode kit (pièces .glb d'un artiste). L'architecture complète est décrite dans le document de conception du projet.
 
 ![Maison japonaise : ossature bois, claire-voies, porte coulissante, noren, auvent et muret à petit toit](docs/captures/etape3_porte.jpg)
 
@@ -131,6 +131,47 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
   proches de la caméra éclairent (`max_lights`) ;
 - des vols d'oiseaux tournent haut au-dessus du hameau, entre battements et planés ;
 - des papillons volettent au ras de l'herbe autour de la caméra.
+
+## Jardins d'eau
+
+![Un chemin traverse l'étang : un pont arqué en bois s'y pose tout seul, iris les pieds dans l'eau](docs/captures/etang_pont.jpg)
+
+![L'étang du hameau : nénuphars, iris, rochers moussus et ponton](docs/captures/etang_rive.jpg)
+
+![Le ponton : la terrasse du hameau avance sur l'étang](docs/captures/etang_ponton.jpg)
+
+![Une source chaude tracée à la souris : eau laiteuse, cercle de pierres sombres et vapeur](docs/captures/etang_onsen.jpg)
+
+- **Étang** (touche **J**) : maintiens le clic et fais le tour d'une zone. Pendant le tracé, l'encre montre déjà la rive arrondie. Relâche : le sol se creuse et l'eau apparaît. **V** change la sorte : **étang de jardin**, **source chaude** (onsen) ou **mare sauvage**.
+- **Rive naturelle** : le tracé est lissé, sans angle vif, avec une légère ondulation (deux étangs tracés pareil ne sont jamais identiques). Les tout petits étangs sont refusés, les géants ramenés à 48 m.
+- **Toujours à plat** : sur une pente, l'eau reste de niveau. Le côté haut est creusé en berge douce, le côté bas reçoit une petite digue. L'eau ne fuit jamais (la rive est partout juste au-dessus).
+- **L'eau** : couleur selon la vraie profondeur (on voit le fond près du bord, l'eau se ferme au milieu), réfraction, reflets du ciel au ras de l'eau, rides poussées par le vent, reflets dansants sur le fond, liseré clair contre la rive.
+- **Rives** : groupes de rochers moussus posés sur les avancées de la berge (ishi-gumi), une plage de galets clairs (suhama), des pierres qui bordent le reste avec des trous. Le fond et la berge mouillée changent de couleur.
+- **Vie** : iris et roseaux les pieds dans l'eau, nénuphars et lotus roses ou blancs, hortensias et azalées sur la berge, fougères au pied des rochers, et des **carpes koï** (kohaku, ogon, showa) qui tournent lentement sous la surface.
+- **Ponton** : une terrasse posée au bord de l'étang avance sur l'eau par une jetée de planches sur pilotis, avec deux poteaux d'amarrage au bout (et une marche si la terrasse est plus haute).
+- **Ponts** : un chemin qui traverse l'eau reçoit tout seul des **pierres de gué** (passage court ou coin de l'étang), un **pont arqué** en bois avec garde-corps et giboshi (bras d'eau), ou une **passerelle en zigzag** (yatsuhashi) sur une longue traversée. Le gravier noyé du chemin disparaît.
+- **Source chaude** : eau laiteuse vert d'eau, cernée de rochers sombres, vapeur qui monte. **Mare sauvage** : eau plus sombre, roseaux, beaucoup de nénuphars, peu de pierres.
+- Les voisins s'adaptent : pas d'herbe dans l'eau, ni plante du jardin, ni arbre de forêt ; les structures posées autour se reposent sur la berge creusée.
+- L'étang du hameau de départ est maintenant un vrai étang (il remplace l'ancien plan d'eau du décor).
+- Dans l'éditeur : nœud **BastidePond** (contour fermé), réglage `pond_kind`. Il creuse le **BastideTerrain** de sa scène s'il y en a un.
+
+## Cultures
+
+![Rizières en terrasses : eau à plat, levées herbues, riz repiqué en lignes](docs/captures/champ_riziere.jpg)
+
+![Potager du hameau : planches de choux, daikon, negi, aubergines et potirons, clôture de bambou](docs/captures/champ_potager.jpg)
+
+![La cabane à outils du potager, ouverte sur les planches d'aubergines](docs/captures/champ_cabane.jpg)
+
+![Champ de thé : longues haies arrondies qui suivent la pente](docs/captures/champ_the.jpg)
+
+- **Champ** (touche **H**) : maintiens le clic et fais le tour d'une zone, relâche. **V** change la sorte : **potager**, **rizière** ou **champ de thé**.
+- **Rangs qui suivent la pente** : sur une pente, les rangs suivent les courbes de niveau ; sur le plat, l'axe long du champ.
+- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) un épouvantail en kimono et chapeau de paille et, dans les grands potagers, une cabane à outils en planches près de l'entrée (houe, râteau, panier, sacs, seau).
+- **Rizière** : la pente est taillée en **terrasses de niveau** (tanada), retenues par des murets de pierres sèches. Chaque terrasse est une nappe d'eau peu profonde qui renvoie le ciel, bordée de levées herbues ; d'autres levées la recoupent en rizières. Le riz est repiqué en lignes. Sur le plat, un damier de rizières.
+- **Thé** : de longues haies taillées en arrondi, feuillage serré avec ses jeunes pousses claires, de la paille entre les rangs et des ventilateurs antigel sur leurs mâts.
+- **Le sol** est abaissé sous le champ (déblai des terrasses compris) et la terre du champ est posée par-dessus ; ses bords descendent en talus ou en muret. L'herbe, les forêts, les massifs et le jardin automatique évitent les champs ; un chemin qui traverse un potager passe entre les planches.
+- Dans l'éditeur : nœud **BastideFarm** (contour fermé), réglage `farm_kind`.
 
 ## Forêts et arbres d'Onsen
 
@@ -329,7 +370,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (276 vérifications, dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (371 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -359,6 +400,18 @@ Et celle des forêts (forêt du hameau, vues au cœur de la forêt, forêt d'ér
 godot --path . -s tools/forest_play.gd -- <dossier_des_captures>
 ```
 
+Et celle des jardins d'eau (étang du hameau, étang tracé avec la touche J, chemin qui reçoit son pont, source chaude, annuler, rétablir, retirer et sol qui se rebouche). Elle marche aussi en `--headless` pour les vérifications seules :
+
+```
+godot --path . -s tools/pond_play.gd -- <dossier_des_captures>
+```
+
+Et celle des cultures (potager tracé avec la touche H, rizière avec V, sol abaissé, annuler, rétablir, retirer) :
+
+```
+godot --path . -s tools/farm_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -374,13 +427,17 @@ addons/bastide/
     layout/      les plans sémantiques (mur, bâtiment, toit)
     backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses)
     kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
+    water/       jardins d'eau : forme de la rive, niveau, creusement du relief, rochers, plantes, koï, ponts
+    farm/        cultures : grille de terre, planches et légumes, rizières en terrasses, haies de thé
+    terrain/     relief (grille de hauteurs, plans d'eau) et pose des structures dessus
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
-               BastidePlanting, BastideTerrace, BastideForest, BastideGarden, base commune BastideStructure)
+               BastidePlanting, BastideTerrace, BastideForest, BastidePond, BastideFarm, BastideGarden, BastideTerrain,
+               base commune BastideStructure)
   kit/nature/  modèles .glb des arbres et plantes d'Onsen, touffes peintes
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
-  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce et couronnes peintes
+  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce, couronnes peintes, eau et koï, terre des cultures
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)

@@ -64,10 +64,15 @@ static func _apply_instances(host: Node3D, groups: Array) -> void:
 		var transforms: Array = g["transforms"]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		# Données par instance lues par le shader (carpes qui nagent…).
+		var custom: Array = g.get("custom", [])
+		mm.use_custom_data = custom.size() == transforms.size() and not custom.is_empty()
 		mm.mesh = g["mesh"]
 		mm.instance_count = transforms.size()
 		for k in transforms.size():
 			mm.set_instance_transform(k, transforms[k])
+			if mm.use_custom_data:
+				mm.set_instance_custom_data(k, custom[k])
 		mmi.multimesh = mm
 		mmi.material_override = g["material"]
 		mmi.cast_shadow = g["shadow"]

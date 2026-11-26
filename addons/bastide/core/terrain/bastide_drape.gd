@@ -123,3 +123,65 @@ static func _mesh(src: ArrayMesh, field: BastideHeightField, xf: Transform3D, in
 		out.surface_set_name(o, src.surface_get_name(s))
 	out.custom_aabb = AABB()
 	return out
+
+
+## Retire ce qui finirait sous l'eau d'un étang (gravier d'un chemin qui traverse :
+## l'étang y pose un pont). Triangles dont les trois sommets sont noyés.
+static func clip_water(result: BastideBuildResult, field: BastideHeightField, xf: Transform3D) -> int:
+	if result == null or field == null or field.waters.is_empty():
+		return 0
+	var removed := 0
+	if result.mesh:
+		var out := ArrayMesh.new()
+		for s in result.mesh.get_surface_count():
+			var arr := result.mesh.surface_get_arrays(s)
+			if arr.size() <= Mesh.ARRAY_VERTEX or not (arr[Mesh.ARRAY_VERTEX] is PackedVector3Array) \
+					or arr[Mesh.ARRAY_INDEX] != null or result.mesh.surface_get_primitive_type(s) != Mesh.PRIMITIVE_TRIANGLES:
+				out.add_surface_from_arrays(result.mesh.surface_get_primitive_type(s), arr)
+				out.surface_set_material(out.get_surface_count() - 1, result.mesh.surface_get_material(s))
+				out.surface_set_name(out.get_surface_count() - 1, result.mesh.surface_get_name(s))
+				continue
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var keep := PackedInt32Array()
+			for i in range(0, v.size() - 2, 3):
+				if _drowned(xf * v[i], field) and _drowned(xf * v[i + 1], field) and _drowned(xf * v[i + 2], field):
+					removed += 1
+					continue
+				keep.append(i)
+			if keep.size() * 3 == v.size():
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			elif keep.is_empty():
+				continue
+			else:
+				var na := []
+				na.resize(Mesh.ARRAY_MAX)
+				for a in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV]:
+					if arr[a] == null:
+						continue
+					var src = arr[a]
+					var dst = src.duplicate()
+					dst.resize(keep.size() * 3)
+					var k := 0
+					for i in keep:
+						dst[k] = src[i]; dst[k + 1] = src[i + 1]; dst[k + 2] = src[i + 2]
+						k += 3
+					na[a] = dst
+				out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, na)
+			out.surface_set_material(out.get_surface_count() - 1, result.mesh.surface_get_material(s))
+			out.surface_set_name(out.get_surface_count() - 1, result.mesh.surface_get_name(s))
+		result.mesh = out
+	var faces := result.collision_faces
+	if not faces.is_empty():
+		var kept := PackedVector3Array()
+		for i in range(0, faces.size() - 2, 3):
+			if _drowned(xf * faces[i], field) and _drowned(xf * faces[i + 1], field) and _drowned(xf * faces[i + 2], field):
+				continue
+			kept.append(faces[i]); kept.append(faces[i + 1]); kept.append(faces[i + 2])
+		result.collision_faces = kept
+	result.stats["under_water"] = removed
+	return removed
+
+
+static func _drowned(w: Vector3, field: BastideHeightField) -> bool:
+	var l := field.water_level(w.x, w.z)
+	return l > -INF and w.y < l - 0.02

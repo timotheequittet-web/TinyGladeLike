@@ -30,9 +30,9 @@ const BASE_SCALE := {"cedre": 1.8, "chene": 1.5, "hetre": 1.5, "camphrier": 1.3,
 const CROWN := {"cedre": 0.17, "chene": 0.3, "hetre": 0.28, "camphrier": 0.3, "momiji": 0.36, "sakura": 0.42, "matsu": 0.36}
 ## Taille de case des groupes d'instances : chaque groupe s'efface selon sa propre distance.
 const CHUNK := 48.0
-const NEAR_CROWN := 120.0     # au-delà : couronnes lointaines (peu de grandes cartes)
+const NEAR_CROWN := 75.0      # au-delà : couronnes lointaines (peu de grandes cartes)
 const SHADOW_RANGE := 160.0
-const PLANT_RANGE := 75.0
+const PLANT_RANGE := 55.0
 const TRUNK_COLLISION_H := 6.0
 
 

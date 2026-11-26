@@ -27,6 +27,14 @@ uniform vec4 mask_rect = vec4(-80.0, -80.0, 160.0, 160.0);
 // Relief (facultatif) : hauteurs du sol en monde, sur height_rect (x, z, largeur, profondeur).
 uniform sampler2D height_tex : filter_linear, repeat_disable;
 uniform vec4 height_rect = vec4(0.0, 0.0, 0.0, 0.0);
+// Niveaux de détail : COLOR.r = rang du brin (0..1). À la distance d de la caméra,
+// on garde la part keep = clamp((lod_d0 / d)^1.5, lod_min, 1) des brins ; les autres
+// se couchent et les restants s'élargissent pour couvrir le sol (même calcul que
+// BastideGrass.keep_at, qui choisit le maillage de chaque tuile).
+uniform float lod_d0 = 18.0;
+uniform float lod_min = 0.06;
+uniform float blade_width = 0.04;
+uniform float max_widen = 3.0;
 
 varying float v_t;
 varying float v_tone;
@@ -40,7 +48,9 @@ float noise(vec2 p) {
 }
 
 void vertex() {
-	vec3 root = (MODEL_MATRIX * vec4(UV2.x, 0.0, UV2.y, 1.0)).xyz;
+	// Les tuiles ne sont que déplacées : pas besoin d'inverser leur matrice.
+	vec3 origin = MODEL_MATRIX[3].xyz;
+	vec3 root = origin + vec3(UV2.x, 0.0, UV2.y);
 	float t = UV.y;
 	float ground = 0.0;
 	if (height_rect.z > 0.0) {
@@ -49,6 +59,13 @@ void vertex() {
 		vec2 ts = vec2(textureSize(height_tex, 0));
 		ground = texture(height_tex, (huv * (ts - 1.0) + 0.5) / ts).r;
 	}
+	// Niveau de détail : part de brins gardés à cette distance de l'œil.
+	float dcam = length(vec3(root.x, root.y + ground, root.z) - CAMERA_POSITION_WORLD);
+	float keep = clamp(pow(lod_d0 / max(dcam, 0.01), 1.5), lod_min, 1.0);
+	float rank = COLOR.r;
+	// Les brins au bord de la part gardée rapetissent au lieu de disparaître d'un coup.
+	float lod_h = 1.0 - smoothstep(keep * 0.75, keep, rank);
+	float widen = min(inversesqrt(keep), max_widen);
 	// Hauteur : grandes plages plus hautes ou plus rases, et chaque brin un peu différent.
 	float patch = noise(root.xz * 0.08) * 0.7 + noise(root.xz * 0.31) * 0.3;
 	float h = blade_height * (0.55 + patch * 0.9) * (1.0 - height_jitter * hash(root.xz));
@@ -62,6 +79,7 @@ void vertex() {
 	// Fondu de l'anneau (distance au centre suivi).
 	float d = length(root.xz - center.xz);
 	h *= smoothstep(fade_in, fade_in + fade_in_width, d) * (1.0 - smoothstep(fade_out - fade_out_width, fade_out, d));
+	h *= lod_h;
 	// Vent : longues vagues qui traversent la prairie, et un frémissement propre au brin.
 	vec2 wd = normalize(wind_dir);
 	float phase = dot(root.xz, wd) * 0.22 - TIME * wind_speed + noise(root.xz * 0.05) * 3.0;
@@ -71,14 +89,16 @@ void vertex() {
 	float bend = wind_strength * (0.35 + wave * 0.9 + gust * 0.4) + sin(TIME * 2.3 + hash(root.xz) * 6.28) * 0.04;
 	vec3 local = VERTEX;
 	local.y *= h / max(blade_height, 0.001);
-	vec3 world = (MODEL_MATRIX * vec4(local, 1.0)).xyz;
+	vec3 world = origin + local;
 	world.y += ground;
 	float bt = t * t;
 	world.xz += wd * bend * bt * h * 1.4;
 	world.y -= bend * bend * bt * h * 0.35;
-	VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
+	VERTEX = world - origin;
+	// Élargit les brins restants (UV.x = côté du brin, -1..1, perpendiculaire à la normale).
+	VERTEX.xz += normalize(vec2(-NORMAL.z, NORMAL.x) + 1e-5) * UV.x * blade_width * 0.5 * (widen - 1.0) * (1.0 - t * 0.55);
 	// Éclairage doux : la nappe reçoit la lumière comme un tapis, pas comme des lames.
-	NORMAL = normalize(mix(NORMAL, (inverse(MODEL_MATRIX) * vec4(0.0, 1.0, 0.0, 0.0)).xyz, 0.85));
+	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.85));
 	v_t = t;
 	v_tone = noise(root.xz * 0.045 + 7.0) * 0.6 + hash(root.xz + 1.3) * 0.4;
 	v_wave = wave;

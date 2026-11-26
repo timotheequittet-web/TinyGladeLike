@@ -303,18 +303,30 @@ static func build_garden(ctx: BastideGardenContext, seed: int, style: BastideSty
 	return result
 
 
-## Plantes confiées au kit nature (arbres, hortensias, fougères) : posées en instances
+## Distance (m) jusqu'à laquelle les fleurs et buissons des jardins restent affichés
+## (un groupe couvre tout le jardin : on la prend large).
+const GARDEN_PLANT_RANGE := 140.0
+
+
+## Plantes confiées au kit nature (arbres, buissons, hortensias, fougères) : posées en instances
 ## dans `result`, retirées de la liste rendue. Renvoie les plantes restantes.
 static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuildResult) -> Array:
 	if not gs.kit_plants:
 		return items
 	var rest: Array = []
 	var groups := {}
+	# Distances d'affichage (multipliées par le réglage graphique, voir BastideGraphics) :
+	# plantes basses jusqu'à PLANT_RANGE, couronnes d'arbres détaillées jusqu'à
+	# NEAR_CROWN puis version lointaine.
+	var ranges := {"plant": Vector2(0, GARDEN_PLANT_RANGE), "crown": Vector2(0, BastideForestBuilder.NEAR_CROWN),
+		"far": Vector2(BastideForestBuilder.NEAR_CROWN, 0), "shadow": Vector2(0, BastideForestBuilder.SHADOW_RANGE)}
 	var add := func(gkey: String, m: Mesh, mat: Material, xf: Transform3D, shadow: int) -> void:
 		if m == null:
 			return
 		if not groups.has(gkey):
-			groups[gkey] = {"mesh": m, "mat": mat, "xf": [], "shadow": shadow}
+			var kind := gkey.get_slice("/", 0)
+			var vr: Vector2 = ranges.get(kind, ranges["plant"] if kind != "trunk" else Vector2.ZERO)
+			groups[gkey] = {"mesh": m, "mat": mat, "xf": [], "shadow": shadow, "vr": vr}
 		(groups[gkey]["xf"] as Array).append(xf)
 	var bark := BastideKitNature.trunk_material()
 	for it: Dictionary in items:
@@ -330,10 +342,12 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 				var sc := snappedf(size * 1.15 / hmodel, 0.1)
 				var variant := int(BastideGardenMesher.h(k, 702) * 4.0)
 				var tr := BastideKitNature.tree(sp, variant, sc)
+				var trf := BastideKitNature.tree(sp, variant, sc, true)
 				var xf := Transform3D(Basis(Vector3.UP, rot), p)
 				var id := "%s/%d/%.1f" % [sp, variant, sc]
 				add.call("trunk/" + id, tr["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				add.call("crown/" + id, tr["crown"], tr["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				add.call("far/" + id, trf["crown"], trf["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				add.call("shadow/" + id, tr["shadow"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 			HYDRANGEA:
 				var model := "hydrangea_blue" if BastideGardenMesher.h(k, 703) < 0.55 else "hydrangea_pink"
@@ -341,6 +355,17 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 					model = "azalea_pink"
 				var pl := BastideKitNature.plant(model)
 				var xf := Transform3D(Basis(Vector3.UP, rot).scaled(Vector3.ONE * size * 1.5), p)
+				add.call("plant/" + model, pl["mesh"], pl["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+				if pl.get("trunk") != null:
+					add.call("plantcore/" + model, pl["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+			BUSH:
+				# Buisson en cartes de feuillage, comme les arbres (plus de boule lisse) ;
+				# les buissons fleuris sont des azalées.
+				var model := "bush_1"
+				if it.get("bloom", false):
+					model = "azalea_pink" if BastideGardenMesher.h(k, 705) < 0.6 else "azalea_red"
+				var pl := BastideKitNature.plant(model)
+				var xf := Transform3D(Basis(Vector3.UP, rot).scaled(Vector3.ONE * size * (1.25 if model == "bush_1" else 1.6)), p)
 				add.call("plant/" + model, pl["mesh"], pl["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				if pl.get("trunk") != null:
 					add.call("plantcore/" + model, pl["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
@@ -354,7 +379,8 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 			_:
 				rest.append(it)
 	for g: Dictionary in groups.values():
-		result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"])
+		var vr: Vector2 = g["vr"]
+		result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"], vr.x, vr.y)
 	return rest
 
 

@@ -63,6 +63,7 @@ func _init() -> void:
 	_test_kit_trees()
 	_test_forest()
 	_test_terrain()
+	_test_silhouettes()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1248,3 +1249,35 @@ func _test_terrain() -> void:
 			feet_ok = feet_ok and absf(v.y - (0.1 * (v.x + 2.0) - BastideDrape.SINK)) < 1e-4
 	check(tops.all(func(y: float) -> bool: return absf(y - 2.6) < 1e-4), "d'aplomb : le haut reste horizontal")
 	check(feet_ok, "d'aplomb : le pied rejoint le sol, un peu enfoncé")
+
+
+func _rect(w: float, d: float) -> PackedVector3Array:
+	return PackedVector3Array([Vector3(0, 0, 0), Vector3(w, 0, 0), Vector3(w, 0, d), Vector3(0, 0, d)])
+
+
+func _test_silhouettes() -> void:
+	var K := BastideSilhouette.Kind
+	var fp := func(w: float, d: float) -> PackedVector2Array:
+		return PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w, d), Vector2(0, d)])
+	check(BastideSilhouette.resolve(K.AUTO, fp.call(4.2, 4.4), 1) == K.TOWER, "silhouette : petite base carrée → tour")
+	check(BastideSilhouette.resolve(K.AUTO, fp.call(10, 7), 1) == K.HOUSE, "silhouette : grand rectangle → grande maison")
+	var small: Array = []
+	for sd in range(1, 30):
+		small.append(BastideSilhouette.resolve(K.AUTO, fp.call(7, 4.5), sd))
+	check(small.has(K.SMALL) and small.has(K.KURA) and not small.has(K.HOUSE), "silhouette : petit rectangle → petite maison ou kura selon la graine")
+	check(BastideSilhouette.resolve(K.KURA, fp.call(10, 7), 1) == K.KURA, "silhouette : un choix explicite l'emporte")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	check(BastideSilhouette.style_for(jp, K.HOUSE) == jp, "silhouette : la grande maison garde le style tel quel")
+	var tower := BastideSilhouette.style_for(jp, K.TOWER)
+	check(tower == BastideSilhouette.style_for(jp, K.TOWER), "silhouette : variante en cache")
+	check(jp.get_building_style().floors == 2 and not jp.get_building_style().pent_every_floor, "silhouette : le style de base n'est pas modifié")
+	var tl := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(_rect(4.4, 4.4), 5), tower)
+	check(tl.floors == 3 and tl.pent_roof and tl.pent_levels == 2, "tour : 3 niveaux, un auvent par étage (%d, %d)" % [tl.floors, tl.pent_levels])
+	var kura := BastideSilhouette.style_for(jp, K.KURA)
+	var kl := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(_rect(7, 4.5), 5), kura)
+	check(not kl.is_empty() and not kl.pent_roof and kura.get_roof_style().roof_type == BastideRoofStyle.RoofType.GABLE, "kura : pignons, pas d'auvent")
+	var sm := BastideSilhouette.style_for(jp, K.SMALL)
+	var sl := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(_rect(7, 4.5), 5), sm)
+	check(sl.floors == 1 and sl.eave_y < kl.eave_y, "petite maison : un niveau, plus basse que le kura")
+	var tm := BastideBuilding.compute(BastideBuildingSpec.from_points(_rect(4.4, 4.4), 5), tower, true)
+	check(tm.mesh != null and tm.mesh.get_surface_count() > 0 and not tm.collision_faces.is_empty(), "tour : maillage et collisions")

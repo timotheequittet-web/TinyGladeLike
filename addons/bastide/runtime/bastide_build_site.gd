@@ -17,6 +17,7 @@ extends Node3D
 ##   closed  : bool (murs : enceinte fermée)
 ##   seed    : int
 ##   floors  : int (maisons ; 0 = style)
+##   shape   : int (maisons ; BastideSilhouette.Kind, 0 = automatique)
 ##   door    : int (maisons, facultatif : côté de la porte, -1 = automatique)
 ##   height  : float (murs ; 0 = style)
 ##   variant : int (clôtures : 0 pierres sèches, 1 bambou)
@@ -228,6 +229,9 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		var f := int(rec.get("floors", 0))
 		if b.floors != f:
 			b.floors = f
+		var shape := int(rec.get("shape", BastideSilhouette.Kind.AUTO))
+		if b.silhouette != shape:
+			b.silhouette = shape
 		var door := int(rec.get("door", -1))
 		if b.door_facade != door:
 			b.door_facade = door

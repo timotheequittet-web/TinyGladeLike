@@ -20,7 +20,8 @@ extends Node3D
 ## - Clic sur une structure : la sélectionne. Des poignées apparaissent : on tire
 ##   un angle, un côté de maison ou un point de mur pour retoucher ; clic droit sur
 ##   une poignée de mur : retire ce point.
-## - Suppr : supprimer ; R : autre variation ; + / − (ou Page haut/bas) : étages ;
+## - Suppr : supprimer ; R : autre variation ; G : silhouette de la maison (petite
+##   maison, kura, tour…) ; + / − (ou Page haut/bas) : étages ;
 ##   Ctrl+Z / Ctrl+Y : annuler / rétablir ; Échap : annuler le tracé ou désélectionner.
 ##
 ## Le style appliqué est `style` : il vaut pour les nouvelles structures et, via
@@ -276,6 +277,36 @@ func change_floors(delta: int) -> void:
 	edited.emit()
 
 
+## Silhouette suivante pour la maison sélectionnée (automatique, grande maison,
+## petite maison, kura, tour).
+func cycle_silhouette() -> void:
+	if selected < 0 or not site.has(selected):
+		return
+	var before: Dictionary = site.get_record(selected)
+	if before["kind"] != "house":
+		return
+	var cur := int(before.get("shape", BastideSilhouette.Kind.AUTO))
+	var i := BastideSilhouette.CYCLE.find(cur)
+	var after := before.duplicate(true)
+	after["shape"] = BastideSilhouette.CYCLE[(i + 1) % BastideSilhouette.CYCLE.size()]
+	# Les étages suivent la nouvelle silhouette.
+	after["floors"] = 0
+	_commit("Silhouette", [[selected, before, after]], true)
+	edited.emit()
+
+
+## Nom de la silhouette de la maison sélectionnée ("" si ce n'en est pas une).
+func selected_silhouette_name() -> String:
+	if selected < 0 or not site.has(selected) or site.get_record(selected)["kind"] != "house":
+		return ""
+	var node := site.node_of(selected) as BastideBuilding
+	if node == null:
+		return ""
+	var shape := int(site.get_record(selected).get("shape", 0))
+	var name: String = BastideSilhouette.NAMES[node.resolved_silhouette()]
+	return name + (" (auto)" if shape == BastideSilhouette.Kind.AUTO else "")
+
+
 ## Change le style des prochaines constructions et de la structure sélectionnée.
 func set_style(new_style: BastideStyle) -> void:
 	style = new_style
@@ -407,6 +438,8 @@ func _on_key(k: InputEventKey) -> void:
 					mode = Mode.FOREST
 				elif k.keycode == KEY_R:
 					reroll_selected()
+				elif k.keycode == KEY_G:
+					cycle_silhouette()
 				elif k.keycode == KEY_V:
 					if mode == Mode.FOREST:
 						cycle_forest_kind()
@@ -628,6 +661,7 @@ func _draw_house(g: Vector3) -> void:
 			site.node_of(_merge_id).visible = false
 			_draft_rec["seed"] = site.get_record(_merge_id)["seed"]
 			_draft_rec["floors"] = site.get_record(_merge_id)["floors"]
+			_draft_rec["shape"] = site.get_record(_merge_id).get("shape", 0)
 			_draft_rec["style"] = site.get_record(_merge_id)["style"]
 		else:
 			_draft_rec["style"] = style.resource_path
@@ -1162,7 +1196,7 @@ func current_hint() -> String:
 	if selected >= 0 and site.has(selected):
 		var kind: String = site.get_record(selected)["kind"]
 		if kind == "house":
-			return "Poignées : retoucher  ·  + / − : étages  ·  R : autre variation  ·  Suppr : retirer"
+			return "%s  ·  G : autre silhouette  ·  + / − : étages  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
 		return "Poignées : retoucher  ·  R : autre variation  ·  Suppr : retirer"
 	if _hover >= 0:
 		return "Clic : sélectionner"

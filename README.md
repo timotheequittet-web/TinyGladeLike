@@ -101,6 +101,23 @@ soubassement de pierres sèches appareillées (façon ishigaki).
 - **Enduit** (`plaster_amount` du shader pierre) : nuages de chaux chauds et froids,
   traces de taloche et fines coulures, sans texture.
 
+## Silhouettes de bâtiments
+
+![Tour, grande maison, longue maison et kura](docs/captures/silhouette_silhouettes.jpg)
+
+Un même style se décline en plusieurs volumes (`BastideBuilding.silhouette`,
+`BastideSilhouette`) :
+
+- **grande maison** : le volume du style ;
+- **petite maison** : un seul niveau, toit qui descend bas ;
+- **kura** : entrepôt aux murs blancs épais, petites fenêtres hautes, toit à pignons ;
+- **tour** : trois niveaux sur une base carrée, un auvent à chaque étage, toit en pavillon.
+
+En automatique, le tracé décide : une petite base carrée fait une tour, un petit
+rectangle une petite maison ou un kura, le reste une grande maison. En jeu, **G**
+(ou le bouton « Silhouette ») passe d'une silhouette à l'autre sur la maison
+sélectionnée ; le choix est enregistré avec elle. Le kura et la tour ne fument pas.
+
 ## Vie du hameau
 
 ![Fumée sur le toit, lanternes, papillons](docs/captures/vie_hameau.jpg)

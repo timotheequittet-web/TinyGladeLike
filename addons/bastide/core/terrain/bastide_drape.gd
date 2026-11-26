@@ -94,6 +94,9 @@ static func _mesh(src: ArrayMesh, field: BastideHeightField, xf: Transform3D, in
 	var out := ArrayMesh.new()
 	for s in src.get_surface_count():
 		var arr := src.surface_get_arrays(s)
+		# Surface vide ou illisible : on la laisse de côté plutôt que d'échouer.
+		if arr.size() <= Mesh.ARRAY_VERTEX or not (arr[Mesh.ARRAY_VERTEX] is PackedVector3Array):
+			continue
 		var before: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var after := _points(before, field, xf, inv, mode, lift)
 		arr[Mesh.ARRAY_VERTEX] = after
@@ -115,7 +118,8 @@ static func _mesh(src: ArrayMesh, field: BastideHeightField, xf: Transform3D, in
 			var shift: int = Mesh.ARRAY_FORMAT_CUSTOM_BASE + c * Mesh.ARRAY_FORMAT_CUSTOM_BITS
 			flags |= fmt & (Mesh.ARRAY_FORMAT_CUSTOM_MASK << shift)
 		out.add_surface_from_arrays(src.surface_get_primitive_type(s), arr, [], {}, flags)
-		out.surface_set_material(s, src.surface_get_material(s))
-		out.surface_set_name(s, src.surface_get_name(s))
+		var o := out.get_surface_count() - 1
+		out.surface_set_material(o, src.surface_get_material(s))
+		out.surface_set_name(o, src.surface_get_name(s))
 	out.custom_aabb = AABB()
 	return out

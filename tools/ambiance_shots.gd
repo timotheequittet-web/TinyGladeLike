@@ -88,6 +88,16 @@ func _close_views() -> void:
 	cam.glide_to(Vector3(-4, 0, -2), 26.0, 25.0)
 	await _wait(3.0)
 	await _shot("vie_haut")
+	# Silhouettes : tour de guet et kura.
+	cam.glide_to(Vector3(-16.4, 4, -6.9), 17.0, 35.0)
+	await _wait(3.0)
+	await _shot("tour")
+	cam.glide_to(Vector3(19.5, 2, -4.8), 16.0, 10.0)
+	await _wait(3.0)
+	await _shot("kura")
+	cam.glide_to(Vector3(2, 0, -5), 40.0, 12.0)
+	await _wait(3.0)
+	await _shot("silhouettes")
 
 
 func _walk_at(p: Vector3, look: Vector3, pitch: float) -> void:

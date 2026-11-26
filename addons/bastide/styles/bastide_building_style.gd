@@ -180,6 +180,11 @@ enum DoorKind { PLANK, SLIDING }
 	set(value):
 		pent_roof = value
 		emit_changed()
+## Un auvent à chaque étage (tours à étages, yagura), pas seulement au premier.
+@export var pent_every_floor: bool = false:
+	set(value):
+		pent_every_floor = value
+		emit_changed()
 ## Profondeur de l'auvent.
 @export_range(0.3, 2.0, 0.01, "suffix:m") var pent_depth: float = 0.75:
 	set(value):

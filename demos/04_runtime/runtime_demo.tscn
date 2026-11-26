@@ -62,17 +62,17 @@ dof_blur_far_distance = 80.0
 dof_blur_far_transition = 50.0
 dof_blur_amount = 0.06
 
-[node name="RuntimeDemo" type="Node3D" unique_id=141696400]
+[node name="RuntimeDemo" type="Node3D" unique_id=30240375]
 script = ExtResource("1_uvevg")
 
-[node name="Terrain" type="Node3D" parent="." unique_id=1052318561]
+[node name="Terrain" type="Node3D" parent="." unique_id=671207539]
 script = ExtResource("2_hbpmb")
 flat_zones = Array[Vector4]([Vector4(-27, 16, 10.5, 7)])
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=20584770]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1602167486]
 environment = SubResource("Environment_76swp")
 
-[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=1102065435]
+[node name="Soleil" type="DirectionalLight3D" parent="." unique_id=1209502463]
 transform = Transform3D(-0.88294756, -0.1372602, 0.44895792, 0, 0.9563048, 0.2923717, -0.46947157, 0.25814888, -0.84436697, 0, 0, 0)
 light_color = Color(1, 0.78, 0.55, 1)
 light_energy = 1.9
@@ -81,7 +81,7 @@ shadow_enabled = true
 shadow_blur = 1.4
 directional_shadow_max_distance = 150.0
 
-[node name="Camera" type="Camera3D" parent="." unique_id=1544615269]
+[node name="Camera" type="Camera3D" parent="." unique_id=1972898825]
 attributes = SubResource("CameraAttributesPractical_a2d0c")
 fov = 50.0
 script = ExtResource("3_b38ro")
@@ -90,28 +90,28 @@ max_distance = 75.0
 yaw_degrees = -25.0
 bounds_radius = 45.0
 
-[node name="Decor" type="Node3D" parent="." unique_id=301276222 node_paths=PackedStringArray("follow")]
+[node name="Decor" type="Node3D" parent="." unique_id=574046693 node_paths=PackedStringArray("follow")]
 script = ExtResource("4_a5b3o")
 follow = NodePath("../Camera")
 
-[node name="Chantier" type="Node3D" parent="." unique_id=749986897]
+[node name="Chantier" type="Node3D" parent="." unique_id=192567751]
 script = ExtResource("5_uji84")
 
-[node name="Outil" type="Node3D" parent="." unique_id=346961620 node_paths=PackedStringArray("site", "camera")]
+[node name="Outil" type="Node3D" parent="." unique_id=897244351 node_paths=PackedStringArray("site", "camera")]
 script = ExtResource("6_6w2e4")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 
-[node name="Herbe" type="Node3D" parent="." unique_id=1966550244 node_paths=PackedStringArray("site", "camera")]
+[node name="Herbe" type="Node3D" parent="." unique_id=928054841 node_paths=PackedStringArray("site", "camera")]
 script = ExtResource("7_ndi6n")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 
-[node name="Vie" type="Node3D" parent="." unique_id=441231265 node_paths=PackedStringArray("site", "camera")]
+[node name="Vie" type="Node3D" parent="." unique_id=995723914 node_paths=PackedStringArray("site", "camera")]
 script = ExtResource("8_nxrwe")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 butterfly_colors = PackedColorArray(0.98, 0.96, 0.9, 1, 0.98, 0.84, 0.36, 1, 0.95, 0.56, 0.24, 1, 0.7, 0.78, 0.98, 1)
 
-[node name="Ambiance" type="Node" parent="." unique_id=1599443628]
+[node name="Ambiance" type="Node" parent="." unique_id=1789318627]
 script = ExtResource("9_2sv16")

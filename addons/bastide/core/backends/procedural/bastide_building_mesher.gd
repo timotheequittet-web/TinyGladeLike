@@ -56,7 +56,8 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		if with_collision:
 			_facade_collision(result, layout, f)
 	if layout.pent_roof:
-		_pent_roof(mb, result, layout, style, with_collision)
+		for level in range(1, layout.pent_levels + 1):
+			_pent_roof(mb, result, layout, style, with_collision, level)
 	if bs.quoins and not layout.timber:
 		for i in layout.facades.size():
 			var f: BastideBuildingLayout.Facade = layout.facades[i]
@@ -838,19 +839,20 @@ static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout,
 					f.out3(), mc, mc, mc, mc)
 
 
-## Auvent de tuiles (hisashi) entre le rez-de-chaussée et l'étage, tout autour.
+## Auvent de tuiles (hisashi) au-dessus de l'étage `level` - 1, tout autour. Sur
+## une tour, chaque auvent est un peu moins profond que celui du dessous.
 static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: BastideBuildingLayout,
-		style: BastideStyle, with_collision: bool) -> void:
+		style: BastideStyle, with_collision: bool, level := 1) -> void:
 	var bs := style.get_building_style()
 	var rs := style.get_roof_style()
 	var fp := layout.footprint
 	var n := fp.size()
-	var depth := bs.pent_depth
+	var depth := bs.pent_depth * (1.0 - 0.12 * (level - 1))
 	var outer := BastidePolygon.offset(fp, -depth, 3.0)
 	if BastidePolygon.self_intersects(outer):
 		return
 	var tan_p := tan(deg_to_rad(bs.pent_pitch))
-	var y_top := layout.base_y + layout.floor_height + 0.32
+	var y_top := layout.base_y + layout.floor_height * level + 0.32
 	var y_bot := y_top - depth * tan_p
 	var tp := BastideRoofMesher.TileParams.from_style(rs, bs.pent_pitch, y_bot, layout.roof.color)
 	var under := rs.underside_color
@@ -863,7 +865,7 @@ static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: 
 			Vector3(outer[i].x, y_bot, outer[i].y), Vector3(outer[j].x, y_bot, outer[j].y),
 			Vector3(fp[j].x, y_top, fp[j].y), Vector3(fp[i].x, y_top, fp[i].y)])
 		var nrm := (out * tan_p + Vector3.UP).normalized()
-		BastideRoofMesher.tile_polygon(mb, poly, nrm, f.dir3(), -out, tp, layout.seed, 1000 + i)
+		BastideRoofMesher.tile_polygon(mb, poly, nrm, f.dir3(), -out, tp, layout.seed, 1000 * level + i)
 		var low := PackedVector3Array()
 		for p in poly:
 			low.append(p - Vector3(0.0, thick, 0.0))

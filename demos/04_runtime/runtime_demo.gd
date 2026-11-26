@@ -73,6 +73,12 @@ func _starting_village() -> Array:
 		# La forêt mêlée qui ferme le hameau au nord (arbres d'Onsen) : on peut s'y promener.
 		{"kind": "forest", "seed": 41, "style": j, "closed": true, "forest_kind": 0,
 			"points": [[-34, 0, -16], [-12, 0, -15], [4, 0, -17], [22, 0, -16], [36, 0, -20], [38, 0, -44], [10, 0, -52], [-20, 0, -50], [-38, 0, -38]]},
+		# Silhouettes : une tour de guet à l'ouest (choisie d'office par sa petite base
+		# carrée), un kura à l'est de la longue maison.
+		{"kind": "house", "seed": 23, "style": j, "door": 2,
+			"points": [[-18.5, 0, -9], [-14.3, 0, -9], [-14.3, 0, -4.8], [-18.5, 0, -4.8]]},
+		{"kind": "house", "seed": 44, "style": j, "door": 3, "shape": BastideSilhouette.Kind.KURA,
+			"points": [[19.5, 0, -7], [25.5, 0, -7], [25.5, 0, -2.6], [19.5, 0, -2.6]]},
 	]
 
 
@@ -309,6 +315,7 @@ func _build_ui() -> void:
 	shb.add_child(_floor_box)
 	_button(_floor_box, "Étage −", func() -> void: tool.change_floors(-1))
 	_button(_floor_box, "Étage +", func() -> void: tool.change_floors(1))
+	_button(_floor_box, "Silhouette  G", tool.cycle_silhouette)
 	_button(shb, "Autre variation  R", tool.reroll_selected)
 	_button(shb, "Retirer", tool.delete_selected)
 
@@ -352,7 +359,7 @@ func _build_ui() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card_box.add_child(title)
 	var keys := Label.new()
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   G : silhouette   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.92))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))

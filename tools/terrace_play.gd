@@ -32,8 +32,7 @@ func _run() -> void:
 	cam = scene.get_node("Camera")
 	site = scene.get_node("Chantier")
 	tool = scene.get_node("Outil")
-	if DisplayServer.get_name() != "headless":
-		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
+	preload("res://tools/play_light.gd").apply(scene)
 	var n0: int = scene.call("_starting_village").size()
 	var t0 := Time.get_ticks_msec()
 	while not _all_built(n0) and Time.get_ticks_msec() - t0 < 300000:

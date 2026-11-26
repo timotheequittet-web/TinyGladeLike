@@ -232,6 +232,8 @@ func _to_world(points: PackedVector3Array) -> PackedVector3Array:
 
 var _queued := false
 var _task_id := -1
+## Pose sur le relief à appliquer au prochain résultat (voir _prepare_job).
+var _pending_drape := {}
 var _dirty_while_running := false
 var _fallback_style: BastideStyle
 
@@ -317,20 +319,27 @@ func _prepare_job() -> Callable:
 	# Volets du style et matériaux créés ici, sur le thread principal.
 	st.prepare()
 	var job := _make_job()
-	# Relief : la génération se fait à plat, puis elle est posée sur le sol.
+	# Relief : la génération se fait à plat, puis elle est posée sur le sol. La pose
+	# se fait sur le thread principal (voir _drape_result) : elle relit les maillages,
+	# et une relecture depuis un autre thread attend le serveur de rendu, donc le
+	# thread principal, qui peut lui-même attendre ce calcul (_exit_tree).
+	_pending_drape = {}
 	var field := BastideTerrain.field_for(self)
 	var mode := terrain_mode()
-	if field == null or mode == BastideDrape.Mode.NONE:
-		return job
-	# Sans échelle : le chantier fait « sortir de terre » une structure en animant son
-	# échelle verticale, ce qui ne doit pas changer sa pose sur le sol.
-	var xf := Transform3D(global_transform.basis.orthonormalized(), global_transform.origin)
-	var min_lift := _terrain_min_lift()
-	return func() -> BastideBuildResult:
-		var r: BastideBuildResult = job.call()
-		if r != null:
-			BastideDrape.apply(r, field, xf, mode, min_lift)
-		return r
+	if field != null and mode != BastideDrape.Mode.NONE:
+		# Sans échelle : le chantier fait « sortir de terre » une structure en animant
+		# son échelle verticale, ce qui ne doit pas changer sa pose sur le sol.
+		_pending_drape = {"field": field, "mode": mode, "min_lift": _terrain_min_lift(),
+				"xf": Transform3D(global_transform.basis.orthonormalized(), global_transform.origin)}
+	return job
+
+
+func _drape_result(result: BastideBuildResult, drape: Dictionary) -> void:
+	if result == null or drape.is_empty():
+		return
+	var t0 := Time.get_ticks_usec()
+	BastideDrape.apply(result, drape["field"], drape["xf"], drape["mode"], drape["min_lift"])
+	result.stats["drape_ms"] = snappedf((Time.get_ticks_usec() - t0) / 1000.0, 0.1)
 
 
 ## Comment la structure se pose sur le relief (voir BastideDrape) : par défaut elle
@@ -358,6 +367,7 @@ func _finish_build(result: BastideBuildResult) -> void:
 		WorkerThreadPool.wait_for_task_completion(_task_id)
 		_task_id = -1
 	if is_inside_tree():
+		_drape_result(result, _pending_drape)
 		_apply(result)
 	if _dirty_while_running:
 		_dirty_while_running = false
@@ -391,7 +401,9 @@ func get_effective_style() -> BastideStyle:
 func rebuild() -> void:
 	if not is_inside_tree():
 		return
-	_apply(_timed(_prepare_job()))
+	var r := _timed(_prepare_job())
+	_drape_result(r, _pending_drape)
+	_apply(r)
 
 
 func _randomize_seed() -> void:

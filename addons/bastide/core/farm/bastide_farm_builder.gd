@@ -103,8 +103,8 @@ static func paddy_water_material() -> ShaderMaterial:
 		m = ShaderMaterial.new()
 		m.shader = WATER_SHADER
 		m.set_shader_parameter("shallow_tint", Color(0.8, 0.8, 0.68))
-		m.set_shader_parameter("deep_color", Color(0.26, 0.25, 0.17))
-		m.set_shader_parameter("scatter_color", Color(0.34, 0.33, 0.22))
+		m.set_shader_parameter("deep_color", Color(0.36, 0.34, 0.24))
+		m.set_shader_parameter("scatter_color", Color(0.46, 0.44, 0.31))
 		m.set_shader_parameter("absorption", 3.5)
 		m.set_shader_parameter("milky", 0.12)
 		m.set_shader_parameter("milky_color", Color(0.5, 0.48, 0.36))
@@ -176,6 +176,7 @@ static func build(points: PackedVector3Array, seed: int, kind: int, style: Basti
 			_frost_fans(b)
 		_:
 			_scarecrow_on(b)
+			_shed(b)
 			_beds(b)
 			_fence(b)
 	for g: Dictionary in b.groups.values():
@@ -189,9 +190,11 @@ static func build(points: PackedVector3Array, seed: int, kind: int, style: Basti
 	result.mesh = b.mb.commit(mats)
 	var carve := _carve(b)
 	result.anchors = {"outline": poly, "carve": carve, "kind": kind, "axis": b.u}
+	if b.shed_at != Vector2.INF:
+		result.anchors["shed"] = b.shed_at
 	result.stats = {"area": snappedf(b.area, 0.1), "cells": b.cells, "beds": b.beds, "crops": b.crops,
 		"terraces": b.terraces, "paddies": b.paddies, "rice": b.rice, "hedges": b.hedges, "fence_posts": b.posts,
-		"gate": b.gate, "fans": b.fans, "scarecrows": b.scarecrows, "triangles": b.mb.triangle_count}
+		"gate": b.gate, "fans": b.fans, "scarecrows": b.scarecrows, "sheds": b.sheds, "triangles": b.mb.triangle_count}
 	return result
 
 
@@ -246,6 +249,8 @@ class _Ctx:
 	var gate := false
 	var fans := 0
 	var scarecrows := 0
+	var sheds := 0
+	var shed_at := Vector2.INF
 
 	func at(s: float, t: float) -> Vector2:
 		return c0 + u * s + v * t
@@ -815,7 +820,7 @@ static func _bed(b: _Ctx, sa: float, sb: float, ta: float, crop: String, key: in
 	var prof_t := [0.0, 0.07, 0.17, 0.45, 0.73, 0.83, 0.9]
 	var prof_y := [0.0, 0.11, 0.17, 0.19, 0.17, 0.11, 0.0]
 	var top_col := BastideGardenMesher.tint(Color(0.31, 0.24, 0.19), hs(key, 1) * 0.05)
-	var side_col := top_col.darkened(0.15)
+	var side_col := top_col.darkened(0.06)
 	var n := maxi(2, ceili((sb - sa) / 0.4))
 	var prev: Array = []
 	var u3 := Vector3(b.u.x, 0, b.u.y)
@@ -869,10 +874,12 @@ static func _bed(b: _Ctx, sa: float, sb: float, ta: float, crop: String, key: in
 
 ## Clôture basse de bambou (yotsume-gaki) à l'intérieur du bord, ouverte vers le
 ## chemin le plus proche (ou vers le village), et partout où un chemin la traverse.
-static func _fence(b: _Ctx) -> void:
-	var ring := _resample(BastidePolygon.offset(BastidePolygon.ensure_direct(b.poly), 0.22), 1.6)
-	if ring.size() < 4:
-		return
+static func _fence_ring(b: _Ctx) -> PackedVector2Array:
+	return _resample(BastidePolygon.offset(BastidePolygon.ensure_direct(b.poly), 0.22), 1.6)
+
+
+## Milieu de l'entrée du potager : vers le chemin le plus proche, une porte, ou le village.
+static func _gate_center(b: _Ctx, ring: PackedVector2Array) -> Vector2:
 	var target := Vector2.INF
 	var best := INF
 	for e: Dictionary in b.ctx.paths:
@@ -899,8 +906,15 @@ static func _fence(b: _Ctx) -> void:
 		if d < gd:
 			gd = d
 			gi = i
+	return ring[gi].lerp(ring[(gi + 1) % ring.size()], 0.5)
+
+
+static func _fence(b: _Ctx) -> void:
+	var ring := _fence_ring(b)
+	if ring.size() < 4:
+		return
 	b.gate = true
-	var gate_c := ring[gi].lerp(ring[(gi + 1) % ring.size()], 0.5)
+	var gate_c := _gate_center(b, ring)
 	var col := Color(0.7, 0.64, 0.44)
 	var present: Array[bool] = []
 	for i in ring.size():
@@ -951,6 +965,149 @@ static func _resample(poly: PackedVector2Array, step: float) -> PackedVector2Arr
 			acc += l
 			seg += 1
 	return out
+
+
+## Cabane à outils : un petit appentis de planches près de l'entrée, ouvert vers le
+## potager, ses outils appuyés contre la paroi, paniers et sacs au pied.
+static func _shed(b: _Ctx) -> void:
+	if b.area < 45.0:
+		return
+	var ring := _fence_ring(b)
+	if ring.size() < 4:
+		return
+	var gate_c := _gate_center(b, ring)
+	var centre := BastidePolygon.centroid(b.poly)
+	var best := Vector2.INF
+	var best_score := INF
+	for k in b.state.size():
+		if b.state[k] != 1 or b.on_path[k] == 1 or b.edge[k] < 1.1 or b.edge[k] > 2.4:
+			continue
+		var i := k % b.ns
+		var j := k / b.ns
+		var q := b.at(b.s0 + (i + 0.5) * CELL, b.t0 + (j + 0.5) * CELL)
+		var dg := q.distance_to(gate_c)
+		if dg < 2.2 or dg > 8.0:
+			continue
+		var f := (centre - q).normalized()
+		var r := Vector2(-f.y, f.x)
+		var ok := b.is_free(q, 1.3) and not b.ctx.blocked(q, 1.2)
+		for c: Vector2 in [r * 1.0 + f * 0.7, -r * 1.0 + f * 0.7, r * 1.0 - f * 0.7, -r * 1.0 - f * 0.7]:
+			if not ok:
+				break
+			if b.edge_at(q + c) < 0.3:
+				ok = false
+		if not ok:
+			continue
+		var score := dg + h(b.seed, k) * 1.5
+		if score < best_score:
+			best_score = score
+			best = q
+	if best == Vector2.INF:
+		return
+	var f := (centre - best).normalized()
+	b.taken.append(Vector3(best.x, best.y, 1.35))
+	shed(b.mb, best, f, b, BastideRng.combine(b.seed, 555))
+	b.sheds += 1
+	b.shed_at = best
+
+
+## Boîte orientée : centre au sol c (local), axes r et f (unitaires), demi-tailles.
+static func _box(mb: BastideMeshBuilder, role: StringName, c: Vector3, r: Vector3, f: Vector3, hx: float, hz: float,
+		y0: float, y1: float, col: Color, y1_back := INF) -> void:
+	var yb := y1 if y1_back == INF else y1_back
+	var corners := [
+		c - r * hx - f * hz + Vector3.UP * y0, c + r * hx - f * hz + Vector3.UP * y0,
+		c + r * hx + f * hz + Vector3.UP * y0, c - r * hx + f * hz + Vector3.UP * y0,
+		c - r * hx - f * hz + Vector3.UP * yb, c + r * hx - f * hz + Vector3.UP * yb,
+		c + r * hx + f * hz + Vector3.UP * y1, c - r * hx + f * hz + Vector3.UP * y1]
+	mb.add_block(role, corners, 0.008, 0.0, col, col.darkened(0.15))
+
+
+static func shed(mb: BastideMeshBuilder, q: Vector2, fwd: Vector2, b: _Ctx, key: int) -> void:
+	var f := Vector3(fwd.x, 0, fwd.y)
+	var r := Vector3(-fwd.y, 0, fwd.x)
+	var c2 := q
+	var g := -INF
+	for o: Vector2 in [Vector2(0.95, 0.65), Vector2(-0.95, 0.65), Vector2(0.95, -0.65), Vector2(-0.95, -0.65)]:
+		var p := c2 + Vector2(r.x, r.z) * o.x + fwd * o.y
+		g = maxf(g, b.ground(p))
+	var c := Vector3(q.x, 0, q.y)
+	var hx := 0.9
+	var hz := 0.6
+	var front_h := 1.95
+	var back_h := 1.6
+	var frame := Color(0.3, 0.23, 0.17)
+	var board := Color(0.52, 0.41, 0.3)
+	# Pierres d'assise et poteaux d'angle.
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			var p := c + r * hx * sx + f * hz * sz
+			BastideGardenMesher.slab(mb, Vector3(p.x, g - 0.05, p.z), 0.13, 0.1, h(key, 1) * TAU, BastideRng.combine(key, int(sx * 3 + sz)),
+					Color(0.55, 0.53, 0.48), 6, 1.0, -0.05)
+			var top := front_h if sz > 0 else back_h
+			_box(mb, ROLE_WOOD, p, r, f, 0.045, 0.045, g + 0.04, g + top, frame)
+	# Parois de planches verticales : le fond et les deux côtés (l'avant reste ouvert).
+	var nb := 9
+	for k in nb:
+		var x := -hx + (k + 0.5) * (2.0 * hx / nb)
+		var tone := BastideGardenMesher.tint(board, hs(key, 10 + k) * 0.08)
+		_box(mb, ROLE_WOOD, c + r * x - f * hz, r, f, hx / nb - 0.012, 0.015, g + 0.06, g + back_h - 0.02, tone)
+	for sx: float in [-1.0, 1.0]:
+		var ns := 6
+		for k in ns:
+			var z := -hz + (k + 0.5) * (2.0 * hz / ns)
+			var t := (z + hz) / (2.0 * hz)
+			var tone := BastideGardenMesher.tint(board, hs(key, 30 + k + int(sx) * 7) * 0.08)
+			# Le côté suit la pente du toit (plus haut devant).
+			var top := lerpf(back_h, front_h, t) - 0.02
+			_box(mb, ROLE_WOOD, c + r * hx * sx + f * z, r, f, 0.015, hz / ns - 0.01, g + 0.06, g + top, tone)
+	# Toit en appentis : planches dans le sens de la pente, débord généreux.
+	var roof := Color(0.34, 0.3, 0.26)
+	var nr := 8
+	var over := 0.28
+	for k in nr:
+		var x := -(hx + over) + (k + 0.5) * (2.0 * (hx + over) / nr)
+		var tone := BastideGardenMesher.tint(roof, hs(key, 60 + k) * 0.07)
+		var zf := hz + over
+		var zb := -hz - over * 0.7
+		var yf := front_h + over * (front_h - back_h) / (2.0 * hz) + 0.04
+		var yb := back_h - over * 0.7 * (front_h - back_h) / (2.0 * hz) + 0.04
+		var a := c + r * x
+		var w := (hx + over) / nr - 0.008
+		var corners := [
+			a - r * w + f * zb + Vector3.UP * (g + yb), a + r * w + f * zb + Vector3.UP * (g + yb),
+			a + r * w + f * zf + Vector3.UP * (g + yf), a - r * w + f * zf + Vector3.UP * (g + yf),
+			a - r * w + f * zb + Vector3.UP * (g + yb + 0.045), a + r * w + f * zb + Vector3.UP * (g + yb + 0.045),
+			a + r * w + f * zf + Vector3.UP * (g + yf + 0.045), a - r * w + f * zf + Vector3.UP * (g + yf + 0.045)]
+		mb.add_block(ROLE_WOOD, corners, 0.006, 0.0, tone, tone.darkened(0.2), true)
+	# Outils appuyés contre la paroi gauche : une houe et un râteau de bambou.
+	var handle := Color(0.6, 0.5, 0.34)
+	var tool_base := c - r * (hx - 0.15) + f * 0.05 + Vector3.UP * g
+	var lean := (Vector3.UP * 1.0 - r * 0.22).normalized()
+	BastideGardenMesher.tube(mb, ROLE_WOOD, tool_base, tool_base + lean * 1.25, 0.016, 0.015, handle, 5)
+	var blade_p := tool_base + lean * 1.25
+	_box(mb, ROLE_PAINT, blade_p + f * 0.06 - Vector3.UP * 0.02, r, f, 0.09, 0.012, -0.11, 0.02, Color(0.32, 0.32, 0.33))
+	var rake_base := tool_base + f * 0.25
+	BastideGardenMesher.tube(mb, ROLE_WOOD, rake_base, rake_base + lean * 1.4, 0.014, 0.013, Color(0.66, 0.62, 0.42), 5)
+	var head := rake_base + lean * 1.4
+	for n in 7:
+		var o := f * (-0.15 + n * 0.05)
+		BastideGardenMesher.tube(mb, ROLE_WOOD, head + o, head + o + f * 0.02 + Vector3.UP * 0.18, 0.005, 0.004, Color(0.7, 0.64, 0.42), 4)
+	# Paniers, sacs de toile et un seau de bois au pied, côté droit.
+	var straw := Color(0.72, 0.6, 0.38)
+	var bp := c + r * (hx - 0.3) - f * 0.25 + Vector3.UP * g
+	BastideGardenMesher.prism(mb, ROLE_WOOD, bp, 0.2, 0.24, g, g + 0.3, 9, straw)
+	BastideGardenMesher.prism(mb, ROLE_WOOD, bp, 0.2, 0.18, g + 0.3, g + 0.33, 9, straw.darkened(0.25))
+	for n in 2:
+		var sp := c + r * (0.1 + n * 0.34) - f * 0.3 + Vector3.UP * (g + 0.18)
+		BastideGardenMesher.blob(b.mb, ROLE_CLOTH, sp, Vector3(0.17, 0.2, 0.15), Color(0.74, 0.68, 0.55), BastideRng.combine(key, 90 + n), 4, 8, 0.25, 0.08)
+	var bucket := c + r * (hx - 0.3) + f * 0.25
+	BastideGardenMesher.prism(mb, ROLE_WOOD, Vector3(bucket.x, 0, bucket.z), 0.14, 0.17, g, g + 0.3, 10, Color(0.56, 0.44, 0.3))
+	if b.collision:
+		b.result.add_box([c - r * hx - f * hz + Vector3.UP * g, c + r * hx - f * hz + Vector3.UP * g,
+			c + r * hx - f * (hz - 0.1) + Vector3.UP * g, c - r * hx - f * (hz - 0.1) + Vector3.UP * g,
+			c - r * hx - f * hz + Vector3.UP * (g + back_h), c + r * hx - f * hz + Vector3.UP * (g + back_h),
+			c + r * hx - f * (hz - 0.1) + Vector3.UP * (g + back_h), c - r * hx - f * (hz - 0.1) + Vector3.UP * (g + back_h)])
 
 
 ## Épouvantail (kakashi) : chapeau de paille, kimono indigo, bras en croix.

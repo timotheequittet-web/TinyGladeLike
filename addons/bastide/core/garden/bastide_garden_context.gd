@@ -24,6 +24,8 @@ var plantings: Array = []
 var terraces: Array = []
 ## {footprint: PackedVector2Array (rive), level (hauteur de l'eau), kind, rect} : étangs.
 var ponds: Array = []
+## {footprint: PackedVector2Array, kind, rect} : champs (potagers, rizières, thé).
+var farms: Array = []
 
 
 ## Ramène une description (coordonnées monde) dans un autre repère.
@@ -93,6 +95,13 @@ static func from_entries(entries: Array) -> BastideGardenContext:
 					pp = BastidePolygon.ensure_direct(pp)
 					c.ponds.append({"footprint": pp, "level": level, "kind": int(d.get("pond_kind", 0)),
 						"rect": _rect2(pp, 0.5)})
+			"farm":
+				var fp2 := PackedVector2Array()
+				for p: Vector3 in d.get("footprint", PackedVector3Array()):
+					fp2.append(Vector2(p.x, p.z))
+				if fp2.size() >= 3:
+					fp2 = BastidePolygon.ensure_direct(fp2)
+					c.farms.append({"footprint": fp2, "kind": int(d.get("farm_kind", 0)), "rect": _rect2(fp2, 0.5)})
 	return c
 
 
@@ -250,6 +259,16 @@ func pond_clearance(p: Vector2) -> float:
 	return best
 
 
+## Distance au bord du champ le plus proche (négative dedans).
+func farm_clearance(p: Vector2) -> float:
+	var best := INF
+	for e: Dictionary in farms:
+		if not (e["rect"] as Rect2).grow(3.0).has_point(p):
+			continue
+		best = minf(best, BastidePondShape.signed_distance(p, e["footprint"]))
+	return best
+
+
 ## Vrai si p est devant une porte (dans un demi-disque de rayon `radius`).
 func near_door(p: Vector2, radius := 2.0) -> bool:
 	for d: Dictionary in doors():
@@ -290,6 +309,8 @@ func blocked(p: Vector2, r: float) -> bool:
 	if not terraces.is_empty() and terrace_clearance(p) < r * 0.5 + 0.1:
 		return true
 	if not ponds.is_empty() and pond_clearance(p) < r * 0.6 + 0.15:
+		return true
+	if not farms.is_empty() and farm_clearance(p) < r * 0.6 + 0.1:
 		return true
 	return false
 

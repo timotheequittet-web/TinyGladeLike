@@ -172,6 +172,22 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 - L'étang du hameau de départ est maintenant un vrai étang (il remplace l'ancien plan d'eau du décor).
 - Dans l'éditeur : nœud **BastidePond** (contour fermé), réglage `pond_kind`. Il creuse le **BastideTerrain** de sa scène s'il y en a un.
 
+## Cultures
+
+![Rizières en terrasses : eau à plat, levées herbues, riz repiqué en lignes](docs/captures/champ_riziere.jpg)
+
+![Potager du hameau : planches de choux, daikon, negi, aubergines et potirons, clôture de bambou](docs/captures/champ_potager.jpg)
+
+![Champ de thé : longues haies arrondies qui suivent la pente](docs/captures/champ_the.jpg)
+
+- **Champ** (touche **H**) : maintiens le clic et fais le tour d'une zone, relâche. **V** change la sorte : **potager**, **rizière** ou **champ de thé**.
+- **Rangs qui suivent la pente** : sur une pente, les rangs suivent les courbes de niveau ; sur le plat, l'axe long du champ.
+- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) et un épouvantail en kimono et chapeau de paille.
+- **Rizière** : la pente est taillée en **terrasses de niveau** (tanada), retenues par des murets de pierres sèches. Chaque terrasse est une nappe d'eau peu profonde qui renvoie le ciel, bordée de levées herbues ; d'autres levées la recoupent en rizières. Le riz est repiqué en lignes. Sur le plat, un damier de rizières.
+- **Thé** : de longues haies taillées en arrondi, feuillage serré avec ses jeunes pousses claires, de la paille entre les rangs et des ventilateurs antigel sur leurs mâts.
+- **Le sol** est abaissé sous le champ (déblai des terrasses compris) et la terre du champ est posée par-dessus ; ses bords descendent en talus ou en muret. L'herbe, les forêts, les massifs et le jardin automatique évitent les champs ; un chemin qui traverse un potager passe entre les planches.
+- Dans l'éditeur : nœud **BastideFarm** (contour fermé), réglage `farm_kind`.
+
 ## Forêts et arbres d'Onsen
 
 ![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)
@@ -369,7 +385,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (345 vérifications, dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (367 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -405,6 +421,12 @@ Et celle des jardins d'eau (étang du hameau, étang tracé avec la touche J, ch
 godot --path . -s tools/pond_play.gd -- <dossier_des_captures>
 ```
 
+Et celle des cultures (potager tracé avec la touche H, rizière avec V, sol abaissé, annuler, rétablir, retirer) :
+
+```
+godot --path . -s tools/farm_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -421,15 +443,16 @@ addons/bastide/
     backends/    plan → géométrie (procedural/ : murs et portails, bâtiments, toits, chemins, torii, clôtures, plantes, terrasses)
     kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
     water/       jardins d'eau : forme de la rive, niveau, creusement du relief, rochers, plantes, koï, ponts
+    farm/        cultures : grille de terre, planches et légumes, rizières en terrasses, haies de thé
     terrain/     relief (grille de hauteurs, plans d'eau) et pose des structures dessus
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets
   nodes/       nœuds @tool (BastideWall, BastideBuilding, BastidePath, BastideTorii, BastideFence,
-               BastidePlanting, BastideTerrace, BastideForest, BastidePond, BastideGarden, BastideTerrain,
+               BastidePlanting, BastideTerrace, BastideForest, BastidePond, BastideFarm, BastideGarden, BastideTerrain,
                base commune BastideStructure)
   kit/nature/  modèles .glb des arbres et plantes d'Onsen, touffes peintes
   runtime/     construction en jeu (chantier, outil de tracé, caméra douce, poignées)
-  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce, couronnes peintes, eau et koï
+  shaders/     shaders pierre, bois, gravier ratissé, feuillage, écorce, couronnes peintes, eau et koï, terre des cultures
 demos/         une scène de démo par étape
 tests/         tests headless du core
 tools/         scripts de développement (génération de la scène de démo, captures)

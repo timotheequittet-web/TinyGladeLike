@@ -12,7 +12,8 @@ extends Node3D
 ##   kind    : "wall", "house", "path" (chemin), "torii", "fence" (clôture basse),
 ##             "plants" (massif ; un seul point = un arbre) ou "terrace" (terrasse
 ##             de bois ; contre une maison, un engawa), "forest" (forêt) ou
-##             "pond" (jardin d'eau : étang creusé dans le relief)
+##             "pond" (jardin d'eau : étang creusé dans le relief),
+##             "farm" (cultures : potager, rizière en terrasses, champ de thé)
 ##   points  : PackedVector3Array, en coordonnées du chantier (points de contrôle
 ##             du mur, angles de la maison). Chantier à l'origine = coordonnées monde.
 ##   closed  : bool (murs : enceinte fermée)
@@ -24,6 +25,7 @@ extends Node3D
 ##   variant : int (clôtures : 0 pierres sèches, 1 bambou)
 ##   entry   : int (terrasses, facultatif : côté des marches, -1 = automatique)
 ##   pond_kind : int (étangs : BastidePondBuilder.Kind, jardin / onsen / mare)
+##   farm_kind : int (champs : BastideFarmBuilder.Kind, potager / rizière / thé)
 ##   style   : chemin du .tres de style
 
 signal structure_added(id: int)
@@ -207,6 +209,9 @@ func make_node(rec: Dictionary) -> BastideStructure:
 		"pond":
 			node = BastidePond.new()
 			node.name = "Etang"
+		"farm":
+			node = BastideFarm.new()
+			node.name = "Champ"
 		_:
 			node = BastideWall.new()
 			node.name = "Mur"
@@ -278,6 +283,12 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		if int(po.pond_kind) != pk:
 			po.pond_kind = pk
 		po.set_footprint(local)
+	elif node is BastideFarm:
+		var fa := node as BastideFarm
+		var fk := int(rec.get("farm_kind", 0))
+		if int(fa.farm_kind) != fk:
+			fa.farm_kind = fk
+		fa.set_footprint(local)
 	elif node is BastidePlanting:
 		(node as BastidePlanting).set_points(local if local.size() < 2 else BastideStroke.wall_path(local, false, 0.5))
 
@@ -392,7 +403,7 @@ func _puff(rec: Dictionary) -> void:
 		pts = PackedVector3Array([pts[0] + Vector3(-0.8, 0, 0), pts[0] + Vector3(0.8, 0, 0)])
 	if pts.size() < 2:
 		return
-	var closed: bool = rec.get("kind", "") in ["house", "terrace", "forest", "pond"] or bool(rec.get("closed", false))
+	var closed: bool = rec.get("kind", "") in ["house", "terrace", "forest", "pond", "farm"] or bool(rec.get("closed", false))
 	var emit_pts := PackedVector3Array()
 	var path := BastideStroke.resample(pts, 0.6, closed)
 	for p in path:

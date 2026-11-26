@@ -402,6 +402,9 @@ func _draw_mask() -> void:
 	# Pas d'herbe dans l'eau, une berge plus rase autour.
 	for d: Dictionary in ctx.ponds:
 		_poly(d["footprint"], xf, 0.7, k)
+	# Les champs ont leur propre terre.
+	for d: Dictionary in ctx.farms:
+		_poly(d["footprint"], xf, 0.25, k)
 	for d: Dictionary in ctx.paths:
 		_line(d["points"], xf, float(d["width"]) + 0.7, 1.0, k, false)
 	for d: Dictionary in ctx.walls:

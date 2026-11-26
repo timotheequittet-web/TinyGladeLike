@@ -182,6 +182,10 @@ func has_carve(key: int) -> bool:
 
 
 static func _same_carve(a: Dictionary, b: Dictionary) -> bool:
+	if a.get("type", "pond") != b.get("type", "pond"):
+		return false
+	if a.get("type", "pond") == "floor":
+		return a["i0"] == b["i0"] and a["j0"] == b["j0"] and a["w"] == b["w"] and a["heights"] == b["heights"]
 	return is_equal_approx(float(a["level"]), float(b["level"])) and a["poly"] == b["poly"] \
 			and is_equal_approx(float(a["depth"]), float(b["depth"]))
 
@@ -201,10 +205,36 @@ func _carved(base: BastideHeightField) -> BastideHeightField:
 	_paint = PackedColorArray()
 	_paint.resize(f.width * f.depth)
 	_paint.fill(Color(0, 0, 0, 1))
+	# Les champs d'abord (sol abaissé sous la terre cultivée), puis les étangs.
 	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") == "floor":
+			_apply_floor(f, c)
+	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") == "floor":
+			continue
 		BastidePondShape.apply(f, base, _paint, c)
 		f.waters.append({"poly": c["poly"], "level": c["level"], "rect": BastidePondShape.rect_of(c["poly"])})
 	return f
+
+
+## Sol abaissé sous un champ : chaque sommet descend à la hauteur donnée (NAN : intact).
+static func _apply_floor(f: BastideHeightField, c: Dictionary) -> void:
+	var hs: PackedFloat32Array = c["heights"]
+	var i0: int = c["i0"]
+	var j0: int = c["j0"]
+	var w: int = c["w"]
+	var d: int = c["d"]
+	for jj in d:
+		var j := j0 + jj
+		if j < 0 or j >= f.depth:
+			continue
+		for ii in w:
+			var i := i0 + ii
+			var h := hs[jj * w + ii]
+			if is_nan(h) or i < 0 or i >= f.width:
+				continue
+			var k := j * f.width + i
+			f.heights[k] = minf(f.heights[k], h)
 
 
 func _apply_carves() -> void:
@@ -230,7 +260,7 @@ func _apply_carves() -> void:
 ## Les structures posées sur la zone creusée se reposent sur le nouveau sol (sauf
 ## les étangs : ils se calent sur le sol d'origine).
 func _rebuild_near(n: Node, r: Rect2) -> void:
-	if n is BastideStructure and not n is BastidePond:
+	if n is BastideStructure and not n is BastidePond and not n is BastideFarm:
 		var s := n as BastideStructure
 		var mi := s.get_mesh_instance()
 		var hit := false

@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_roof_style.gd" id="4_roof"]
 [ext_resource type="Script" path="res://addons/bastide/styles/bastide_garden_style.gd" id="5_gar"]
 [ext_resource type="Shader" path="res://addons/bastide/shaders/bastide_stone.gdshader" id="6_stone"]
+[ext_resource type="Shader" path="res://addons/bastide/shaders/bastide_tile.gdshader" id="7_tile"]
 
 [sub_resource type="Resource" id="Resource_wall"]
 script = ExtResource("2_wall")
@@ -132,17 +133,18 @@ shader_parameter/blotch_strength = 0.1
 shader_parameter/moss_color = Color(0.36, 0.45, 0.22, 1)
 shader_parameter/moss_amount = 0.2
 shader_parameter/roughness_value = 0.92
+shader_parameter/plaster_amount = 1.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_roof"]
 render_priority = 0
-shader = ExtResource("6_stone")
-shader_parameter/grain_scale = 11.0
-shader_parameter/grain_strength = 0.08
-shader_parameter/blotch_scale = 1.2
-shader_parameter/blotch_strength = 0.12
-shader_parameter/moss_color = Color(0.36, 0.45, 0.22, 1)
-shader_parameter/moss_amount = 0.06
-shader_parameter/roughness_value = 0.55
+shader = ExtResource("7_tile")
+shader_parameter/tile_size = 0.27
+shader_parameter/tint_variation = 0.2
+shader_parameter/glaze = 0.6
+shader_parameter/streaks = 0.5
+shader_parameter/dust = 0.35
+shader_parameter/lichen_amount = 0.4
+shader_parameter/moss_amount = 0.08
 
 [resource]
 script = ExtResource("1_style")

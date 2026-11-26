@@ -87,6 +87,20 @@ posent seules :
 
 Les tracés restent enregistrés à plat : changer le terrain repose tout le hameau.
 
+Sous une maison posée sur la pente, le pied descendu jusqu'au sol devient un
+soubassement de pierres sèches appareillées (façon ishigaki).
+
+## Matériaux de près
+
+![Avant / après](docs/captures/materiaux_avant_apres.jpg)
+
+- **Tuiles** (`bastide_tile.gdshader`) : teinte qui varie d'une tuile à l'autre,
+  émail satiné qui accroche la lumière rasante, coulures dans le sens de la pente,
+  poussière sur les rangs et lichens jaunis par plaques. Réglages `glaze`, `streaks`,
+  `dust`, `lichen_amount` ; le style par défaut est une terre cuite mate.
+- **Enduit** (`plaster_amount` du shader pierre) : nuages de chaux chauds et froids,
+  traces de taloche et fines coulures, sans texture.
+
 ## Forêts et arbres d'Onsen
 
 ![Au cœur de la forêt mêlée : grands arbres à couronnes peintes, sous-bois de fougères et de fleurs](docs/captures/foret_dedans.jpg)

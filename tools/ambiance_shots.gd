@@ -42,6 +42,10 @@ func _run() -> void:
 		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.ssil_enabled = false
 	if OS.has_environment("NO_GLOW"):
 		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
+	if OS.get_environment("VIEWS") == "close":
+		await _close_views()
+		quit()
+		return
 	# 1. La vue d'ensemble du lancement.
 	cam.glide_to(Vector3(-1, 0, -1), 30.0, 14.0)
 	await _wait(3.0)
@@ -63,6 +67,20 @@ func _run() -> void:
 	await _wait(3.0)
 	await _shot("collines")
 	quit()
+
+
+## Vues rapprochées (toits, murs, bois) : VIEWS=close.
+func _close_views() -> void:
+	cam.glide_to(Vector3(-5, 0, -5), 11.0, 20.0)
+	await _wait(3.0)
+	await _shot("pres_maison")
+	cam.glide_to(Vector3(8, 0, -4), 15.0, -50.0)
+	await _wait(3.0)
+	await _shot("pres_toit")
+	_walk_at(Vector3(-1, 0, 6), Vector3(-5, 2.5, -4), 0.08)
+	await _wait(2.0)
+	await _shot("pres_facade")
+	cam.set_walking(false)
 
 
 func _walk_at(p: Vector3, look: Vector3, pitch: float) -> void:

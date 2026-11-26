@@ -16,6 +16,7 @@ const STONE_SHADER := preload("res://addons/bastide/shaders/bastide_stone.gdshad
 const WOOD_SHADER := preload("res://addons/bastide/shaders/bastide_wood.gdshader")
 const FOLIAGE_SHADER := preload("res://addons/bastide/shaders/bastide_foliage.gdshader")
 const GRAVEL_SHADER := preload("res://addons/bastide/shaders/bastide_gravel.gdshader")
+const TILE_SHADER := preload("res://addons/bastide/shaders/bastide_tile.gdshader")
 
 @export var display_name := "Médiéval pierre"
 
@@ -175,8 +176,8 @@ func get_paint_material() -> Material:
 	return _default_paint
 
 
-## Matériau des toits : le matériau du style s'il est donné, sinon le shader pierre
-## réglé pour des tuiles (moins de grain, presque pas de mousse).
+## Matériau des toits : le matériau du style s'il est donné, sinon le shader des
+## tuiles réglé pour une terre cuite mate, patinée de lichens.
 func get_roof_material() -> Material:
 	if roof_material:
 		return roof_material
@@ -184,11 +185,11 @@ func get_roof_material() -> Material:
 		return material
 	if _default_roof == null:
 		var m := ShaderMaterial.new()
-		m.shader = STONE_SHADER
-		m.set_shader_parameter(&"grain_strength", 0.12)
-		m.set_shader_parameter(&"blotch_strength", 0.16)
-		m.set_shader_parameter(&"moss_amount", 0.12)
-		m.set_shader_parameter(&"roughness_value", 0.8)
+		m.shader = TILE_SHADER
+		m.set_shader_parameter(&"glaze", 0.12)
+		m.set_shader_parameter(&"tint_variation", 0.16)
+		m.set_shader_parameter(&"lichen_amount", 0.35)
+		m.set_shader_parameter(&"moss_amount", 0.14)
 		_default_roof = m
 	return _default_roof
 
@@ -213,6 +214,7 @@ func get_material() -> Material:
 	if _default_material == null:
 		var m := ShaderMaterial.new()
 		m.shader = STONE_SHADER
+		m.set_shader_parameter(&"plaster_amount", 1.0)
 		_default_material = m
 	return _default_material
 

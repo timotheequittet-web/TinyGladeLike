@@ -18,6 +18,8 @@ enum Mode { NONE, FOLLOW, RIGID }
 const FOOT := 0.05
 ## Le pied s'enfonce un peu sous le sol : jamais de jour entre la pierre et l'herbe.
 const SINK := 0.08
+## Descente du pied au-delà de laquelle on parle de soubassement (m).
+const SOCLE_MARK := 0.2
 
 
 ## `xf` : repère local du nœud → monde. Retourne la hauteur de pose (RIGID) ou 0.
@@ -88,7 +90,19 @@ static func _mesh(src: ArrayMesh, field: BastideHeightField, xf: Transform3D, in
 	var out := ArrayMesh.new()
 	for s in src.get_surface_count():
 		var arr := src.surface_get_arrays(s)
-		arr[Mesh.ARRAY_VERTEX] = _points(arr[Mesh.ARRAY_VERTEX], field, xf, inv, mode, lift)
+		var before: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var after := _points(before, field, xf, inv, mode, lift)
+		arr[Mesh.ARRAY_VERTEX] = after
+		# Soubassement : les sommets du pied descendus jusqu'au sol sont marqués
+		# (alpha de couleur à 0) pour que le shader pierre y dessine un appareillage de
+		# pierres sèches au lieu d'un pan étiré.
+		if mode == Mode.RIGID and arr[Mesh.ARRAY_COLOR] is PackedColorArray:
+			var cols: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+			if cols.size() == before.size():
+				for i in before.size():
+					if before[i].y < FOOT and (before[i].y + lift) - after[i].y > SOCLE_MARK:
+						cols[i].a = 0.0
+				arr[Mesh.ARRAY_COLOR] = cols
 		# Les canaux CUSTOM (vent, ombre…) gardent leur format : sans lui, leurs octets
 		# seraient relus de travers et tout le maillage avec.
 		var fmt := src.surface_get_format(s)

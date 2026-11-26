@@ -29,14 +29,17 @@ const PRESETS := [
 		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "ssao": true, "ssil": false,
 		"volumetric_fog": false, "glow": true, "dof": true, "msaa": 0, "fxaa": true, "scale": 0.85,
 		"detail": 0.75, "fps": 60},
+	# Haut : l'éclairage indirect SSIL (cher pour un effet discret) est réservé à Ultra.
 	{"grass": 1.0, "grass_radius": 1.0, "shadow_distance": 150.0, "shadow_splits": 4, "shadow_size": 4096,
-		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "ssao": true, "ssil": true,
+		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_LOW, "ssao": true, "ssil": false,
 		"volumetric_fog": true, "glow": true, "dof": true, "msaa": 2, "fxaa": false, "scale": 1.0,
 		"detail": 1.0, "fps": 60},
-	{"grass": 1.4, "grass_radius": 1.25, "shadow_distance": 200.0, "shadow_splits": 4, "shadow_size": 4096,
-		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_HIGH, "ssao": true, "ssil": true,
-		"volumetric_fog": true, "glow": true, "dof": true, "msaa": 4, "fxaa": false, "scale": 1.0,
-		"detail": 1.5, "fps": 0},
+	# Ultra : plus de détail au loin et l'éclairage indirect, mais sans les réglages
+	# qui coûtent beaucoup pour peu (MSAA x4 sur le feuillage, ombres très douces).
+	{"grass": 1.2, "grass_radius": 1.15, "shadow_distance": 180.0, "shadow_splits": 4, "shadow_size": 4096,
+		"shadow_soft": RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM, "ssao": true, "ssil": true,
+		"volumetric_fog": true, "glow": true, "dof": true, "msaa": 2, "fxaa": false, "scale": 1.0,
+		"detail": 1.3, "fps": 0},
 ]
 
 ## Multiplicateur courant des distances de détail (lu par les générateurs : forêts,
@@ -64,6 +67,18 @@ var _toast: Label
 var _stats_timer := 0.0
 var _fps_cap := 60
 var _range_timer := 0.0
+## Mesure du vrai temps des scripts : un petit nœud passe en tout premier à
+## chaque image et note l'heure, ce nœud-ci passe en tout dernier. Le moniteur
+## TIME_PROCESS de Godot compte aussi l'attente de la carte graphique, il
+## gonfle donc dès que l'image est limitée par le GPU.
+var _script_start := 0
+var _script_ms := 0.0
+
+
+class _ScriptClock extends Node:
+	var owner_gfx: Node
+	func _process(_delta: float) -> void:
+		owner_gfx.set("_script_start", Time.get_ticks_usec())
 
 
 func _ready() -> void:
@@ -73,6 +88,12 @@ func _ready() -> void:
 			preset = clampi(int(cfg.get_value("graphismes", "niveau", preset)), 0, PRESETS.size() - 1) as Preset
 			show_stats = bool(cfg.get_value("graphismes", "compteur", show_stats))
 	_build_overlay()
+	process_priority = 1 << 30
+	var clock := _ScriptClock.new()
+	clock.name = "HorlogeScripts"
+	clock.owner_gfx = self
+	clock.process_priority = -(1 << 30)
+	add_child(clock)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	(func() -> void:
 		if auto_apply:
@@ -174,6 +195,9 @@ func _save() -> void:
 
 
 func _process(delta: float) -> void:
+	if _script_start > 0:
+		var ms := (Time.get_ticks_usec() - _script_start) / 1000.0
+		_script_ms = lerpf(_script_ms, ms, 0.1) if _script_ms > 0.0 else ms
 	# Les constructions refaites remettent leurs distances d'affichage : on les
 	# remet à l'échelle du niveau de temps en temps (peu coûteux).
 	_range_timer -= delta
@@ -193,7 +217,7 @@ func _process(delta: float) -> void:
 	var fps := Performance.get_monitor(Performance.TIME_FPS)
 	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	var cpu := RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
-	var script_ms := Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var script_ms := _script_ms + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 	_stats.text = "%s · %d i/s\ncarte graphique %.1f ms · rendu %.1f ms · scripts %.1f ms\n%s triangles · %d appels · %d objets\n[F3 compteur · F4 niveau]" % [
 		NAMES[preset], int(fps), gpu, cpu, script_ms, _millions(tris), int(calls), int(objs)]
 

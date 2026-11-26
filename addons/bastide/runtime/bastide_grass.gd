@@ -29,29 +29,29 @@ const SHADER := preload("res://addons/bastide/shaders/bastide_grass.gdshader")
 ## qu'il s'assombrisse sous l'herbe.
 @export var ground_material: ShaderMaterial
 @export_group("Anneau proche")
-@export var near_radius := 24.0
+@export var near_radius := 26.0
 @export var near_tile := 6.0
-@export var near_density := 110.0      # brins par m²
-@export var near_width := 0.04
+@export var near_density := 20.0       # brins par m² (peu de brins, mais larges : façon BotW)
+@export var near_width := 0.12
 @export_group("Anneau lointain")
-@export var far_radius := 72.0
-@export var far_tile := 16.0
-@export var far_density := 14.0
-@export var far_width := 0.13
+@export var far_radius := 46.0
+@export var far_tile := 14.0
+@export var far_density := 3.5
+@export var far_width := 0.3
 @export_group("Niveaux de détail")
 ## Distance (m) jusqu'à laquelle l'anneau proche garde tous ses brins.
-@export var near_lod_distance := 18.0
+@export var near_lod_distance := 22.0
 ## Idem pour l'anneau lointain (ses brins sont déjà plus larges et clairsemés).
-@export var far_lod_distance := 55.0
+@export var far_lod_distance := 50.0
 ## Part minimale de brins gardés, aussi loin que soit la caméra.
 @export_range(0.0, 1.0) var min_keep := 0.06
 ## Au-delà de cette distance caméra → centre suivi, plus d'herbe du tout.
-@export var hide_distance := 150.0
+@export var hide_distance := 120.0
 ## Multiplicateurs donnés par les réglages graphiques (voir BastideGraphics).
 @export var density_scale := 1.0
 @export var radius_scale := 1.0
 @export_group("Herbe")
-@export var blade_height := 0.48
+@export var blade_height := 0.62
 @export var wind_strength := 0.22
 @export_group("Masque")
 ## Zone couverte par le masque des constructions (monde, xz) et sa résolution.
@@ -75,6 +75,9 @@ var _far_meshes: Array[ArrayMesh] = []
 var _lod_timer := 0.0
 
 ## Parts de brins des maillages successifs d'une tuile (préfixes du même tirage).
+## Sommets et indices d'un brin : trois paires de bords et une pointe (5 triangles).
+const BLADE_V := 7
+const BLADE_I := 15
 const LEVELS := [1.0, 0.5, 0.25, 0.125, 0.0625, 0.0]
 
 
@@ -274,14 +277,14 @@ func build_tile_levels(size: float, density: float, width: float, seed: int) -> 
 	var out: Array[ArrayMesh] = [full]
 	var arr := full.surface_get_arrays(0)
 	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	var blades := idx.size() / 9
+	var blades := idx.size() / BLADE_I
 	for i in range(1, LEVELS.size()):
 		var n := int(ceil(blades * float(LEVELS[i])))
 		if n <= 0:
 			out.append(full)   # tuile cachée, maillage sans importance
 			continue
 		var a := arr.duplicate()
-		a[Mesh.ARRAY_INDEX] = idx.slice(0, n * 9)
+		a[Mesh.ARRAY_INDEX] = idx.slice(0, n * BLADE_I)
 		var m := ArrayMesh.new()
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
 		m.custom_aabb = full.custom_aabb
@@ -303,43 +306,47 @@ func build_tile(size: float, density: float, width: float, seed: int) -> ArrayMe
 	var uv2s := PackedVector2Array()
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
-	cols.resize(count * 5)
-	verts.resize(count * 5)
-	normals.resize(count * 5)
-	uvs.resize(count * 5)
-	uv2s.resize(count * 5)
-	idx.resize(count * 9)
+	cols.resize(count * BLADE_V)
+	verts.resize(count * BLADE_V)
+	normals.resize(count * BLADE_V)
+	uvs.resize(count * BLADE_V)
+	uv2s.resize(count * BLADE_V)
+	idx.resize(count * BLADE_I)
 	var h := blade_height
+	var levels := [0.0, 0.4, 0.75]
 	for b in count:
 		var root := Vector2(rng.randf() * size, rng.randf() * size)
 		var ang := rng.randf() * TAU
 		var side := Vector3(cos(ang), 0, sin(ang))
 		var face := Vector3(-side.z, 0, side.x)
-		var lean := face * rng.randf_range(0.05, 0.25)
+		# Brins longs et courbés (façon BotW) : la pointe part loin du pied.
+		var lean := face * rng.randf_range(0.12, 0.42)
 		var w := width * rng.randf_range(0.7, 1.3)
 		var base := Vector3(root.x, 0, root.y)
-		var v := b * 5
-		var levels := [0.0, 0.5]
-		for l in 2:
+		var v := b * BLADE_V
+		for l in levels.size():
 			var t: float = levels[l]
 			var c := base + Vector3(0, t * h, 0) + lean * t * t * h
-			var ww := w * (1.0 - t * 0.55)
+			var ww := w * (1.0 - t * 0.6)
 			verts[v + l * 2] = c - side * ww * 0.5
 			verts[v + l * 2 + 1] = c + side * ww * 0.5
 			uvs[v + l * 2] = Vector2(-1, t)
 			uvs[v + l * 2 + 1] = Vector2(1, t)
-		verts[v + 4] = base + Vector3(0, h, 0) + lean * h
-		uvs[v + 4] = Vector2(0, 1)
+		verts[v + 6] = base + Vector3(0, h, 0) + lean * h
+		uvs[v + 6] = Vector2(0, 1)
 		var n := (face + Vector3(0, 0.5, 0)).normalized()
 		var rank := Color((b + 0.5) / float(count), 0, 0, 1)
-		for k in 5:
+		for k in BLADE_V:
 			normals[v + k] = n
 			uv2s[v + k] = root
 			cols[v + k] = rank
-		var i := b * 9
-		idx[i] = v; idx[i + 1] = v + 1; idx[i + 2] = v + 2
-		idx[i + 3] = v + 1; idx[i + 4] = v + 3; idx[i + 5] = v + 2
-		idx[i + 6] = v + 2; idx[i + 7] = v + 3; idx[i + 8] = v + 4
+		var i := b * BLADE_I
+		for q in 2:
+			var o := v + q * 2
+			idx[i] = o; idx[i + 1] = o + 1; idx[i + 2] = o + 2
+			idx[i + 3] = o + 1; idx[i + 4] = o + 3; idx[i + 5] = o + 2
+			i += 6
+		idx[i] = v + 4; idx[i + 1] = v + 5; idx[i + 2] = v + 6
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts

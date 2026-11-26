@@ -77,19 +77,19 @@ Le nœud `BastideGraphics` (« Graphismes » dans la démo) règle tout le rendu
 
 | | Bas | Moyen | Haut | Ultra |
 |---|---|---|---|---|
-| Herbe (densité, étendue) | 35 %, 60 % | 60 %, 80 % | 100 % | 140 %, 125 % |
-| Ombres | 70 m, 2 cascades | 110 m | 150 m | 200 m, douces |
-| SSAO / SSIL / brouillard volumétrique | non | SSAO | oui | oui, pleine résolution |
+| Herbe (densité, étendue) | 35 %, 60 % | 60 %, 80 % | 100 % (20 brins/m², 26 m) | 120 %, 115 % |
+| Ombres | 70 m, 2 cascades | 110 m | 150 m | 180 m, plus douces |
+| SSAO / SSIL / brouillard volumétrique | non | SSAO | SSAO, brouillard | tout |
 | Résolution 3D (FSR) | 70 % | 85 % | 100 % | 100 % |
-| Anticrénelage | FXAA | FXAA | MSAA 2× | MSAA 4× |
-| Distances de détail | ×0,5 | ×0,75 | ×1 | ×1,5 |
+| Anticrénelage | FXAA | FXAA | MSAA 2× | MSAA 2× |
+| Distances de détail | ×0,5 | ×0,75 | ×1 | ×1,3 |
 | Images/s max | 60 | 60 | 60 | écran |
 
-- **F3** : compteur (images/s, temps carte graphique, triangles, appels de dessin).
+- **F3** : compteur (images/s, temps carte graphique, temps des scripts, triangles, appels de dessin). Le temps des scripts est mesuré par le nœud lui-même : le moniteur `TIME_PROCESS` de Godot compte aussi l'attente de la carte graphique.
 - **F4** : niveau suivant.
 - Fenêtre en arrière-plan : 15 images/s, pour ne pas chauffer pour rien.
 
-Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 150 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).
+Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 120 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).
 
 ## Relief du terrain
 

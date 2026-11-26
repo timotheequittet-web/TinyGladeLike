@@ -34,7 +34,7 @@ uniform vec4 height_rect = vec4(0.0, 0.0, 0.0, 0.0);
 uniform float lod_d0 = 18.0;
 uniform float lod_min = 0.06;
 uniform float blade_width = 0.04;
-uniform float max_widen = 3.0;
+uniform float max_widen = 2.0;
 
 varying float v_t;
 varying float v_tone;

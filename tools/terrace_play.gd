@@ -36,7 +36,7 @@ func _run() -> void:
 		(scene.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
 	var n0: int = scene.call("_starting_village").size()
 	var t0 := Time.get_ticks_msec()
-	while not _all_built(n0) and Time.get_ticks_msec() - t0 < 120000:
+	while not _all_built(n0) and Time.get_ticks_msec() - t0 < 300000:
 		await process_frame
 	await _wait(3.0)
 	check(site.ids().size() == n0, "le hameau de départ compte %d structures" % n0)
@@ -169,7 +169,11 @@ func _wait(sec: float) -> void:
 		await process_frame
 
 
+## Point à plat (y = 0) → écran, en le posant d'abord sur le relief.
 func _screen(p: Vector3) -> Vector2:
+	var field := BastideTerrain.field_for(cam)
+	if field:
+		p.y += field.height(p.x, p.z)
 	return cam.unproject_position(p)
 
 

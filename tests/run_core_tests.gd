@@ -62,6 +62,7 @@ func _init() -> void:
 	_test_terrace_neighbours()
 	_test_kit_trees()
 	_test_forest()
+	_test_terrain()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1188,3 +1189,62 @@ func _test_forest() -> void:
 	var r0 := BastideForestBuilder.build(zone, 5, BastideForestBuilder.Kind.MIXED, 1.0, 1.0, 0.0, ctx, false)
 	check(r0.stats["plants"] == 0 and r0.collision_faces.is_empty(), "sans sous-bois ni collisions sur demande")
 
+
+
+# --- Relief ------------------------------------------------------------------------
+
+func _box_result(x0: float, x1: float) -> BastideBuildResult:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var c := [Vector3(x0, 0, 0), Vector3(x1, 0, 0), Vector3(x1, 0, 2), Vector3(x0, 0, 2),
+		Vector3(x0, 2, 0), Vector3(x1, 2, 0), Vector3(x1, 2, 2), Vector3(x0, 2, 2)]
+	for q in [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7], [4, 5, 6, 7]]:
+		for k in [0, 1, 2, 0, 2, 3]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(c[q[k]])
+	var r := BastideBuildResult.new()
+	r.mesh = st.commit()
+	r.collision_faces = PackedVector3Array([c[0], c[1], c[5]])
+	return r
+
+
+func _test_terrain() -> void:
+	# Un plan incliné : h = 0,1 x.
+	var f := BastideHeightField.flat(Vector2(-20, -20), 1.0, 41, 41)
+	for j in 41:
+		for i in 41:
+			f.set_at(i, j, 0.1 * (i - 20))
+	check(absf(f.height(5.5, 3.2) - 0.55) < 1e-4, "relief : hauteur interpolée (%.3f)" % f.height(5.5, 3.2))
+	check(absf(f.height(500, 0) - 2.0) < 1e-4, "relief : hors grille, la hauteur du bord")
+	var hit: Variant = f.raycast(Vector3(3, 10, 0), Vector3(0, -1, 0))
+	check(hit != null and absf((hit as Vector3).y - 0.3) < 0.01, "relief : un rayon vertical touche le sol")
+	var hit2: Variant = f.raycast(Vector3(-10, 8, 0), Vector3(1, -0.5, 0))
+	check(hit2 != null and absf((hit2 as Vector3).y - f.height((hit2 as Vector3).x, 0)) < 0.01, "relief : un rayon oblique s'arrête sur la pente")
+	var rng := f.range_under(PackedVector2Array([Vector2(0, 0), Vector2(4, 0), Vector2(4, 2), Vector2(0, 2)]))
+	check(absf(rng["min"]) < 1e-3 and absf(rng["max"] - 0.4) < 1e-3, "relief : hauteurs sous un contour (%.2f à %.2f)" % [rng["min"], rng["max"]])
+
+	# Épouser la pente : chaque sommet monte du sol sous lui.
+	var follow := _box_result(0, 4)
+	follow.add_instances(BoxMesh.new(), null, [Transform3D(Basis(), Vector3(3, 0, 1))])
+	BastideDrape.apply(follow, f, Transform3D.IDENTITY, BastideDrape.Mode.FOLLOW)
+	var ok := true
+	for v: Vector3 in follow.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		var flat_y := 2.0 if v.y > 1.0 + 0.1 * v.x else 0.0
+		ok = ok and absf(v.y - (flat_y + 0.1 * v.x)) < 1e-4
+	check(ok, "épouser : murets et chemins suivent la pente")
+	check(absf((follow.instances[0]["transforms"][0] as Transform3D).origin.y - 0.3) < 1e-4, "épouser : les plantes se posent au sol")
+	check(absf(follow.collision_faces[1].y - 0.4) < 1e-4, "épouser : la collision suit")
+
+	# D'aplomb : posé sur le point haut, le pied descend en soubassement.
+	var rigid := _box_result(0, 4)
+	var lift := BastideDrape.apply(rigid, f, Transform3D(Basis(), Vector3(2, 0, 0)), BastideDrape.Mode.RIGID)
+	check(absf(lift - 0.6) < 1e-4, "d'aplomb : posé sur le point le plus haut de l'assise (%.2f)" % lift)
+	var tops := []
+	var feet_ok := true
+	for v: Vector3 in rigid.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		if v.y > 1.0:
+			tops.append(v.y)
+		else:
+			feet_ok = feet_ok and absf(v.y - (0.1 * (v.x + 2.0) - BastideDrape.SINK)) < 1e-4
+	check(tops.all(func(y: float) -> bool: return absf(y - 2.6) < 1e-4), "d'aplomb : le haut reste horizontal")
+	check(feet_ok, "d'aplomb : le pied rejoint le sol, un peu enfoncé")

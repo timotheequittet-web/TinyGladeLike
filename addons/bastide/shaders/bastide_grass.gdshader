@@ -24,6 +24,9 @@ uniform float fade_out_width = 8.0;
 // Masque des constructions : 1 = sol occupé (chemin, maison…), l'herbe s'y couche.
 uniform sampler2D mask : filter_linear, repeat_disable, hint_default_black;
 uniform vec4 mask_rect = vec4(-80.0, -80.0, 160.0, 160.0);
+// Relief (facultatif) : hauteurs du sol en monde, sur height_rect (x, z, largeur, profondeur).
+uniform sampler2D height_tex : filter_linear, repeat_disable;
+uniform vec4 height_rect = vec4(0.0, 0.0, 0.0, 0.0);
 
 varying float v_t;
 varying float v_tone;
@@ -39,6 +42,13 @@ float noise(vec2 p) {
 void vertex() {
 	vec3 root = (MODEL_MATRIX * vec4(UV2.x, 0.0, UV2.y, 1.0)).xyz;
 	float t = UV.y;
+	float ground = 0.0;
+	if (height_rect.z > 0.0) {
+		vec2 huv = clamp((root.xz - height_rect.xy) / height_rect.zw, vec2(0.0), vec2(1.0));
+		// Centre des texels : la grille de hauteurs a un point par sommet.
+		vec2 ts = vec2(textureSize(height_tex, 0));
+		ground = texture(height_tex, (huv * (ts - 1.0) + 0.5) / ts).r;
+	}
 	// Hauteur : grandes plages plus hautes ou plus rases, et chaque brin un peu différent.
 	float patch = noise(root.xz * 0.08) * 0.7 + noise(root.xz * 0.31) * 0.3;
 	float h = blade_height * (0.55 + patch * 0.9) * (1.0 - height_jitter * hash(root.xz));
@@ -62,6 +72,7 @@ void vertex() {
 	vec3 local = VERTEX;
 	local.y *= h / max(blade_height, 0.001);
 	vec3 world = (MODEL_MATRIX * vec4(local, 1.0)).xyz;
+	world.y += ground;
 	float bt = t * t;
 	world.xz += wd * bend * bt * h * 1.4;
 	world.y -= bend * bend * bt * h * 0.35;

@@ -107,3 +107,8 @@ func build_spec() -> BastideBuildingSpec:
 		RoofChoice.IRIMOYA:
 			roof_type = BastideRoofStyle.RoofType.IRIMOYA
 	return BastideBuildingSpec.from_points(pts, seed, floors, roof_type, door_facade)
+
+
+## Une maison reste d'aplomb : un soubassement rattrape la pente.
+func terrain_mode() -> int:
+	return BastideDrape.Mode.RIGID

@@ -194,7 +194,11 @@ func _wait(sec: float) -> void:
 		await process_frame
 
 
+## Point à plat (y = 0) → écran, en le posant d'abord sur le relief.
 func _screen(p: Vector3) -> Vector2:
+	var field := BastideTerrain.field_for(cam)
+	if field:
+		p.y += field.height(p.x, p.z)
 	return cam.unproject_position(p)
 
 

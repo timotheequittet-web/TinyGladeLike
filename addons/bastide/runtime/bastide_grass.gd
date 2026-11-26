@@ -16,6 +16,8 @@ const SHADER := preload("res://addons/bastide/shaders/bastide_grass.gdshader")
 @export var site: BastideBuildSite
 ## Caméra suivie (son point visé, ou le promeneur).
 @export var camera: Camera3D
+## Relief sur lequel pousse l'herbe (facultatif ; sinon, le premier de la scène).
+@export var terrain: BastideTerrain
 ## Matériau du sol (facultatif) : on lui donne `grass_center` et `grass_far` pour
 ## qu'il s'assombrisse sous l'herbe.
 @export var ground_material: ShaderMaterial
@@ -65,6 +67,11 @@ func _ready() -> void:
 		_near_tiles.append(_tile_node(near_mesh, _near_mat))
 	for o in _far_offsets:
 		_far_tiles.append(_tile_node(far_mesh, _far_mat))
+	if terrain == null:
+		terrain = BastideTerrain.find(self)
+	if terrain:
+		terrain.changed.connect(_bind_terrain)
+		_bind_terrain()
 	if site:
 		site.structure_added.connect(func(_id: int) -> void: _mask_dirty = true)
 		site.structure_changed.connect(func(_id: int) -> void: _mask_dirty = true)
@@ -76,6 +83,15 @@ func _ready() -> void:
 func add_blocker(center: Vector3, radii: Vector2, strength := 1.0) -> void:
 	_blockers.append([Vector4(center.x, center.z, radii.x, radii.y), strength])
 	_mask_dirty = true
+
+
+func _bind_terrain() -> void:
+	if terrain == null or terrain.field == null:
+		return
+	var r := terrain.field.rect()
+	for m in [_near_mat, _far_mat]:
+		m.set_shader_parameter("height_tex", terrain.height_texture)
+		m.set_shader_parameter("height_rect", Vector4(r.position.x, r.position.y, r.size.x, r.size.y))
 
 
 func _process(_delta: float) -> void:
@@ -204,7 +220,8 @@ func build_tile(size: float, density: float, width: float, seed: int) -> ArrayMe
 	arr[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	mesh.custom_aabb = AABB(Vector3(-1, -0.5, -1), Vector3(size + 2, h * 2.2 + 1, size + 2))
+	# Hauteur généreuse : le shader pose les brins sur le relief.
+	mesh.custom_aabb = AABB(Vector3(-1, -30, -1), Vector3(size + 2, 80, size + 2))
 	return mesh
 
 
@@ -263,8 +280,9 @@ func _draw_mask() -> void:
 		var rec: Dictionary = site.get_record(id)
 		if String(rec.get("kind", "")) == "forest":
 			var pts := PackedVector2Array()
-			for p: Array in rec.get("points", []):
-				pts.append(_px(xf * Vector3(p[0], p[1], p[2])))
+			for p: Variant in rec.get("points", []):
+				var v: Vector3 = p if p is Vector3 else Vector3(p[0], p[1], p[2])
+				pts.append(_px(xf * v))
 			if pts.size() >= 3:
 				_canvas.draw_colored_polygon(pts, Color(1, 1, 1, 0.38))
 

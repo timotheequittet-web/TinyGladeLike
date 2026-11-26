@@ -836,7 +836,7 @@ func _rebuild_handles() -> void:
 		if i < _handles.size():
 			var h: Dictionary = _handles[i]
 			mi.visible = true
-			mi.global_position = site.to_global(h["pos"]) + Vector3(0, 0.25, 0)
+			mi.global_position = _lift(h["pos"]) + Vector3(0, 0.25, 0)
 			var mat := mi.material_override as ShaderMaterial
 			mat.set_shader_parameter("pixel_size", 16.0 if h["kind"] == "edge" else 26.0)
 			mat.set_shader_parameter("hover", 1.0 if i == _hover_handle else 0.0)
@@ -852,7 +852,7 @@ func _handle_under(screen: Vector2) -> int:
 	var best := -1
 	var best_d := HANDLE_PICK_RADIUS
 	for i in _handles.size():
-		var world := site.to_global(_handles[i]["pos"]) + Vector3(0, 0.25, 0)
+		var world := _lift(_handles[i]["pos"]) + Vector3(0, 0.25, 0)
 		if camera.is_position_behind(world):
 			continue
 		var d := camera.unproject_position(world).distance_to(screen)
@@ -1026,7 +1026,7 @@ func _structure_under(screen: Vector2) -> int:
 func _update_cursor(g: Variant) -> void:
 	_cursor.visible = g != null and _hover < 0 and _hover_handle < 0
 	if g != null:
-		_cursor.global_position = (g as Vector3) + Vector3(0, 0.03, 0)
+		_cursor.global_position = _lift(g as Vector3) + Vector3(0, 0.03, 0)
 		var s := 1.6 if mode == Mode.HOUSE or mode == Mode.TERRACE else (0.0 if mode == Mode.TORII else 1.0)
 		_cursor.scale = Vector3(maxf(s, 0.01), 0.15, maxf(s, 0.01))
 		_cursor.visible = _cursor.visible and mode != Mode.TORII
@@ -1039,7 +1039,11 @@ func _ground(screen: Vector2) -> Variant:
 		var q := PhysicsRayQueryParameters3D.create(from, from + dir * 1000.0, ground_mask)
 		var hit := get_world_3d().direct_space_state.intersect_ray(q)
 		if not hit.is_empty():
-			return site.to_local(hit["position"])
+			return _flat(site.to_local(hit["position"]))
+	var field := BastideTerrain.field_for(site)
+	if field:
+		var th: Variant = field.raycast(from, dir, 400.0)
+		return _flat(site.to_local(th)) if th != null else null
 	var p: Variant = Plane(Vector3.UP, ground_height).intersects_ray(from, dir)
 	if p == null:
 		return null
@@ -1050,6 +1054,21 @@ func _ground(screen: Vector2) -> Variant:
 
 
 ## Trait lumineux au sol sous le tracé en cours.
+## Les tracés sont enregistrés à plat (y = 0 dans le chantier) : le relief est
+## appliqué à la génération. Pour l'affichage (curseur, encre, poignées), on remonte
+## sur le sol.
+func _flat(local: Vector3) -> Vector3:
+	return Vector3(local.x, 0.0, local.z)
+
+
+func _lift(local: Vector3) -> Vector3:
+	var w := site.to_global(_flat(local))
+	var field := BastideTerrain.field_for(site)
+	if field:
+		w.y += field.height(w.x, w.z)
+	return w
+
+
 func _draw_ink(pts: PackedVector3Array, closed: bool) -> void:
 	_ink_mesh.clear_surfaces()
 	if pts.size() < 2:
@@ -1061,7 +1080,7 @@ func _draw_ink(pts: PackedVector3Array, closed: bool) -> void:
 	_ink_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	var dist := 0.0
 	for i in path.size():
-		var p := site.to_global(path[i]) + Vector3(0, 0.04, 0)
+		var p := _lift(path[i]) + Vector3(0, 0.06, 0)
 		var a := path[maxi(i - 1, 0)]
 		var b := path[mini(i + 1, path.size() - 1)]
 		var t := (b - a)

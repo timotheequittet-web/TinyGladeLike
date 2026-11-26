@@ -316,7 +316,32 @@ func _prepare_job() -> Callable:
 	var st := get_effective_style()
 	# Volets du style et matériaux créés ici, sur le thread principal.
 	st.prepare()
-	return _make_job()
+	var job := _make_job()
+	# Relief : la génération se fait à plat, puis elle est posée sur le sol.
+	var field := BastideTerrain.field_for(self)
+	var mode := terrain_mode()
+	if field == null or mode == BastideDrape.Mode.NONE:
+		return job
+	# Sans échelle : le chantier fait « sortir de terre » une structure en animant son
+	# échelle verticale, ce qui ne doit pas changer sa pose sur le sol.
+	var xf := Transform3D(global_transform.basis.orthonormalized(), global_transform.origin)
+	var min_lift := _terrain_min_lift()
+	return func() -> BastideBuildResult:
+		var r: BastideBuildResult = job.call()
+		if r != null:
+			BastideDrape.apply(r, field, xf, mode, min_lift)
+		return r
+
+
+## Comment la structure se pose sur le relief (voir BastideDrape) : par défaut elle
+## épouse la pente ; maisons, terrasses et torii restent d'aplomb.
+func terrain_mode() -> int:
+	return BastideDrape.Mode.FOLLOW
+
+
+## Hauteur de pose minimale (structures d'aplomb) : -INF si aucune.
+func _terrain_min_lift() -> float:
+	return -INF
 
 
 static func _timed(job: Callable) -> BastideBuildResult:

@@ -154,6 +154,10 @@ func _process(delta: float) -> void:
 		flat = flat.normalized() * bounds_radius
 		_goal_target = Vector3(flat.x, _goal_target.y, flat.y)
 
+	# Sur le relief, le point visé reste posé sur le sol.
+	var field := BastideTerrain.field_for(self)
+	if field:
+		_goal_target.y = field.height(_goal_target.x, _goal_target.z)
 	var k := 1.0 - exp(-smoothing * delta)
 	target = target.lerp(_goal_target, k)
 	distance = lerpf(distance, _goal_distance, k)
@@ -171,13 +175,23 @@ func _update_transform() -> void:
 	var basis_ := Basis.from_euler(Vector3(pitch, _yaw, 0.0))
 	# On vise un peu au-dessus du sol quand on est près, pour voir les toits.
 	var aim := target + Vector3(0, lerpf(1.6, 0.0, t), 0)
-	global_transform = Transform3D(basis_, aim + basis_.z * distance)
+	var eye := aim + basis_.z * distance
+	# Jamais sous une colline : la caméra glisse au-dessus du sol.
+	var field := BastideTerrain.field_for(self) if is_inside_tree() else null
+	if field:
+		eye.y = maxf(eye.y, field.height(eye.x, eye.z) + 1.8)
+		global_transform = Transform3D(basis_, eye).looking_at(aim, Vector3.UP) if eye.distance_to(aim) > 0.1 else Transform3D(basis_, eye)
+	else:
+		global_transform = Transform3D(basis_, eye)
 
 
 ## Point du sol (plan horizontal à ground_height) sous une position d'écran, ou null.
 func ground_point(screen_pos: Vector2) -> Variant:
 	var origin := project_ray_origin(screen_pos)
 	var dir := project_ray_normal(screen_pos)
+	var field := BastideTerrain.field_for(self)
+	if field:
+		return field.raycast(origin, dir)
 	return Plane(Vector3.UP, ground_height).intersects_ray(origin, dir)
 
 
@@ -286,7 +300,8 @@ func _slide(from: Vector3, step: Vector3) -> Vector3:
 			var o := Vector3(from.x, _eye_y + h, from.z)
 			var q := PhysicsRayQueryParameters3D.create(o, o + dir * (len + 0.35))
 			var r := space.intersect_ray(q)
-			if not r.is_empty():
+			if not r.is_empty() and (r["normal"] as Vector3).y < 0.6:
+				# Une pente qu'on peut gravir n'arrête pas le pas.
 				var n: Vector3 = r["normal"]
 				n.y = 0.0
 				if n.length_squared() > 0.01:
@@ -305,16 +320,18 @@ func _slide(from: Vector3, step: Vector3) -> Vector3:
 func _floor_at(p: Vector3) -> float:
 	if not is_inside_tree():
 		return ground_height
+	var field := BastideTerrain.field_for(self)
+	var base := field.height(p.x, p.z) if field else ground_height
 	var space := get_world_3d().direct_space_state
-	var top := _eye_y + 0.45
-	var q := PhysicsRayQueryParameters3D.create(Vector3(p.x, top, p.z), Vector3(p.x, ground_height - 1.0, p.z))
+	var top := maxf(_eye_y, base) + 0.45
+	var q := PhysicsRayQueryParameters3D.create(Vector3(p.x, top, p.z), Vector3(p.x, base - 1.0, p.z))
 	var r := space.intersect_ray(q)
 	if r.is_empty():
-		return ground_height
+		return base
 	var y: float = (r["position"] as Vector3).y
 	if (r["normal"] as Vector3).y < 0.6:
-		return _eye_y
-	return maxf(y, ground_height)
+		return maxf(_eye_y, base)
+	return maxf(y, base)
 
 
 ## Si l'on descend dans un mur ou un tronc, on se décale vers la place libre la plus proche.
@@ -331,7 +348,9 @@ func _free_spot(p: Vector3) -> Vector3:
 		var n := 1 if ring == 0 else 8 + ring * 2
 		for i in n:
 			var a := TAU * i / n
-			var c := p + Vector3(cos(a) * r, 1.0, sin(a) * r)
+			var c := p + Vector3(cos(a) * r, 0.0, sin(a) * r)
+			var field := BastideTerrain.field_for(self)
+			c.y = (field.height(c.x, c.z) if field else ground_height) + 1.0
 			q.transform = Transform3D(Basis.IDENTITY, c)
 			if space.intersect_shape(q, 1).is_empty():
 				return Vector3(c.x, p.y, c.z)

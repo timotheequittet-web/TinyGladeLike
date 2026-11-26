@@ -88,3 +88,31 @@ func describe() -> Dictionary:
 			"width": d["width"], "stone": false})
 	return {"kind": "terrace", "footprint": _to_world(rect), "doors": doors,
 		"height": last_anchors.get("height", get_effective_style().get_garden_style().terrace_height)}
+
+
+func terrain_mode() -> int:
+	return BastideDrape.Mode.RIGID
+
+
+## Une terrasse collée à une maison (engawa) se pose au moins à la hauteur de la maison.
+func _terrain_min_lift() -> float:
+	var mine := _flat_rect(describe())
+	if mine.size == Vector2.ZERO or get_parent() == null:
+		return -INF
+	var best := -INF
+	for n in get_parent().get_children():
+		if n is BastideBuilding and n.last_stats.has("terrain_lift"):
+			var r := _flat_rect((n as BastideBuilding).describe())
+			if r.grow(2.5).intersects(mine):
+				best = maxf(best, float(n.last_stats["terrain_lift"]))
+	return best
+
+
+func _flat_rect(d: Dictionary) -> Rect2:
+	var fp: PackedVector3Array = d.get("footprint", PackedVector3Array())
+	if fp.is_empty():
+		return Rect2()
+	var r := Rect2(Vector2(fp[0].x, fp[0].z), Vector2.ZERO)
+	for p in fp:
+		r = r.expand(Vector2(p.x, p.z))
+	return r

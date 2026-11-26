@@ -15,6 +15,12 @@ const WATER_SHADER := preload("res://demos/04_runtime/water.gdshader")
 var _rng := RandomNumberGenerator.new()
 var _rock_mat: StandardMaterial3D
 var _petals: CPUParticles3D
+var _terrain: BastideTerrain
+
+
+## Hauteur du sol (relief s'il y en a un).
+func _h(x: float, z: float) -> float:
+	return _terrain.field.height(x, z) if _terrain and _terrain.field else 0.0
 
 
 func _ready() -> void:
@@ -22,8 +28,10 @@ func _ready() -> void:
 	_rock_mat = StandardMaterial3D.new()
 	_rock_mat.albedo_color = Color(0.56, 0.55, 0.5)
 	_rock_mat.roughness = 0.9
+	_terrain = get_parent().get_node_or_null("Terrain") as BastideTerrain
 	_ground()
-	_hills()
+	if _terrain == null:
+		_hills()
 	# La rive est dégagée là où la terrasse de la démo avance sur l'eau.
 	_pond(Vector3(-27, 0, 16), Vector2(9.0, 6.0), Rect2(-23.5, 13.0, 6.0, 4.6))
 	_groves()
@@ -37,6 +45,15 @@ func _process(_delta: float) -> void:
 
 
 func _ground() -> void:
+	if _terrain:
+		# Le relief porte la prairie : on lui donne son matériau.
+		var tm := ShaderMaterial.new()
+		tm.shader = GROUND_SHADER
+		_terrain.material = tm
+		var g := get_parent().get_node_or_null("Herbe") as BastideGrass
+		if g:
+			g.ground_material = tm
+		return
 	var mi := MeshInstance3D.new()
 	mi.name = "Prairie"
 	var plane := PlaneMesh.new()
@@ -87,7 +104,7 @@ func _pond(center: Vector3, size: Vector2, clear := Rect2()) -> void:
 	mat.shader = WATER_SHADER
 	plane.material = mat
 	water.mesh = plane
-	water.position = center + Vector3(0, 0.05, 0)
+	water.position = center + Vector3(0, _h(center.x, center.z) + 0.05, 0)
 	add_child(water)
 	# Rive : galets autour de l'eau.
 	var n := 34
@@ -131,7 +148,7 @@ func _groves() -> void:
 			continue
 		placed.append(p)
 		var roll := _rng.randf()
-		var pos := Vector3(p.x, 0, p.y)
+		var pos := Vector3(p.x, _h(p.x, p.y), p.y)
 		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
 		if roll < 0.14:
 			_add_to(groups, "bamboo", BastideKitNature.plant("bamboo"), xf.scaled_local(Vector3.ONE * _rng.randf_range(0.8, 1.1)))
@@ -183,7 +200,7 @@ func _rock(pos: Vector3, size: float) -> void:
 	s.rings = 5
 	s.material = _rock_mat
 	mi.mesh = s
-	mi.position = pos + Vector3(0, size * 0.15, 0)
+	mi.position = Vector3(pos.x, _h(pos.x, pos.z) + size * 0.15, pos.z)
 	mi.scale = Vector3(size * _rng.randf_range(0.8, 1.3), size * _rng.randf_range(0.4, 0.65), size * _rng.randf_range(0.8, 1.2))
 	mi.rotation = Vector3(_rng.randf_range(-0.2, 0.2), _rng.randf() * TAU, _rng.randf_range(-0.2, 0.2))
 	add_child(mi)

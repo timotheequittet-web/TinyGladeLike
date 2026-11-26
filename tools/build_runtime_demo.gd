@@ -99,14 +99,14 @@ func _init() -> void:
 	decor.set_script(load("res://demos/04_runtime/scenery.gd"))
 	_add(root, decor)
 	decor.set("follow", cam)
-	var ground := StaticBody3D.new()
-	ground.name = "Sol"
-	ground.collision_layer = 2
-	_add(root, ground)
-	var gs := CollisionShape3D.new()
-	gs.name = "Shape"
-	gs.shape = WorldBoundaryShape3D.new()
-	_add(ground, gs, root)
+	# Le relief (collision du sol sur la couche 2) : clairière vallonnée, collines autour,
+	# l'étang sur un replat.
+	var terrain := BastideTerrain.new()
+	terrain.name = "Terrain"
+	terrain.flat_zones = [Vector4(-27, 16, 10.5, 7.0)] as Array[Vector4]
+	root.add_child(terrain)
+	terrain.owner = root
+	root.move_child(terrain, 0)
 
 	# --- Construction ---
 	var site := BastideBuildSite.new()

@@ -26,6 +26,10 @@ extends Node3D
 ## - Suppr : supprimer ; R : autre variation ; G : silhouette de la maison (petite
 ##   maison, kura, tour…) ; + / − (ou Page haut/bas) : étages ;
 ##   Ctrl+Z / Ctrl+Y : annuler / rétablir ; Échap : annuler le tracé ou désélectionner.
+## - Rotation, par crans de 15° : la molette, clic maintenu, tourne la maison, la
+##   terrasse ou le torii qu'on pose (Maj + molette aussi, sans cliquer) ; Maj +
+##   molette tourne la structure sélectionnée (ses engawa suivent). Près d'une
+##   maison, l'orientation s'aimante sur ses façades (BastideOrientationRules).
 ##
 ## Le style appliqué est `style` : il vaut pour les nouvelles structures et, via
 ## set_style(), pour la structure sélectionnée.
@@ -167,6 +171,21 @@ var _torii_snapped := false
 var _terrace_engawa := false
 var _rng := RandomNumberGenerator.new()
 
+## Orientation des maisons, terrasses et torii qu'on pose, en crans de 15° par
+## rapport à la vue (molette pendant le placement).
+var place_steps := 0
+var _last_ground := Vector3.ZERO
+# Rotation de la sélection en cours (pour l'arc d'encre).
+var _rot_id := -1
+var _rot_total := 0.0
+var _rot_from := 0.0
+var _rot_last_ms := 0
+var _rot_token := 0
+var _rot_blocked := false
+# Structures tournées depuis le début de la rotation en cours : id -> record d'avant.
+# Les crans s'appliquent tout de suite, l'historique ne reçoit qu'une action à la fin.
+var _rot_pending := {}
+
 
 func _ready() -> void:
 	_rng.randomize()
@@ -226,6 +245,7 @@ func _ready() -> void:
 
 func undo() -> void:
 	cancel_draft()
+	_flush_rotation()
 	if _undo.has_undo():
 		_undo.undo()
 		_after_history()
@@ -233,13 +253,14 @@ func undo() -> void:
 
 func redo() -> void:
 	cancel_draft()
+	_flush_rotation()
 	if _undo.has_redo():
 		_undo.redo()
 		_after_history()
 
 
 func can_undo() -> bool:
-	return _undo.has_undo()
+	return _undo.has_undo() or not _rot_pending.is_empty()
 
 
 func can_redo() -> bool:
@@ -248,6 +269,7 @@ func can_redo() -> bool:
 
 ## Oublie tout l'historique (après un chargement, par exemple).
 func clear_history() -> void:
+	_rot_pending = {}
 	_undo.clear_history()
 	history_changed.emit(false, false)
 
@@ -255,6 +277,8 @@ func clear_history() -> void:
 func select(id: int) -> void:
 	if selected == id:
 		return
+	_flush_rotation()
+	_rot_blocked = false
 	var old := site.node_of(selected) if site and selected >= 0 else null
 	selected = id
 	_refresh_look(old)
@@ -412,6 +436,196 @@ func cancel_draft() -> void:
 
 # --- Entrées --------------------------------------------------------------------
 
+## La molette sert à tourner pendant un placement (avant que la caméra ne zoome).
+func _input(event: InputEvent) -> void:
+	if site == null or camera == null or not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed:
+		return
+	var dir := 0
+	match mb.button_index:
+		MOUSE_BUTTON_WHEEL_UP:
+			dir = 1
+		MOUSE_BUTTON_WHEEL_DOWN:
+			dir = -1
+		MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT:
+			# Maj + molette devient une molette horizontale sur certains systèmes.
+			if mb.shift_pressed:
+				dir = 1 if mb.button_index == MOUSE_BUTTON_WHEEL_LEFT else -1
+	if dir == 0:
+		return
+	var busy := _state == _State.PRESSING or _state == _State.DRAWING
+	if busy and _rotatable_placement():
+		rotate_placement(dir)
+	elif busy or not mb.shift_pressed:
+		return
+	elif selected >= 0 and site.has(selected):
+		rotate_selected(dir)
+	elif mode in [Mode.HOUSE, Mode.TERRACE, Mode.TORII]:
+		rotate_placement(dir)
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+## Le placement en cours peut-il tourner ? (maison, terrasse libre, torii)
+func _rotatable_placement() -> bool:
+	if mode == Mode.TORII:
+		return true
+	if _state == _State.PRESSING:
+		return mode == Mode.HOUSE or mode == Mode.TERRACE
+	var kind: String = _draft_rec.get("kind", "")
+	return kind == "house" or kind == "terrace"
+
+
+## Tourne d'un cran (dir = +1 / -1) ce qu'on est en train de poser.
+func rotate_placement(dir: int) -> void:
+	place_steps = wrapi(place_steps + dir, -12, 12)
+	if _state == _State.DRAWING and _draft_rec.get("kind", "") in ["house", "terrace"]:
+		_continue_draw(_last_ground)
+	elif mode == Mode.TORII and _draft:
+		_torii_preview(_last_ground)
+	_emit_hint()
+
+
+## Axe de tracé d'une maison ou d'une terrasse posée en p : l'horizontale de la
+## vue tournée de place_steps crans, aimantée sur la maison voisine.
+func placement_axis(p: Vector3) -> Vector3:
+	return BastideOrientationRules.placement_axis(camera.global_transform.basis.x, place_steps, p, _house_footprints(-1))
+
+
+## Contours au sol des maisons du chantier (sauf `except`).
+func _house_footprints(except: int) -> Array:
+	var out: Array = []
+	for id in site.ids():
+		if id == except:
+			continue
+		var rec: Dictionary = site.get_record(id)
+		if rec["kind"] == "house":
+			out.append(BastideOrientationRules.flat(rec["points"]))
+	return out
+
+
+## Tourne la structure sélectionnée d'un cran (dir = +1 / -1) autour de son centre.
+## Ses engawa suivent ; une maison ou une terrasse ne passe pas à travers une maison.
+func rotate_selected(dir: int) -> void:
+	if selected < 0 or not site.has(selected) or _state != _State.IDLE:
+		return
+	var R := BastideOrientationRules
+	var before: Dictionary = site.get_record(selected)
+	var pts: PackedVector3Array = before["points"]
+	if pts.size() < 2:
+		return
+	var kind: String = before["kind"]
+	var pivot := BastideStroke.centroid(pts)
+	var a := deg_to_rad(R.STEP_DEG) * dir
+	if kind in ["house", "terrace", "torii"]:
+		var axis := R.turn(R.main_axis(pts, kind != "torii"), a)
+		a += R.magnet(axis, pivot, _house_footprints(selected))
+	var after := before.duplicate(true)
+	after["points"] = R.rotate_points(pts, pivot, a)
+	var changes: Array = [[selected, before, after]]
+	var moved := {selected: true}
+	if kind == "house":
+		var fp := R.flat(pts)
+		for id in site.ids():
+			if id == selected:
+				continue
+			var rec: Dictionary = site.get_record(id)
+			if rec["kind"] == "terrace" and _hugs(R.flat(rec["points"]), fp):
+				var r2 := rec.duplicate(true)
+				r2["points"] = R.rotate_points(rec["points"], pivot, a)
+				changes.append([id, rec, r2])
+				moved[id] = true
+	if kind == "house" or kind == "terrace":
+		for id in site.ids():
+			if moved.has(id):
+				continue
+			var other: Dictionary = site.get_record(id)
+			if other["kind"] != "house":
+				continue
+			var ofp := R.flat(other["points"])
+			for c: Array in changes:
+				if R.overlaps(R.flat((c[2] as Dictionary)["points"]), ofp):
+					# Bloqué : on reste au dernier cran valable.
+					_rot_blocked = true
+					_emit_hint()
+					return
+	_rot_blocked = false
+	var now := Time.get_ticks_msec()
+	if _rot_id != selected or now - _rot_last_ms > 1500:
+		_flush_rotation()
+		_rot_id = selected
+		_rot_total = 0.0
+		_rot_from = R.angle_of(R.main_axis(pts, kind != "torii"))
+	_rot_total += a
+	_rot_last_ms = now
+	# Les crans d'une même rotation s'annulent d'un seul Ctrl+Z (voir _flush_rotation).
+	for ch: Array in changes:
+		if not _rot_pending.has(ch[0]):
+			_rot_pending[ch[0]] = ch[1]
+		site.apply_record(ch[0], ch[2], true)
+	_refresh_look(site.node_of(selected))
+	_rebuild_handles()
+	history_changed.emit(true, false)
+	_show_rotation_arc(pivot, after["points"])
+	edited.emit()
+	_emit_hint()
+
+
+## Range la rotation en cours dans l'historique (une seule action pour tous ses crans).
+func _flush_rotation() -> void:
+	if _rot_pending.is_empty():
+		return
+	var changes: Array = []
+	for id in _rot_pending:
+		changes.append([id, _rot_pending[id], site.get_record(id)])
+	_rot_pending = {}
+	_rot_id = -1
+	_commit("Tourner", changes, false)
+
+
+## Vrai si le contour `t` (une terrasse) est collé contre le contour `house`.
+func _hugs(t: PackedVector2Array, house: PackedVector2Array) -> bool:
+	var touching := 0
+	for q in t:
+		var d := INF
+		for i in house.size():
+			d = minf(d, q.distance_to(Geometry2D.get_closest_point_to_segment(q, house[i], house[(i + 1) % house.size()])))
+		if d < BastideTerraceRules.HOUSE_GAP + 0.35:
+			touching += 1
+	return touching >= 2
+
+
+## Arc d'encre autour de la structure qui tourne, qui s'efface tout seul.
+func _show_rotation_arc(pivot: Vector3, pts: PackedVector3Array) -> void:
+	var radius := 0.0
+	for p in pts:
+		radius = maxf(radius, Vector2(p.x - pivot.x, p.z - pivot.z).length())
+	radius += 1.2
+	var arc := PackedVector3Array()
+	var n := maxi(int(absf(_rot_total) / deg_to_rad(4.0)), 1)
+	for i in n + 1:
+		var t := _rot_from + _rot_total * float(i) / n
+		arc.append(pivot + BastideOrientationRules.dir_of(t) * radius)
+	_draw_ink(arc, false)
+	_rot_token += 1
+	var token := _rot_token
+	var fade := func() -> void:
+		if token == _rot_token:
+			_flush_rotation()
+			if _state == _State.IDLE:
+				_ink_mesh.clear_surfaces()
+	get_tree().create_timer(1.4).timeout.connect(fade)
+
+
+## Orientation lisible (« +30° ») d'un nombre de crans.
+func _steps_text(steps: int) -> String:
+	var deg := int(round(steps * BastideOrientationRules.STEP_DEG))
+	return ("+%d°" % deg) if deg > 0 else ("%d°" % deg)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if site == null or camera == null:
 		return
@@ -512,6 +726,8 @@ func _on_press(screen: Vector2) -> void:
 
 func _on_motion(screen: Vector2) -> void:
 	var g: Variant = _ground(screen)
+	if g != null:
+		_last_ground = g
 	match _state:
 		_State.IDLE:
 			_update_hover(screen)
@@ -706,7 +922,7 @@ func _freeze_behind(simple: PackedVector3Array) -> bool:
 
 
 func _draw_house(g: Vector3) -> void:
-	var right := camera.global_transform.basis.x
+	var right := placement_axis(_press_ground)
 	var rect := BastideStroke.rectangle(_press_ground, g, right, house_snap, house_min_side)
 	rect = _clamp_rect(rect)
 	# Chevauche une maison existante ? On s'aligne dessus et on fusionne.
@@ -761,7 +977,7 @@ func terrace_rect(a: Vector3, b: Vector3) -> PackedVector3Array:
 	var ctx := site.context()
 	var axis := BastideTerraceRules.facade_axis(a, ctx)
 	if axis == Vector3.ZERO:
-		axis = camera.global_transform.basis.x
+		axis = placement_axis(a)
 	var rect := BastideStroke.rectangle(a, b, axis, 0.25, 1.5)
 	var u := rect[1] - rect[0]
 	var v := rect[3] - rect[0]
@@ -889,7 +1105,7 @@ func _place_draft() -> void:
 ## Torii fantôme sous la souris, calé sur le chemin le plus proche.
 func _torii_preview(g: Vector3) -> void:
 	var gs := style.get_garden_style()
-	var res := BastideGardenRules.place_torii(g, site.context(), gs.path_width, camera.global_transform.basis.x)
+	var res := BastideGardenRules.place_torii(g, site.context(), gs.path_width, placement_axis(g))
 	if _draft != null and _draft_rec.get("kind") != "torii":
 		cancel_draft()
 	if _draft == null:
@@ -1207,6 +1423,7 @@ func _draw_ink(pts: PackedVector3Array, closed: bool) -> void:
 ## changes : [[id, avant (ou null), après (ou null)], …]. execute = false quand le
 ## changement est déjà visible (tracé adopté, poignée relâchée).
 func _commit(label: String, changes: Array, execute: bool) -> void:
+	_flush_rotation()
 	_undo.create_action(label)
 	for c: Array in changes:
 		_undo.add_do_method(site.apply_record.bind(c[0], c[2], true))
@@ -1251,10 +1468,10 @@ func current_hint() -> String:
 			if mode == Mode.TERRACE:
 				if _terrace_engawa:
 					return "Relâche : un engawa le long de la façade"
-				return "Tire la terrasse  ·  contre une maison, elle devient un engawa"
+				return "Tire la terrasse  ·  contre une maison, elle devient un engawa  ·  molette : tourner (%s)" % _steps_text(place_steps)
 			if _merge_id >= 0:
 				return "Relâche pour agrandir la maison"
-			return "Tire pour donner sa taille à la maison"
+			return "Tire pour donner sa taille à la maison  ·  molette : tourner (%s)" % _steps_text(place_steps)
 		_State.DRAGGING:
 			return "Glisse pour retoucher"
 	if _hover_handle >= 0:
@@ -1267,12 +1484,14 @@ func current_hint() -> String:
 	if mode == Mode.TORII and _draft and _hover < 0:
 		if _torii_snapped:
 			return "Clic : poser le torii sur le chemin"
-		return "Clic : poser le torii  ·  approche-le d'un chemin pour l'y aligner"
+		return "Clic : poser le torii  ·  approche-le d'un chemin pour l'y aligner  ·  Maj + molette : tourner"
 	if selected >= 0 and site.has(selected):
 		var kind: String = site.get_record(selected)["kind"]
+		if _rot_blocked:
+			return "Elle toucherait une autre maison : on reste là  ·  Maj + molette dans l'autre sens"
 		if kind == "house":
-			return "%s  ·  G : autre silhouette  ·  + / − : étages  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
-		return "Poignées : retoucher  ·  R : autre variation  ·  Suppr : retirer"
+			return "%s  ·  G : autre silhouette  ·  + / − : étages  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
+		return "Poignées : retoucher  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer"
 	if _hover >= 0:
 		return "Clic : sélectionner"
 	match mode:
@@ -1285,8 +1504,6 @@ func current_hint() -> String:
 			return "Approche la souris d'un chemin pour y poser un torii"
 		Mode.PLANTS:
 			return "Dessine un massif  ·  ou clique pour planter un arbre"
-		Mode.TERRACE:
-			return "Maintiens le clic et tire une terrasse  ·  contre une maison : un engawa"
 		Mode.FOREST:
 			var fnames := ["forêt mêlée", "forêt de cèdres", "chênaie", "érables d'automne", "cerisiers", "pinède"]
 			return "Maintiens le clic et fais le tour d'une %s  ·  V : changer" % fnames[int(forest_kind)]
@@ -1298,4 +1515,7 @@ func current_hint() -> String:
 			var pnames := ["étang de jardin", "source chaude", "mare sauvage"]
 			return "Maintiens le clic et fais le tour d'un %s  ·  un chemin qui le traverse aura son pont  ·  V : changer" % pnames[int(pond_kind)] \
 					if int(pond_kind) != 1 else "Maintiens le clic et fais le tour d'une source chaude  ·  V : changer"
-	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir"
+	var turned := "" if place_steps == 0 else "  ·  orientation %s" % _steps_text(place_steps)
+	if mode == Mode.TERRACE:
+		return "Maintiens le clic et tire une terrasse  ·  contre une maison : un engawa" + turned
+	return "Maintiens le clic et tire un rectangle  ·  par-dessus une maison : l'agrandir" + turned

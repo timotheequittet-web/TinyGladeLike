@@ -73,6 +73,8 @@ func _init() -> void:
 	_test_farm_build()
 	_test_farm_rice()
 	_test_farm_neighbours()
+	# Rotation des structures.
+	_test_orientation()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1587,3 +1589,29 @@ func _test_farm_neighbours() -> void:
 			if absf(t.origin.x) < 0.75:
 				on_path += 1
 	check(on_path == 0, "aucun légume sur le chemin qui traverse (%d)" % on_path)
+
+
+func _test_orientation() -> void:
+	var R := BastideOrientationRules
+	var sq := PackedVector3Array([Vector3(0, 0, 0), Vector3(4, 0, 0), Vector3(4, 0, 4), Vector3(0, 0, 4)])
+	var r := R.rotate_points(sq, Vector3(2, 0, 2), deg_to_rad(90))
+	check(r[0].distance_to(Vector3(4, 0, 0)) < 1e-4, "un quart de tour autour du centre garde le carré en place")
+	check(absf(r[1].distance_to(r[0]) - 4.0) < 1e-4, "la rotation garde les longueurs")
+	var a := R.placement_axis(Vector3.RIGHT, 2, Vector3(100, 0, 100), [])
+	check(absf(rad_to_deg(R.angle_of(a)) - 30.0) < 0.01, "deux crans : 30°")
+	# Maison voisine tournée de 25° : un axe à 30° s'y aimante.
+	var house := R.rotate_points(sq, Vector3(2, 0, 2), deg_to_rad(25))
+	var fps := [R.flat(house)]
+	var b := R.placement_axis(Vector3.RIGHT, 2, Vector3(8, 0, 2), fps)
+	check(absf(rad_to_deg(R.angle_of(b)) - 25.0) < 0.01, "près d'une maison, l'axe s'aimante sur sa façade")
+	var c := R.placement_axis(Vector3.RIGHT, 2, Vector3(60, 0, 2), fps)
+	check(absf(rad_to_deg(R.angle_of(c)) - 30.0) < 0.01, "loin d'elle, pas d'aimantation")
+	var d := R.placement_axis(Vector3.RIGHT, 0, Vector3(8, 0, 2), fps)
+	check(absf(rad_to_deg(R.angle_of(d))) < 0.01, "à 25° d'écart, on ne force pas l'alignement")
+	var e := R.placement_axis(Vector3.RIGHT, 8, Vector3(8, 0, 2), fps)
+	check(absf(wrapf(rad_to_deg(R.angle_of(e)) - 115.0, -180, 180)) < 0.01, "d'équerre aussi (120° → 115°)")
+	check(R.overlaps(R.flat(sq), R.flat(house)), "deux maisons l'une sur l'autre se chevauchent")
+	var far := R.rotate_points(sq, Vector3.ZERO, 0.0)
+	for i in far.size():
+		far[i] += Vector3(10, 0, 0)
+	check(not R.overlaps(R.flat(sq), R.flat(far)), "deux maisons séparées ne se chevauchent pas")

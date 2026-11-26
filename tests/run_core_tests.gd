@@ -70,6 +70,9 @@ func _init() -> void:
 	_test_pond_build()
 	_test_pond_bridges()
 	_test_pond_neighbours()
+	_test_farm_build()
+	_test_farm_rice()
+	_test_farm_neighbours()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -1490,3 +1493,97 @@ func _test_pond_neighbours() -> void:
 		if BastidePondShape.signed_distance(Vector2(t.x, t.z), poly) < 0.5:
 			wet += 1
 	check(wet == 0, "aucun arbre de forêt dans l'eau (%d)" % wet)
+
+
+func _farm_rect(cx: float, cz: float, hx: float, hz: float) -> PackedVector3Array:
+	return PackedVector3Array([Vector3(cx - hx, 0, cz - hz), Vector3(cx + hx, 0, cz - hz), Vector3(cx + hx, 0, cz + hz), Vector3(cx - hx, 0, cz + hz)])
+
+
+func _test_farm_build() -> void:
+	print("Champs : potager et thé")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var base := _slope_field(0.04)
+	var r := BastideFarmBuilder.build(_farm_rect(0, 0, 8, 6), 5, BastideFarmBuilder.Kind.VEGETABLE, jp, null, base, Transform3D.IDENTITY)
+	check(r.stats.get("beds", 0) >= 5, "des planches de culture (%d)" % r.stats.get("beds", 0))
+	check(r.stats.get("crops", 0) >= 100, "des légumes plantés en lignes (%d)" % r.stats.get("crops", 0))
+	check(r.stats.get("fence_posts", 0) >= 15 and r.stats.get("gate", false), "une clôture de bambou avec son entrée (%d poteaux)" % r.stats.get("fence_posts", 0))
+	check(r.stats.get("scarecrows", 0) == 1, "un épouvantail")
+	var kinds := {}
+	for g: Dictionary in r.instances:
+		kinds[g["mesh"]] = true
+	check(kinds.size() >= 3, "plusieurs cultures (%d maillages)" % kinds.size())
+	# La terre suit le relief, juste au-dessus du sol d'origine.
+	var high := 0
+	var low := 0
+	for g: Dictionary in r.instances:
+		for t: Transform3D in g["transforms"]:
+			var gy := base.height(t.origin.x, t.origin.z)
+			if t.origin.y < gy:
+				low += 1
+			if t.origin.y > gy + 0.35:
+				high += 1
+	check(low == 0 and high == 0, "les légumes sont posés sur leur planche (%d dessous, %d trop haut)" % [low, high])
+	var carve: Dictionary = r.anchors.get("carve", {})
+	check(carve.get("type", "") == "floor", "le champ abaisse le relief sous lui")
+	var probe := BastideHeightField.flat(base.origin, base.cell, base.width, base.depth)
+	probe.heights = base.heights.duplicate()
+	BastideTerrain._apply_floor(probe, carve)
+	check(probe.height(0, 0) < base.height(0, 0) - 0.1 and is_equal_approx(probe.height(20, 0), base.height(20, 0)),
+			"sous le champ seulement (%.2f m plus bas)" % (base.height(0, 0) - probe.height(0, 0)))
+	var tea := BastideFarmBuilder.build(_farm_rect(0, 0, 9, 7), 6, BastideFarmBuilder.Kind.TEA, jp, null, base, Transform3D.IDENTITY)
+	check(tea.stats.get("hedges", 0) >= 5, "des haies de thé (%d)" % tea.stats.get("hedges", 0))
+	check(tea.stats.get("fans", 0) >= 1, "un ventilateur antigel (%d)" % tea.stats.get("fans", 0))
+	# Les rangs de thé suivent les courbes de niveau (pente selon x : rangs selon z).
+	var axis: Vector2 = tea.anchors.get("axis", Vector2.ZERO)
+	check(absf(axis.y) > 0.95, "les rangs suivent les courbes de niveau (axe %s)" % str(axis))
+	var tiny := BastideFarmBuilder.build(_farm_rect(0, 0, 1, 1), 6, BastideFarmBuilder.Kind.TEA, jp, null, base, Transform3D.IDENTITY)
+	check(tiny.mesh == null, "un champ minuscule est refusé")
+
+
+func _test_farm_rice() -> void:
+	print("Champs : rizière en terrasses")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var base := _slope_field(0.15)
+	var r := BastideFarmBuilder.build(_farm_rect(0, 0, 8, 7), 8, BastideFarmBuilder.Kind.RICE, jp, null, base, Transform3D.IDENTITY)
+	check(r.stats.get("terraces", 0) >= 3, "la pente est taillée en terrasses (%d)" % r.stats.get("terraces", 0))
+	check(r.stats.get("rice", 0) >= 200, "du riz repiqué (%d touffes)" % r.stats.get("rice", 0))
+	var surf := -1
+	for i in r.mesh.get_surface_count():
+		if r.mesh.surface_get_name(i) == "water":
+			surf = i
+	check(surf >= 0, "de l'eau dans les rizières")
+	if surf >= 0:
+		# Chaque terrasse est d'eau plate : peu de niveaux d'eau différents.
+		var levels := {}
+		for p: Vector3 in r.mesh.surface_get_arrays(surf)[Mesh.ARRAY_VERTEX]:
+			levels[snappedf(p.y, 0.01)] = true
+		check(levels.size() == r.stats.get("terraces", 0), "une eau à plat par terrasse (%d niveaux)" % levels.size())
+	var stone := false
+	for i in r.mesh.get_surface_count():
+		if r.mesh.surface_get_name(i) == "stone":
+			stone = true
+	check(stone, "des murets de pierres sèches entre les terrasses")
+	var flat := BastideFarmBuilder.build(_farm_rect(0, 0, 8, 7), 8, BastideFarmBuilder.Kind.RICE, jp, null, _slope_field(0.0), Transform3D.IDENTITY)
+	check(flat.stats.get("paddies", 0) >= 2, "sur le plat, des rizières séparées par des levées (%d)" % flat.stats.get("paddies", 0))
+
+
+func _test_farm_neighbours() -> void:
+	print("Champs : voisins")
+	var poly := BastidePondShape.outline(_farm_rect(0, 0, 6, 5), 3, 0.0)
+	var fp := PackedVector3Array()
+	for p in poly:
+		fp.append(Vector3(p.x, 0, p.y))
+	var ctx := BastideGardenContext.from_entries([{"kind": "farm", "footprint": fp, "farm_kind": 0}])
+	check(ctx.farms.size() == 1, "le voisinage connaît le champ")
+	check(ctx.blocked(Vector2(0, 0), 0.3), "on ne plante rien dans un champ")
+	check(not ctx.blocked(Vector2(14, 0), 0.3), "à côté, la place est libre")
+	# Un chemin qui traverse : pas de planche dessus.
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var pctx := BastideGardenContext.from_entries([{"kind": "path", "points": PackedVector3Array([Vector3(0, 0, -10), Vector3(0, 0, 10)]), "width": 1.5}])
+	var r := BastideFarmBuilder.build(_farm_rect(0, 0, 8, 6), 5, BastideFarmBuilder.Kind.VEGETABLE, jp, pctx, null, Transform3D.IDENTITY)
+	var on_path := 0
+	for g: Dictionary in r.instances:
+		for t: Transform3D in g["transforms"]:
+			if absf(t.origin.x) < 0.75:
+				on_path += 1
+	check(on_path == 0, "aucun légume sur le chemin qui traverse (%d)" % on_path)

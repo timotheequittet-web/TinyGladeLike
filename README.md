@@ -138,6 +138,45 @@ rectangle une petite maison ou un kura, le reste une grande maison. En jeu, **G*
 (ou le bouton « Silhouette ») passe d'une silhouette à l'autre sur la maison
 sélectionnée ; le choix est enregistré avec elle. Le kura et la tour ne fument pas.
 
+## Entrer dans les maisons
+
+![Dans la grande maison : parquet, escalier fermé, shoji vus de dedans](docs/captures/interieur_maison_dedans.jpg)
+
+En promenade (**P**), on entre dans toutes les maisons : la porte coulisse toute seule
+quand on s'en approche (une porte médiévale pivote vers l'intérieur), on passe le
+seuil et on monte l'escalier jusqu'en haut. Pas encore de mobilier : du parquet et
+des escaliers.
+
+- **Rez-de-chaussée** : une petite entrée en terre battue (genkan) derrière la porte,
+  puis une marche (et une pierre de marche si elle est haute) pour monter sur le
+  plancher surélevé, au niveau du soubassement. Une maison de pierre a un plancher bas.
+- **Escaliers** : droits, raides comme dans les vraies maisons japonaises (environ
+  41°), fermés par un coffre de bois (hako-kaidan), avec main courante ; une trémie et
+  son garde-corps à l'étage. Ils ne se mettent jamais devant la porte, cachent le moins
+  de fenêtres possible et se rangent dans un angle. Dans une tour, chaque volée change
+  de mur pour ne pas mordre la trémie du dessous.
+- **Selon la silhouette** : grande maison et kura ont un étage, la tour trois niveaux,
+  la petite maison un seul (pas d'escalier).
+- **Murs et toit vus de dedans** : enduit, poteaux et bandeaux de bois, papier des
+  shoji qui laisse passer le jour, solives sous les planchers, chevrons sous le toit.
+  Une lumière douce s'allume quand on est dedans.
+- **Sur une pente**, la maison est posée sur un socle : des marches de pierre
+  descendent de la porte jusqu'au sol.
+
+**Rien ne coûte tant qu'on n'entre pas.** L'intérieur n'existe pas en vue
+d'ensemble. En promenade, les quatre maisons les plus proches (à moins de 14 m)
+reçoivent le leur, calculé sur un thread de fond, et le perdent au-delà de 22 m.
+Le reste du temps, la maison garde son maillage habituel (portes fermées) et sa
+collision pleine.
+
+Dans l'éditeur, coche **Preview Interior** sur un `BastideBuilding` pour voir son
+intérieur, portes ouvertes. Dans ton jeu, la caméra de promenade crée toute seule un
+nœud `BastideInteriors` ; poses-en un toi-même pour régler les distances.
+
+Le plan de l'intérieur (`BastideInteriorLayout` : niveaux, pièces, trémies, volées)
+est séparé de son dessin (`BastideInteriorMesher`). Des cloisons, du mobilier ou une
+aile ajoutée quand un village s'agrandit pourront s'y greffer sans toucher aux escaliers.
+
 ## Vie du hameau
 
 ![Fumée sur le toit, lanternes, papillons](docs/captures/vie_hameau.jpg)
@@ -385,7 +424,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (367 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (477 vérifications, dont les intérieurs (escaliers, trémies, portes franchissables), dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -427,6 +466,12 @@ Et celle des cultures (potager tracé avec la touche H, rizière avec V, sol aba
 godot --path . -s tools/farm_play.gd -- <dossier_des_captures>
 ```
 
+Et celle des intérieurs (on entre dans les quatre silhouettes, la porte s'ouvre, on monte jusqu'en haut, le garde-corps retient, tout disparaît quand on remonte). Elle marche aussi en `--headless` :
+
+```
+godot --path . --fixed-fps 60 -s tools/interior_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -444,6 +489,7 @@ addons/bastide/
     kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
     water/       jardins d'eau : forme de la rive, niveau, creusement du relief, rochers, plantes, koï, ponts
     farm/        cultures : grille de terre, planches et légumes, rizières en terrasses, haies de thé
+    interior/    intérieurs : niveaux, entrée, escaliers et trémies (plan pur)
     terrain/     relief (grille de hauteurs, plans d'eau) et pose des structures dessus
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets

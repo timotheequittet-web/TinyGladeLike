@@ -74,7 +74,8 @@ void fragment() {
 		col = mix(col, col * 1.25 + vec3(0.03, 0.04, 0.0), mw * 0.45);
 		if (grass_center.y > -999.0) {
 			float gd = length(wp.xz - grass_center.xz);
-			col = mix(tone * (0.72 + mid * 0.12), col, smoothstep(grass_far * 0.55, grass_far, gd));
+			// Sous l'herbe peinte, le sol fait l'ombre entre les touffes.
+			col = mix(tone * vec3(0.44, 0.54, 0.52) * (0.9 + mid * 0.2), col, smoothstep(grass_far * 0.55, grass_far, gd));
 		}
 	} else {
 		col *= 1.0 + wave * 0.035;

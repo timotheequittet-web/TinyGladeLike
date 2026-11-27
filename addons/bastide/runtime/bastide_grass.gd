@@ -18,6 +18,7 @@ extends Node3D
 ## disparaît et le sol (assombri à sa place) prend le relais.
 
 const SHADER := preload("res://addons/bastide/shaders/bastide_grass.gdshader")
+const SHADER_PAINTED := preload("res://addons/bastide/shaders/bastide_grass_painted.gdshader")
 
 enum Style { PEINTE, NATURELLE }
 const STYLE_NAMES := ["peinte", "naturelle"]
@@ -67,6 +68,14 @@ const STYLE_NAMES := ["peinte", "naturelle"]
 @export_group("Herbe")
 @export var blade_height := 0.62
 @export var wind_strength := 0.22
+@export_group("Herbe peinte")
+## Style peint : petites cartes de 6 brins dessinés au pinceau (voir
+## bastide_grass_painted.gdshader). Cartes par m² et largeur d'une carte (m).
+@export var painted_near_density := 34.0
+@export var painted_near_width := 0.42
+@export var painted_far_density := 4.0
+@export var painted_far_width := 0.8
+@export var painted_height := 0.48
 @export_group("Masque")
 ## Zone couverte par le masque des constructions (monde, xz) et sa résolution.
 @export var mask_rect := Rect2(-80, -80, 160, 160)
@@ -92,6 +101,9 @@ var _lod_timer := 0.0
 ## Sommets et indices d'un brin : trois paires de bords et une pointe (5 triangles).
 const BLADE_V := 7
 const BLADE_I := 15
+## Style peint : une carte = 4 sommets, 2 triangles.
+const CARD_V := 4
+const CARD_I := 6
 const LEVELS := [1.0, 0.5, 0.25, 0.125, 0.0625, 0.0]
 
 
@@ -129,17 +141,20 @@ func _build_rings() -> void:
 	_far_tiles.clear()
 	var nr := near_radius * radius_scale
 	var fr := far_radius * radius_scale
-	_near_mat = _material(0.0, 0.0, nr, 5.0, near_lod_distance * sqrt(density_scale), near_width)
-	_far_mat = _material(nr - 5.0, 5.0, fr, 14.0, far_lod_distance * sqrt(density_scale), far_width)
+	var painted := style == Style.PEINTE
+	_near_mat = _material(0.0, 0.0, nr, 5.0, near_lod_distance * sqrt(density_scale), painted_near_width if painted else near_width)
+	_far_mat = _material(nr - 5.0, 5.0, fr, 14.0, far_lod_distance * sqrt(density_scale), painted_far_width if painted else far_width)
 	if ground_material:
 		ground_material.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
 	_near_mat.set_shader_parameter("mask", _viewport.get_texture())
 	_far_mat.set_shader_parameter("mask", _viewport.get_texture())
-	# Style peint : plus de brins, plus larges, pour un tapis sans trou.
-	var pd := 1.7 if style == Style.PEINTE else 1.0
-	var pw := 1.25 if style == Style.PEINTE else 1.0
-	_near_meshes = build_tile_levels(near_tile, near_density * pd * minf(density_scale, 1.0), near_width * pw, 1)
-	_far_meshes = build_tile_levels(far_tile, far_density * pd * minf(density_scale, 1.0), far_width * pw, 2)
+	var ds := minf(density_scale, 1.0)
+	if style == Style.PEINTE:
+		_near_meshes = build_tile_levels(near_tile, painted_near_density * ds, painted_near_width, 1)
+		_far_meshes = build_tile_levels(far_tile, painted_far_density * ds, painted_far_width, 2)
+	else:
+		_near_meshes = build_tile_levels(near_tile, near_density * ds, near_width, 1)
+		_far_meshes = build_tile_levels(far_tile, far_density * ds, far_width, 2)
 	_near_offsets = _ring_offsets(near_tile, nr)
 	_far_offsets = _ring_offsets(far_tile, fr)
 	for o in _near_offsets:
@@ -172,6 +187,8 @@ func _process(_delta: float) -> void:
 	_near_mat.set_shader_parameter("center", c)
 	_far_mat.set_shader_parameter("center", c)
 	if ground_material:
+		# Le sol peut être donné après _ready (décor construit plus tard).
+		ground_material.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
 		ground_material.set_shader_parameter("grass_center", c)
 		ground_material.set_shader_parameter("grass_far", far_radius)
 	var nc := Vector2i(floori(c.x / near_tile), floori(c.z / near_tile))
@@ -275,7 +292,7 @@ func _tile_node(mesh: ArrayMesh, mat: ShaderMaterial) -> MeshInstance3D:
 
 func _material(fade_in: float, fade_in_w: float, fade_out: float, fade_out_w: float, lod_d0: float, width: float) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
-	m.shader = SHADER
+	m.shader = SHADER_PAINTED if style == Style.PEINTE else SHADER
 	m.set_shader_parameter("lod_d0", lod_d0)
 	m.set_shader_parameter("lod_min", min_keep)
 	m.set_shader_parameter("blade_width", width)
@@ -286,10 +303,11 @@ func _material(fade_in: float, fade_in_w: float, fade_out: float, fade_out_w: fl
 	m.set_shader_parameter("fade_out", fade_out)
 	m.set_shader_parameter("fade_out_width", fade_out_w)
 	m.set_shader_parameter("mask_rect", Vector4(mask_rect.position.x, mask_rect.position.y, mask_rect.size.x, mask_rect.size.y))
-	m.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
 	if style == Style.PEINTE:
-		m.set_shader_parameter("blade_height", blade_height * 1.15)
-		m.set_shader_parameter("wind_strength", wind_strength * 1.4)
+		m.set_shader_parameter("blade_height", painted_height)
+		m.set_shader_parameter("wind_strength", wind_strength * 1.3)
+	else:
+		m.set_shader_parameter("painted", 0.0)
 	return m
 
 
@@ -300,14 +318,15 @@ func build_tile_levels(size: float, density: float, width: float, seed: int) -> 
 	var out: Array[ArrayMesh] = [full]
 	var arr := full.surface_get_arrays(0)
 	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
-	var blades := idx.size() / BLADE_I
+	var per := CARD_I if style == Style.PEINTE else BLADE_I
+	var blades := idx.size() / per
 	for i in range(1, LEVELS.size()):
 		var n := int(ceil(blades * float(LEVELS[i])))
 		if n <= 0:
 			out.append(full)   # tuile cachée, maillage sans importance
 			continue
 		var a := arr.duplicate()
-		a[Mesh.ARRAY_INDEX] = idx.slice(0, n * BLADE_I)
+		a[Mesh.ARRAY_INDEX] = idx.slice(0, n * per)
 		var m := ArrayMesh.new()
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
 		m.custom_aabb = full.custom_aabb
@@ -320,6 +339,8 @@ func build_tile_levels(size: float, density: float, width: float, seed: int) -> 
 ## `blade_height` ; le shader la module. Le rang du brin (ordre de tirage, 0..1)
 ## est rangé dans COLOR.r : les niveaux de détail gardent les premiers.
 func build_tile(size: float, density: float, width: float, seed: int) -> ArrayMesh:
+	if style == Style.PEINTE:
+		return build_card_tile(size, density, width, seed)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed * 7919 + 17
 	var count := int(size * size * density)
@@ -498,3 +519,51 @@ func _line(pts: PackedVector3Array, xf: Transform3D, width: float, soft: float, 
 	_canvas.draw_polyline(line, Color.WHITE, width * k)
 	for p in line:
 		_canvas.draw_circle(p, width * 0.5 * k, Color.WHITE)
+
+
+## Style peint : maillage d'une tuile en petites cartes (le shader les tourne vers
+## la caméra et y dessine les brins). Pieds tirés au hasard, mais un peu groupés
+## en touffes ; rang LOD dans COLOR.r, trois tirages propres à la carte dans g, b, a.
+func build_card_tile(size: float, density: float, width: float, seed: int) -> ArrayMesh:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed * 7919 + 23
+	var count := int(size * size * density)
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var uv2s := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	verts.resize(count * CARD_V)
+	normals.resize(count * CARD_V)
+	uvs.resize(count * CARD_V)
+	uv2s.resize(count * CARD_V)
+	cols.resize(count * CARD_V)
+	idx.resize(count * CARD_I)
+	var corners := [Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]
+	for c in count:
+		var root := Vector2(rng.randf() * size, rng.randf() * size)
+		var col := Color((c + 0.5) / float(count), rng.randf(), rng.randf(), rng.randf())
+		var v := c * CARD_V
+		for k in CARD_V:
+			var cu: Vector2 = corners[k]
+			verts[v + k] = Vector3(root.x + cu.x * width * 0.5, cu.y * painted_height, root.y)
+			normals[v + k] = Vector3.UP
+			uvs[v + k] = cu
+			uv2s[v + k] = root
+			cols[v + k] = col
+		var i := c * CARD_I
+		idx[i] = v; idx[i + 1] = v + 1; idx[i + 2] = v + 2
+		idx[i + 3] = v + 1; idx[i + 4] = v + 3; idx[i + 5] = v + 2
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = normals
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_TEX_UV2] = uv2s
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	mesh.custom_aabb = AABB(Vector3(-2, -30, -2), Vector3(size + 4, 80, size + 4))
+	return mesh

@@ -282,13 +282,14 @@ static func _ivy(leaves: Array, props: SurfaceTool, root: Vector3, wall: Diction
 		u = clampf(u + r.randf_range(-0.015, 0.015), 0.05, flen - 0.05)
 		var k := clampf((y - y0) / maxf(stem_top - y0, 0.5), 0.0, 1.0)
 		# Feuilles en quinconce, plus grandes et serrées en bas.
-		leaf.call(u + inward * r.randf_range(0.02, 0.09), y, lerpf(0.22, 0.16, k), k)
-		if r.randf() < 0.75 - k * 0.35:
-			leaf.call(u - inward * r.randf_range(0.0, 0.06), y + step * 0.5, lerpf(0.2, 0.14, k), k)
+		leaf.call(u + inward * r.randf_range(0.02, 0.1), y, lerpf(0.3, 0.22, k), k)
+		leaf.call(u - inward * r.randf_range(0.0, 0.07), y + step * 0.5, lerpf(0.28, 0.2, k), k)
+		if r.randf() < 0.6 - k * 0.3:
+			leaf.call(u + inward * r.randf_range(0.1, 0.2), y + step * 0.3, 0.24, k)
 		next_run -= step
 		if next_run <= 0.0:
-			next_run = r.randf_range(0.28, 0.6)
-			runners.append([u, y, lerpf(1.7, 0.6, k) * r.randf_range(0.6, 1.1)])
+			next_run = r.randf_range(0.2, 0.42)
+			runners.append([u, y, lerpf(2.2, 0.7, k) * r.randf_range(0.6, 1.1)])
 	main.append(at.call(u, y, 0.008))
 	_stem(props, main, 0.014, 0.007, old_c, young_c)
 	# Rameaux horizontaux en éventail sur l'enduit (et le long des poutres basses).
@@ -312,9 +313,9 @@ static func _ivy(leaves: Array, props: SurfaceTool, root: Vector3, wall: Diction
 			went += step
 			pts.append(at.call(ru, ry, 0.008))
 			var k := went / maxf(length, 0.1)
-			leaf.call(ru, ry + r.randf_range(-0.04, 0.05), lerpf(0.18, 0.12, k), 0.4 + k * 0.6)
-			if r.randf() < 0.45:
-				leaf.call(ru - inward * 0.03, ry + r.randf_range(0.03, 0.08), 0.13, k)
+			leaf.call(ru, ry + r.randf_range(-0.05, 0.05), lerpf(0.26, 0.18, k), 0.4 + k * 0.6)
+			if r.randf() < 0.7:
+				leaf.call(ru - inward * 0.03, ry + r.randf_range(0.04, 0.1), lerpf(0.22, 0.16, k), k)
 		if pts.size() > 1:
 			_stem(props, pts, 0.008, 0.004, old_c.lerp(young_c, 0.4), young_c)
 	# Sous l'égout : un rameau suit la poutre, des brins pendent.
@@ -335,7 +336,7 @@ static func _ivy(leaves: Array, props: SurfaceTool, root: Vector3, wall: Diction
 			ry += r.randf_range(-0.012, 0.012)
 			went += step
 			pts.append(at.call(ru, ry, 0.008))
-			leaf.call(ru, ry + r.randf_range(-0.05, 0.03), 0.14, 0.7)
+			leaf.call(ru, ry + r.randf_range(-0.06, 0.03), 0.22, 0.7)
 			next_hang -= step
 			if next_hang <= 0.0:
 				next_hang = r.randf_range(0.25, 0.55)
@@ -346,7 +347,7 @@ static func _ivy(leaves: Array, props: SurfaceTool, root: Vector3, wall: Diction
 					if blocked.call(ru, hy):
 						break
 					hang.append(at.call(ru + r.randf_range(-0.01, 0.01), hy, 0.016))
-					leaf.call(ru + r.randf_range(-0.03, 0.03), hy, 0.12, 1.0)
+					leaf.call(ru + r.randf_range(-0.03, 0.03), hy, 0.18, 1.0)
 				if hang.size() > 1:
 					_stem(props, hang, 0.004, 0.003, young_c, young_c)
 		if pts.size() > 1:

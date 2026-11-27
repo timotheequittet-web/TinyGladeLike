@@ -37,7 +37,7 @@ uniform float blade_width = 0.04;
 uniform float max_widen = 2.0;
 // Herbe sauvage : quelques brins bien plus hauts (épis), touffes plus denses ou plus
 // rases, tons variés (vert bleuté, jaune, roux) et des pointes fleuries.
-uniform float wild_tall = 0.9;          // allongement des brins les plus hauts
+uniform float wild_tall = 0.6;          // allongement des brins les plus hauts
 uniform float flower_share = 0.035;     // part des brins qui portent une petite fleur
 uniform vec3 seed_color : source_color = vec3(0.72, 0.6, 0.38);
 uniform vec3 blue_green : source_color = vec3(0.3, 0.5, 0.32);
@@ -82,7 +82,7 @@ void vertex() {
 	h *= 0.75 + 0.5 * noise(root.xz * 1.15 + 3.7);
 	// Brins sauvages : quelques épis montent bien au-dessus du tapis.
 	float kind = hash(root.xz * 1.37 + 5.1);
-	h *= 1.0 + smoothstep(0.8, 1.0, kind) * wild_tall;
+	h *= 1.0 + smoothstep(0.86, 1.0, kind) * wild_tall;
 	// Les brins fleuris dépassent juste un peu, pour que la fleur se voie.
 	float flowered = step(1.0 - flower_share, hash(root.xz * 2.11 + 9.3));
 	h *= 1.0 + flowered * 0.25;

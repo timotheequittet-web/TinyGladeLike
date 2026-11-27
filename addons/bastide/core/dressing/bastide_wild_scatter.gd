@@ -52,21 +52,24 @@ static func edges(ctx: BastideGardenContext, seed: int, density := 1.0) -> Array
 		_along(out, e["points"], false, r, density, func(side: float, rr: RandomNumberGenerator) -> Array:
 			# Bord du chemin : surtout des fleurs, qui mordent un peu sur les dalles.
 			var roll := rr.randf()
-			var kind := MEADOW if roll < 0.42 else (MEADOW_SMALL if roll < 0.62 else (FLOWER if roll < 0.74 else (FERN if roll < 0.84 else TALL)))
-			var off := w * 0.5 + rr.randf_range(-0.28, 0.3)
-			if kind == FERN or kind == TALL:
-				off = w * 0.5 + rr.randf_range(0.25, 0.7)
-			return [kind, off * side], 0.42, ctx, pi)
+			var kind := MEADOW if roll < 0.35 else (MEADOW_SMALL if roll < 0.62 else (FLOWER if roll < 0.75 else FERN))
+			# Le pied des grosses touffes reste au bord : leurs fleurs débordent d'elles-mêmes.
+			var off := w * 0.5 + rr.randf_range(0.1, 0.45)
+			if kind == MEADOW_SMALL or kind == FLOWER:
+				off = w * 0.5 + rr.randf_range(-0.12, 0.25)
+			elif kind == FERN:
+				off = w * 0.5 + rr.randf_range(0.3, 0.75)
+			return [kind, off * side], 0.55, ctx, pi)
 	for e: Dictionary in ctx.walls:
 		var t := float(e.get("thickness", 0.6))
 		_along(out, e["points"], bool(e.get("closed", false)), r, density, func(side: float, rr: RandomNumberGenerator) -> Array:
 			var roll := rr.randf()
-			var kind := FERN if roll < 0.35 else (TALL if roll < 0.65 else (MEADOW if roll < 0.9 else FLOWER))
+			var kind := FERN if roll < 0.45 else (TALL if roll < 0.6 else (MEADOW_SMALL if roll < 0.85 else MEADOW))
 			return [kind, (t * 0.5 + rr.randf_range(0.08, 0.4)) * side], 0.6, ctx, -1)
 	for e: Dictionary in ctx.fences:
 		_along(out, e["points"], bool(e.get("closed", false)), r, density, func(side: float, rr: RandomNumberGenerator) -> Array:
 			var roll := rr.randf()
-			var kind := TALL if roll < 0.45 else (MEADOW if roll < 0.8 else FERN)
+			var kind := TALL if roll < 0.25 else (MEADOW_SMALL if roll < 0.7 else FERN)
 			return [kind, rr.randf_range(0.12, 0.45) * side], 0.9, ctx, -1)
 	return out
 
@@ -112,7 +115,7 @@ static func meadow(ctx: BastideGardenContext, center: Vector2, radius: float, se
 		for cz in range(c0.y, c1.y + 1):
 			for k in 3:
 				var roll := _h(cx, cz, seed * 31 + k)
-				if roll > 0.42 * density:
+				if roll > 0.2 * density:
 					continue
 				var p := Vector2((cx + _h(cx, cz, seed + 11 + k)) * cell, (cz + _h(cx, cz, seed + 23 + k)) * cell)
 				if p.distance_to(center) > radius:
@@ -122,9 +125,9 @@ static func meadow(ctx: BastideGardenContext, center: Vector2, radius: float, se
 				var pick := _h(cx, cz, seed + 41 + k)
 				var kind: int
 				if mood < 0.45:
-					kind = MEADOW if pick < 0.5 else (MEADOW_SMALL if pick < 0.75 else (FLOWER if pick < 0.88 else TALL))
+					kind = MEADOW_SMALL if pick < 0.5 else (MEADOW if pick < 0.75 else (FLOWER if pick < 0.9 else FERN))
 				else:
-					kind = TALL if pick < 0.45 else (FERN if pick < 0.62 else (MEADOW_SMALL if pick < 0.85 else MEADOW))
+					kind = FERN if pick < 0.35 else (MEADOW_SMALL if pick < 0.8 else MEADOW)
 				if not _free(ctx, p, -2, false):
 					continue
 				out.append([kind, p, _h(cx, cz, seed + 59 + k) * TAU, _tint(kind, _h(cx, cz, seed + 71 + k))])
@@ -150,7 +153,7 @@ static func _free(ctx: BastideGardenContext, p: Vector2, own_path: int, overflow
 	for i in ctx.paths.size():
 		var e: Dictionary = ctx.paths[i]
 		var half := float(e.get("width", 1.5)) * 0.5
-		var keep := half - (0.3 if overflow and i == own_path else 0.0)
+		var keep := half - (0.15 if overflow and i == own_path else 0.0)
 		if own_path == -2:
 			keep = half + 0.45
 		elif i != own_path:

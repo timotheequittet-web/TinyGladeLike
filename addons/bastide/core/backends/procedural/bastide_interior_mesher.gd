@@ -17,6 +17,7 @@ const ROLE_BODY := BastideBuildingMesher.ROLE_BODY
 const ROLE_WOOD := BastideBuildingMesher.ROLE_WOOD
 const ROLE_PAPER := BastideBuildingMesher.ROLE_PAPER
 const ROLE_GLASS := BastideBuildingMesher.ROLE_GLASS
+const ROLE_EARTH := &"earth"
 const PLANK_WIDTH := 0.19
 const PLANK_LENGTH := 1.85
 
@@ -46,6 +47,7 @@ static func build(il: BastideInteriorLayout, layout: BastideBuildingLayout, styl
 		ROLE_WOOD: style.get_wood_material(),
 		ROLE_PAPER: style.get_paper_material(),
 		ROLE_GLASS: style.get_glass_material(),
+		ROLE_EARTH: style.get_earth_material(),
 	})
 	var lights := PackedVector3Array()
 	var c := BastidePolygon.centroid(il.inner)
@@ -134,7 +136,7 @@ static func _parquet(mb: BastideMeshBuilder, piece: PackedVector2Array, y: float
 		while u < hi_a:
 			var rect := PackedVector2Array([axis * u + perp * v, axis * (u + PLANK_LENGTH) + perp * v,
 				axis * (u + PLANK_LENGTH) + perp * (v + PLANK_WIDTH), axis * u + perp * (v + PLANK_WIDTH)])
-			var t := BastideRng.signed_at(seed, "plank", BastideRng.combine(row, k)) * 0.09
+			var t := BastideRng.signed_at(seed, "plank", BastideRng.combine(row, k)) * 0.055
 			var c := base.lightened(t) if t > 0.0 else base.darkened(-t)
 			for part in Geometry2D.intersect_polygons(rect, piece):
 				_flat(mb, ROLE_WOOD, part, y, Vector3.UP, c, 0.0)
@@ -205,7 +207,7 @@ static func _entrance(mb: BastideMeshBuilder, col: BastideBuildResult, il: Basti
 		return
 	var ground: BastideInteriorLayout.Level = il.levels[0]
 	for part in Geometry2D.intersect_polygons(il.genkan, il.inner):
-		_flat(mb, ROLE_BODY, part, il.genkan_y, Vector3.UP, pal["earth"])
+		_flat(mb, ROLE_EARTH, part, il.genkan_y, Vector3.UP, pal["earth"])
 		_flat_collision(col, part, il.genkan_y)
 	# Le bord du plancher (agarikamachi) : une poutre polie sur les côtés ouverts.
 	var g := il.genkan
@@ -221,7 +223,7 @@ static func _entrance(mb: BastideMeshBuilder, col: BastideBuildResult, il: Basti
 			Vector3(a.x, ground.y, a.y), Vector3(out.x, 0, out.y), beam.darkened(0.25), beam.darkened(0.25), beam, beam)
 	if not il.step_stone.is_empty():
 		var s: Color = pal["stone"]
-		_prism(mb, ROLE_BODY, il.step_stone, il.genkan_y, il.step_stone_y, s.lightened(0.05), s.darkened(0.1))
+		_prism(mb, ROLE_EARTH, il.step_stone, il.genkan_y, il.step_stone_y, s.lightened(0.05), s.darkened(0.1))
 		_flat_collision(col, il.step_stone, il.step_stone_y)
 
 
@@ -502,8 +504,9 @@ static func _roof_underside(mb: BastideMeshBuilder, il: BastideInteriorLayout, l
 		var out: Vector3 = gp.out
 		for poly: PackedVector3Array in gp.polys:
 			for i in range(1, poly.size() - 1):
-				mb.add_tri(ROLE_WOOD, poly[0] - out * 0.03, poly[i] - out * 0.03, poly[i + 1] - out * 0.03, -out,
-					plank, plank, plank)
+				for side in [-1.0, 1.0]:
+					var o: Vector3 = out * 0.03 * side
+					mb.add_tri(ROLE_WOOD, poly[0] - o, poly[i] - o, poly[i + 1] - o, -o, plank, plank, plank)
 
 
 ## Plan d'un polygone 3D : { a: Vector3, n: Vector3 } (vide s'il est vertical ou dégénéré).

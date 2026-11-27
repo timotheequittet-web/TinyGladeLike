@@ -217,7 +217,8 @@ static func _entrance(mb: BastideMeshBuilder, col: BastideBuildResult, il: Basti
 		var b := g[(i + 1) % g.size()]
 		if not il.contains((a + b) * 0.5):
 			continue
-		var out := (a + b) * 0.5 - c
+		# Face tournée vers l'entrée (vers le centre du genkan) : c'est de là qu'on la voit.
+		var out := c - (a + b) * 0.5
 		var beam: Color = pal["timber"].lightened(0.1)
 		mb.add_quad(ROLE_WOOD, Vector3(a.x, il.genkan_y, a.y), Vector3(b.x, il.genkan_y, b.y), Vector3(b.x, ground.y, b.y),
 			Vector3(a.x, ground.y, a.y), Vector3(out.x, 0, out.y), beam.darkened(0.25), beam.darkened(0.25), beam, beam)

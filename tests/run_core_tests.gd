@@ -1736,10 +1736,48 @@ func _test_interior_meshes() -> void:
 	var dir: Vector3 = -(door["out"] as Vector3)
 	check(_ray_hits(closed.collision_faces, p + (door["out"] as Vector3), dir, 2.0), "porte fermée : le mur arrête le pas")
 	check(not _ray_hits(open.collision_faces, p + (door["out"] as Vector3), dir, 2.0), "porte ouverte : on passe")
+	# Depuis l'entrée, sous le niveau du parquet : on voit le bord du plancher, pas le dessous.
+	var lv0: BastideInteriorLayout.Level = il.levels[0]
+	var in2: Vector2 = il.door["inward"]
+	var inward := Vector3(in2.x, 0, in2.y)
+	var eye_y := lerpf(il.genkan_y, lv0.y, 0.8)
+	var seen := 0
+	for k in 5:
+		var dp: Vector2 = il.door["pos"]
+		var from := Vector3(dp.x, eye_y, dp.y) + inward * 0.25 + Vector3(-inward.z, 0, inward.x) * (k - 2) * 0.15
+		if _front_hit(res.mesh, from, inward, 8.0):
+			seen += 1
+	check(seen == 5, "entrée : le bord du plancher se voit, on ne voit pas dessous (%d/5)" % seen)
 	var med := _interior_for(RECT, BastideSilhouette.Kind.HOUSE, MEDIEVAL_PATH)
 	var mopen := BastideBuildingMesher.build(med[0], med[2], true, true)
 	check((mopen.anchors["door_leaves"] as Array).size() == 1 and mopen.anchors["door_leaves"][0]["kind"] == "hinge",
 		"médiéval : une porte de bois qui pivote")
+
+
+## Vrai si le premier triangle du maillage touché par le rayon est tourné vers lui (visible).
+func _front_hit(mesh: Mesh, from: Vector3, dir: Vector3, length: float) -> bool:
+	var best := INF
+	var front := false
+	for si in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		var count := idx.size() if not idx.is_empty() else v.size()
+		for t in range(0, count, 3):
+			var i0 := idx[t] if not idx.is_empty() else t
+			var i1 := idx[t + 1] if not idx.is_empty() else t + 1
+			var i2 := idx[t + 2] if not idx.is_empty() else t + 2
+			var hit: Variant = Geometry3D.ray_intersects_triangle(from, dir, v[i0], v[i1], v[i2])
+			if hit == null:
+				hit = Geometry3D.ray_intersects_triangle(from, dir, v[i0], v[i2], v[i1])
+			if hit == null:
+				continue
+			var d := from.distance_to(hit)
+			if d < best and d <= length:
+				best = d
+				front = (n[i0] + n[i1] + n[i2]).dot(dir) < 0.0
+	return front
 
 
 func _ray_hits(faces: PackedVector3Array, from: Vector3, dir: Vector3, length: float) -> bool:

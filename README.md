@@ -90,6 +90,7 @@ Le nœud `BastideGraphics` (« Graphismes » dans la démo) règle tout le rendu
 
 - **F3** : compteur (images/s, temps carte graphique, temps des scripts, triangles, appels de dessin). Le temps des scripts est mesuré par le nœud lui-même : le moniteur `TIME_PROCESS` de Godot compte aussi l'attente de la carte graphique.
 - **F4** : niveau suivant.
+- **F5** : style de l'herbe. « Peinte » (par défaut) : touffes vert vif façon dessin animé, colorées par la même prairie que le sol (`bastide_meadow.gdshaderinc` : grandes taches de couleur, ombres de nuages qui défilent, vagues de vent qui éclaircissent l'herbe). « Naturelle » : brins dorés de fin de journée.
 - Fenêtre en arrière-plan : 15 images/s, pour ne pas chauffer pour rien.
 
 Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 120 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).

@@ -324,7 +324,7 @@ func _prepare_job() -> Callable:
 	# et une relecture depuis un autre thread attend le serveur de rendu, donc le
 	# thread principal, qui peut lui-même attendre ce calcul (_exit_tree).
 	_pending_drape = {}
-	var field := BastideTerrain.field_for(self)
+	var field := _drape_field()
 	var mode := terrain_mode()
 	if field != null and mode != BastideDrape.Mode.NONE:
 		# Sans échelle : le chantier fait « sortir de terre » une structure en animant
@@ -340,6 +340,12 @@ func _drape_result(result: BastideBuildResult, drape: Dictionary) -> void:
 	var t0 := Time.get_ticks_usec()
 	BastideDrape.apply(result, drape["field"], drape["xf"], drape["mode"], drape["min_lift"])
 	result.stats["drape_ms"] = snappedf((Time.get_ticks_usec() - t0) / 1000.0, 0.1)
+
+
+## Relief sur lequel la structure se pose (une structure qui modifie elle-même le
+## relief, comme un terrier, se pose sur le relief d'origine).
+func _drape_field() -> BastideHeightField:
+	return BastideTerrain.field_for(self)
 
 
 ## Comment la structure se pose sur le relief (voir BastideDrape) : par défaut elle

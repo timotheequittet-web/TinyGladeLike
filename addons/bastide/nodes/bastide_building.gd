@@ -60,7 +60,8 @@ signal interior_ready
 var _points_override := PackedVector3Array()
 var _use_override := false
 var _interior: BastideInteriorHost
-var _bounds := Vector3.ZERO  # centre (x, z) et rayon du contour, espace local
+var _bounds := Vector3.ZERO
+var _mound_key := 0  # centre (x, z) et rayon du contour, espace local
 
 
 func _default_curve() -> Curve3D:
@@ -165,6 +166,32 @@ func set_interior_active(on: bool) -> void:
 		_interior.deactivate()
 
 
+## Un terrier se pose sur le relief d'origine : sa butte, qu'il fait lui-même monter
+## dans le relief, ne doit pas le soulever.
+func _drape_field() -> BastideHeightField:
+	if is_burrow():
+		var t := BastideTerrain.find(self)
+		return t.base_field if t else null
+	return super._drape_field()
+
+
+## Fait monter le relief sous la butte d'un terrier (et autour), ou le rend.
+func _update_mound(result: BastideBuildResult) -> void:
+	var terrain := BastideTerrain.find(self)
+	if terrain == null or terrain.base_field == null:
+		return
+	if _mound_key == 0:
+		_mound_key = get_instance_id()
+	var data: Variant = result.anchors.get("mound_data") if result else null
+	# Fantômes et aperçus transparents : le sol ne bouge pas.
+	if data == null or not context_enabled and mesh_transparency > 0.0:
+		terrain.clear_carve(_mound_key)
+		return
+	var lift := float(result.stats.get("terrain_lift", 0.0))
+	var xf := Transform3D(global_transform.basis.orthonormalized(), global_transform.origin + Vector3(0, lift, 0))
+	terrain.set_carve(_mound_key, BastideBurrowBuilder.carve(data, xf, terrain.base_field))
+
+
 ## Maison-terrier (style à buttes herbeuses) plutôt que maison à murs et toit.
 func is_burrow() -> bool:
 	return get_effective_style().get_building_style().form == BastideBuildingStyle.Form.BURROW
@@ -203,6 +230,7 @@ func walker_distance(walker: Vector3) -> float:
 
 func _apply(result: BastideBuildResult) -> void:
 	super._apply(result)
+	_update_mound(result)
 	var fp: PackedVector2Array = last_anchors.get("footprint", PackedVector2Array())
 	if fp.size() >= 3:
 		var c := BastidePolygon.centroid(fp)
@@ -220,6 +248,9 @@ func _apply(result: BastideBuildResult) -> void:
 func _exit_tree() -> void:
 	if _interior:
 		_interior.wait()
+	var terrain := BastideTerrain.find(self)
+	if terrain and _mound_key != 0:
+		terrain.clear_carve(_mound_key)
 	super._exit_tree()
 
 

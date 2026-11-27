@@ -28,13 +28,15 @@ const ROLE_TURF := &"turf"
 const ROLE_EARTH := &"earth"
 
 ## Débord de la butte au-delà du tracé (m).
-const SKIRT := 1.7
+const SKIRT := 2.3
 ## Avancée de l'herbe au-dessus de la façade.
 const LIP := 0.26
 ## Épaisseur de l'avancée (la façade s'arrête dessous).
 const LIP_DROP := 0.24
 ## Pente de l'herbe qui monte du haut de la façade vers le sommet de la butte.
 const BROW_SLOPE := 0.85
+## Hors du front d'herbe, la butte maillée s'enfonce de ça sous le relief.
+const SINK := 0.3
 ## Pas du maillage de la butte.
 const STEP := 0.38
 ## Les flancs de la façade avancent en arc autour de la porte.
@@ -215,13 +217,16 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 		var g: Dictionary = groups[key]
 		result.add_instances(g["mesh"], g["mat"], g["xf"], g.get("shadow", GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), 0.0, g.get("range", 90.0))
 
-	# Contour pour les voisins : la butte un peu au-delà du tracé (le jardin et
-	# l'herbe s'arrêtent sur ses flancs, pas à son pied).
+	# Contour pour les voisins : la façade et sa petite cour seulement. Le reste de
+	# la butte est porté par le relief (voir carve()) : l'herbe y pousse.
 	var outline := PackedVector2Array()
-	var hx := width * 0.5 + SKIRT * 0.45
-	var zb := depth + SKIRT * 0.45
-	var zf := -0.2
-	for c in [Vector2(-hx, zf), Vector2(hx, zf), Vector2(hx, zb), Vector2(-hx, zb)]:
+	var first: Mound = fr.mounds[0]
+	var last: Mound = fr.mounds[fr.mounds.size() - 1]
+	var xa := first.cx - first.face_half - 0.4
+	var xb := last.cx + last.face_half + 0.4
+	var zf := minf(first.dz, last.dz) - 2.4
+	var zb := maxf(first.dz, last.dz) + 0.9
+	for c in [Vector2(xa, zf), Vector2(xb, zf), Vector2(xb, zb), Vector2(xa, zb)]:
 		var q: Vector3 = fr.p(c.x, 0.0, c.y)
 		outline.append(Vector2(q.x, q.z))
 	if BastidePolygon.signed_area(outline) * BastidePolygon.signed_area(fp) < 0.0:
@@ -231,7 +236,7 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 		top_h = maxf(top_h, m.h)
 	result.anchors = {"doors": doors, "windows": windows, "footprint": outline, "base_y": spec.base_y,
 		"eave_y": spec.base_y + top_h, "floors": 1, "floor_height": top_h, "overhang": 0.3,
-		"smoke": smoke, "lights": lights, "burrow": true}
+		"smoke": smoke, "lights": lights, "burrow": true, "mound_data": _terrain_data(fr, spec.seed)}
 	result.stats = {"buttes": fr.mounds.size(), "doors": doors.size(), "windows": windows.size(),
 		"triangles": mb.triangle_count, "notes": ", ".join(clean.notes),
 		"timings_us": {"total": Time.get_ticks_usec() - t0}}
@@ -313,11 +318,15 @@ static func _mound(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float, 
 		var x := lerpf(x_lo, x_hi, float(i) / cols)
 		var zf := fr.face_z(x)
 		var z0 := zf - LIP
+		var mo := fr.owner(x)
+		var near := 1.0 - smoothstep(mo.face_half + 0.6, mo.face_half + 2.4, absf(x - mo.cx))
 		var col: Array = []
 		for j in ROWS + 1:
 			# Rangées serrées près de la façade (le bord de l'avancée se lit net).
 			var z := z0 if j == 0 else zf + (z_end - zf) * pow(float(j - 1) / (ROWS - 1), 1.35)
-			var y := fr.surface(x, z)
+			# Hors du front d'herbe de la façade, la butte maillée passe juste sous le
+			# relief (voir terrain_height) : c'est l'herbe du terrain qu'on voit.
+			var y := maxf(fr.surface(x, z) - SINK * maxf(1.0 - near, smoothstep(zf + 0.9, zf + 1.9, z)), 0.0)
 			var n := _normal(fr, x, z)
 			var ao := 0.8 + 0.2 * smoothstep(0.0, 1.2, y)
 			if j == 0:
@@ -917,7 +926,7 @@ static func _greenery(fr: Frame, groups: Dictionary, m: Mound, bs: BastideBuildi
 	var fz := m.dz
 	var flowers := bs.flower_colors
 	# Touffes d'herbe et fleurs sur les flancs et au pied de la butte.
-	for k in 70:
+	for k in 12:
 		var x := m.cx + r.randf_range(-m.ax, m.ax)
 		var z := r.randf_range(fz - 0.2, m.zc + m.dz + m.az)
 		var zf := fr.face_z(x)
@@ -968,3 +977,108 @@ static func _greenery(fr: Frame, groups: Dictionary, m: Mound, bs: BastideBuildi
 		var c: Color = flowers[r.randi() % flowers.size()] if not flowers.is_empty() else Color(0.9, 0.5, 0.6)
 		_plant(groups, "flower", Color(0.7 + c.r * 0.45, 0.7 + c.g * 0.45, 0.7 + c.b * 0.45), r.randf_range(0.45, 0.7),
 				fr.p(x, 0.0, zf - r.randf_range(0.15, 0.5)), r.randf() * 10.0)
+
+
+# --- Relief ----------------------------------------------------------------------------
+# La butte maillée porte la façade et son front d'herbe. Sous elle, le relief monte
+# lui aussi (un peu en retrait) et s'étale bien au-delà en une large colline douce,
+# avec quelques petites collines autour : l'herbe du terrain pousse dessus, et la
+# butte se fond dans la prairie.
+
+## Données du relief (dans les ancres) : repère, buttes, petites collines.
+static func _terrain_data(fr: Frame, seed: int) -> Dictionary:
+	var mounds: Array = []
+	var knolls: Array = []
+	for i in fr.mounds.size():
+		var m: Mound = fr.mounds[i]
+		mounds.append([m.cx, m.w, m.h, m.ax, m.zc, m.az, m.dz, m.cap, m.face_half])
+		# Deux ou trois petites collines sur les côtés et à l'arrière.
+		var n := 2 + int(BastideRng.randf_at(m.seed, "collines") * 2.0)
+		for k in n:
+			var ang := lerpf(-1.35, 1.35, BastideRng.randf_at(m.seed, "colline_a", k))
+			var dist := lerpf(1.1, 1.45, BastideRng.randf_at(m.seed, "colline_d", k))
+			var dir := Vector2(sin(ang), cos(ang))
+			var c := Vector2(m.cx + dir.x * m.ax * dist, m.zc + m.dz + dir.y * m.az * dist * 0.9)
+			var kr := lerpf(2.6, 4.4, BastideRng.randf_at(m.seed, "colline_r", k))
+			# Jamais devant une façade : la cour et le chemin restent à plat.
+			if c.y - kr < m.dz + 0.5 and absf(c.x - m.cx) - kr < m.face_half + 2.0:
+				continue
+			knolls.append([c.x, c.y, kr,
+					lerpf(0.6, 1.5, BastideRng.randf_at(m.seed, "colline_h", k))])
+	return {"o": fr.o, "x": fr.x, "z": fr.z, "y0": fr.y0, "mounds": mounds, "knolls": knolls}
+
+
+static func _frame_from(data: Dictionary) -> Frame:
+	var fr := Frame.new()
+	fr.o = data["o"]
+	fr.x = data["x"]
+	fr.z = data["z"]
+	fr.y0 = data["y0"]
+	for a: Array in data["mounds"]:
+		var m := Mound.new()
+		m.cx = a[0]; m.w = a[1]; m.h = a[2]; m.ax = a[3]; m.zc = a[4]; m.az = a[5]; m.dz = a[6]
+		m.cap = a[7]; m.face_half = a[8]
+		fr.mounds.append(m)
+	return fr
+
+
+## Hauteur du relief (au-dessus du sol de la maison) au point (px, pz) du repère de
+## façade : sous la butte, juste en retrait de son herbe ; autour, une colline large
+## et basse ; devant la façade, rien (la cour et le seuil restent à plat).
+static func terrain_height(fr: Frame, knolls: Array, px: float, pz: float) -> float:
+	var m := fr.owner(px)
+	var zf := fr.face_z(px)
+	var near_face := 1.0 - smoothstep(m.face_half + 0.6, m.face_half + 2.4, absf(px - m.cx))
+	var fade := lerpf(1.0, smoothstep(zf + 0.3, zf + 1.3, pz), near_face)
+	var h := maxf(fr.surface(px, pz) - 0.08, 0.0)
+	# Grande colline douce : la butte s'étale dans la prairie.
+	for o: Mound in fr.mounds:
+		var dx := (px - o.cx) / (o.ax * 1.75)
+		var dz := (pz - o.zc - o.dz) / (o.az * 1.6 if pz > o.zc + o.dz else o.zc + 2.2)
+		var r2 := dx * dx + dz * dz
+		if r2 < 1.0:
+			h = maxf(h, o.h * 0.42 * (1.0 - r2) * (1.0 - r2))
+	for k: Array in knolls:
+		var d := Vector2(px - float(k[0]), pz - float(k[1])).length() / float(k[2])
+		if d < 1.0:
+			var u := 1.0 - d * d
+			h = maxf(h, float(k[3]) * u * u)
+	return h * fade
+
+
+## Description pour BastideTerrain.set_carve (type « mound ») : hauteurs monde sur la
+## grille du relief (NAN : intact). `xf` : repère local → monde, hauteur de pose comprise.
+static func carve(data: Dictionary, xf: Transform3D, base: BastideHeightField) -> Dictionary:
+	var fr := _frame_from(data)
+	var knolls: Array = data["knolls"]
+	var reach := 0.0
+	for m: Mound in fr.mounds:
+		reach = maxf(reach, maxf(m.ax, m.az) * 1.8)
+	for k: Array in knolls:
+		reach = maxf(reach, Vector2(k[0], k[1]).length() + float(k[2]))
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var c0: Vector3 = xf * Vector3(fr.o.x, fr.y0, fr.o.y)
+	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		var w := c0 + xf.basis * fr.dir(corner.x * reach, corner.y * reach)
+		lo = lo.min(Vector2(w.x, w.z))
+		hi = hi.max(Vector2(w.x, w.z))
+	var i0 := maxi(0, floori((lo.x - base.origin.x) / base.cell))
+	var j0 := maxi(0, floori((lo.y - base.origin.y) / base.cell))
+	var i1 := mini(base.width - 1, ceili((hi.x - base.origin.x) / base.cell))
+	var j1 := mini(base.depth - 1, ceili((hi.y - base.origin.y) / base.cell))
+	var w := maxi(0, i1 - i0 + 1)
+	var d := maxi(0, j1 - j0 + 1)
+	var heights := PackedFloat32Array()
+	heights.resize(w * d)
+	var inv := xf.affine_inverse()
+	for jj in d:
+		for ii in w:
+			var wx := base.origin.x + (i0 + ii) * base.cell
+			var wz := base.origin.y + (j0 + jj) * base.cell
+			var l := inv * Vector3(wx, 0.0, wz)
+			var q := Vector2(l.x, l.z) - fr.o
+			var h := terrain_height(fr, knolls, q.dot(fr.x), q.dot(fr.z))
+			heights[jj * w + ii] = (xf * Vector3(l.x, fr.y0 + h, l.z)).y if h > 0.01 else NAN
+	var r := Rect2(base.origin + Vector2(i0, j0) * base.cell, Vector2(w, d) * base.cell)
+	return {"type": "mound", "i0": i0, "j0": j0, "w": w, "d": d, "heights": heights, "rect": r.grow(base.cell)}

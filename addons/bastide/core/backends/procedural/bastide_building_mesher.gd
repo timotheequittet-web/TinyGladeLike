@@ -20,10 +20,21 @@ const ROLE_PAPER := &"paper"
 const FOOTING := 0.3
 ## Le haut des murs monte un peu dans l'épaisseur du toit : aucune fente sous l'égout.
 const WALL_TOP_SINK := 0.05
+## Profondeur des vitres, du papier et des vantaux dans le mur (lue aussi par l'intérieur).
+const WINDOW_DEPTH_GLASS := -0.16
+const WINDOW_DEPTH_LATTICE := -0.12
+const DOOR_DEPTH_SLIDING := -0.16
+const DOOR_DEPTH_HINGED := -0.22
 
 
-static func build(layout: BastideBuildingLayout, style: BastideStyle, with_collision := true) -> BastideBuildResult:
+## `open_doors` : variante « on peut entrer » (créée seulement quand on s'approche en
+## promenade) : pas de fond sombre derrière les portes, des vantaux à part (maillages
+## dans anchors["door_leaves"], que le nœud fait coulisser ou pivoter) et un passage
+## dans la collision des façades.
+static func build(layout: BastideBuildingLayout, style: BastideStyle, with_collision := true,
+		open_doors := false) -> BastideBuildResult:
 	var result := BastideBuildResult.new()
+	var leaves: Array = []
 	var mb := BastideMeshBuilder.new()
 	var bs := style.get_building_style()
 	var ws := style.get_wall_style()
@@ -55,11 +66,11 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 						_window(mb, layout, f, o, bs, ws, o.kind == Kind.WINDOW, grid)
 				Kind.DOOR:
 					if sliding:
-						_sliding_door(mb, layout, f, o, bs, ws, grid)
+						_sliding_door(mb, layout, f, o, bs, ws, grid, leaves if open_doors else null, style)
 					else:
-						_door(mb, layout, f, o, bs, ws, grid)
+						_door(mb, layout, f, o, bs, ws, grid, leaves if open_doors else null, style)
 		if with_collision:
-			_facade_collision(result, layout, f)
+			_facade_collision(result, layout, f, open_doors)
 	if layout.pent_roof:
 		for level in range(1, layout.pent_levels + 1):
 			_pent_roof(mb, result, layout, style, with_collision, level)
@@ -81,6 +92,8 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 		ROLE_PAPER: style.get_paper_material(),
 	})
 	result.anchors = anchors(layout)
+	if open_doors:
+		result.anchors["door_leaves"] = leaves
 	result.stats = {
 		"facades": layout.facades.size(),
 		"windows": layout.count(Kind.WINDOW) + layout.count(Kind.ATTIC),
@@ -457,7 +470,7 @@ static func _window(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Ba
 	var u1: float = o.u1
 	var y0: float = o.y0
 	var y1: float = o.y1
-	var depth := -0.16 if real_hole else 0.02
+	var depth := WINDOW_DEPTH_GLASS if real_hole else 0.02
 	var wood := bs.wood_color
 	var stone := ws.quoin_color
 	var mortar := ws.mortar_color
@@ -546,13 +559,14 @@ static func _flower_box(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f
 # --- Porte ---------------------------------------------------------------------------
 
 static func _door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
-		o: Dictionary, bs: BastideBuildingStyle, ws: BastideWallStyle, grid: Array) -> void:
+		o: Dictionary, bs: BastideBuildingStyle, ws: BastideWallStyle, grid: Array, leaves: Variant = null,
+		style: BastideStyle = null) -> void:
 	var u0: float = o.u0
 	var u1: float = o.u1
 	var y0: float = o.y0
 	var y1: float = o.y1
 	var r: float = o.arch
-	var depth := -0.22
+	var depth := DOOR_DEPTH_HINGED
 	var reveal := f.plaster.darkened(0.25)
 	var stone := ws.quoin_color
 	var mortar := ws.mortar_color
@@ -570,7 +584,8 @@ static func _door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Bast
 				hint, reveal.darkened(0.1), reveal.darkened(0.1), reveal.darkened(0.3), reveal.darkened(0.3))
 	else:
 		_reveal_h(mb, f, _between(grid[0], u0, u1), y1, depth, Vector3.DOWN, reveal.darkened(0.25), reveal.darkened(0.4))
-	# Fond sombre derrière le vantail : rien ne transparaît par les joints.
+	# Fond sombre derrière le vantail : rien ne transparaît par les joints. Porte qui
+	# s'ouvre : pas de fond, mais un tympan sous l'arc (l'intérieur est rectangulaire).
 	var back := depth - 0.03
 	var dark := Color(0.05, 0.04, 0.035)
 	var outline := PackedVector2Array([Vector2(u0 - 0.03, y0), Vector2(u1 + 0.03, y0)])
@@ -581,9 +596,19 @@ static func _door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Bast
 	else:
 		outline.append(Vector2(u1 + 0.03, y1 + 0.03))
 		outline.append(Vector2(u0 - 0.03, y1 + 0.03))
-	for i in range(1, outline.size() - 1):
-		mb.add_tri(ROLE_BODY, f.point(outline[0].x, outline[0].y, back), f.point(outline[i].x, outline[i].y, back),
-			f.point(outline[i + 1].x, outline[i + 1].y, back), f.out3(), dark, dark, dark)
+	if leaves == null:
+		for i in range(1, outline.size() - 1):
+			mb.add_tri(ROLE_BODY, f.point(outline[0].x, outline[0].y, back), f.point(outline[i].x, outline[i].y, back),
+				f.point(outline[i + 1].x, outline[i + 1].y, back), f.out3(), dark, dark, dark)
+	elif r > 0.0:
+		var tymp := bs.door_color.darkened(0.2)
+		for i in pts.size() - 1:
+			mb.add_tri(ROLE_WOOD, f.point(cx, y1, back), f.point(pts[i].x, pts[i].y, back), f.point(pts[i + 1].x, pts[i + 1].y, back),
+				f.out3(), tymp, tymp, tymp)
+	# Vantail à part (il pivote) quand la porte s'ouvre.
+	var main := mb
+	if leaves != null:
+		mb = BastideMeshBuilder.new()
 	# Vantail en planches verticales, dont le haut suit exactement l'arc.
 	var top_line := pts if r > 0.0 else PackedVector2Array([Vector2(u0, y1), Vector2(u1, y1)])
 	var planks := maxi(4, roundi((u1 - u0) / 0.19))
@@ -605,10 +630,28 @@ static func _door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: Bast
 			var ta := _line_at(top_line, a) - 0.01
 			mb.add_quad(ROLE_WOOD, f.point(a - 0.008, y0, depth + 0.003), f.point(a + 0.008, y0, depth + 0.003),
 				f.point(a + 0.008, ta, depth + 0.003), f.point(a - 0.008, ta, depth + 0.003), f.out3(), seam, seam, seam, seam)
+	if leaves != null:
+		# Dos du vantail, vu de l'intérieur.
+		var bk := bs.door_color.darkened(0.15)
+		var poly := PackedVector2Array([Vector2(u0, y0), Vector2(u1, y0)])
+		for k in range(top_line.size() - 1, -1, -1):
+			poly.append(top_line[k])
+		for k in range(1, poly.size() - 1):
+			mb.add_tri(ROLE_WOOD, f.point(poly[0].x, poly[0].y, depth - 0.04), f.point(poly[k].x, poly[k].y, depth - 0.04),
+				f.point(poly[k + 1].x, poly[k + 1].y, depth - 0.04), -f.out3(), bk, bk, bk)
 	var iron := Color(0.14, 0.13, 0.13)
 	for yy in [y0 + 0.35, y0 + (y1 - y0) * 0.78]:
 		_facade_block(mb, f, u0 + 0.06, u1 - 0.06, yy - 0.035, yy + 0.035, depth, depth + 0.025, iron, iron, 0.005)
 	_facade_block(mb, f, u1 - 0.26, u1 - 0.2, y0 + 0.95, y0 + 1.05, depth, depth + 0.06, iron, iron, 0.01)
+	if leaves != null:
+		# Pivot sur le bord gauche ; la porte s'ouvre vers l'intérieur.
+		var pivot := f.point(u0, y0, depth - 0.02)
+		var inward := -f.out3()
+		var d3 := f.dir3()
+		var angle := atan2(d3.cross(inward).y, d3.dot(inward)) * 0.92
+		(leaves as Array).append({"mesh": _commit_leaf(mb, style), "kind": "hinge", "pivot": pivot, "angle": angle,
+			"door": (o.u0 + o.u1) * 0.5, "facade": f.index})
+		mb = main
 	# Piédroits en blocs alternés et claveaux.
 	var row := 0
 	var y := y0
@@ -733,7 +776,7 @@ static func _lattice_window(mb: BastideMeshBuilder, layout: BastideBuildingLayou
 	var y0: float = o.y0
 	var y1: float = o.y1
 	var wood := bs.timber_color.lightened(0.06)
-	var depth := -0.12 if real_hole else 0.01
+	var depth := WINDOW_DEPTH_LATTICE if real_hole else 0.01
 	if real_hole:
 		_reveals(mb, f, u0, u1, y0, y1, depth, wood.darkened(0.2), grid, true)
 	# Papier et son quadrillage.
@@ -771,25 +814,36 @@ static func _lattice_window(mb: BastideMeshBuilder, layout: BastideBuildingLayou
 ## Porte coulissante : deux vantaux décalés (bas en planches, haut à claire-voie sur
 ## papier), linteau de bois, pierre de seuil et, selon la seed, un noren.
 static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
-		o: Dictionary, bs: BastideBuildingStyle, ws: BastideWallStyle, grid: Array) -> void:
+		o: Dictionary, bs: BastideBuildingStyle, ws: BastideWallStyle, grid: Array, leaves: Variant = null,
+		style: BastideStyle = null) -> void:
 	var u0: float = o.u0
 	var u1: float = o.u1
 	var y0: float = o.y0
 	var y1: float = o.y1
 	var wood := bs.timber_color.lightened(0.08)
-	var depth := -0.16
+	var depth := DOOR_DEPTH_SLIDING
 	_reveals(mb, f, u0, u1, y0, y1, depth, wood.darkened(0.25), grid, false)
 	_reveal_h(mb, f, _between(grid[0], u0, u1), y1, depth, Vector3.DOWN, wood.darkened(0.3), wood.darkened(0.45))
-	# Fond sombre (entrée).
+	# Fond sombre (entrée) ; aucun quand on peut entrer.
 	var dark := Color(0.06, 0.05, 0.045)
-	mb.add_quad(ROLE_BODY, f.point(u0, y0, depth - 0.03), f.point(u1, y0, depth - 0.03), f.point(u1, y1, depth - 0.03),
-		f.point(u0, y1, depth - 0.03), f.out3(), dark, dark, dark, dark)
+	if leaves == null:
+		mb.add_quad(ROLE_BODY, f.point(u0, y0, depth - 0.03), f.point(u1, y0, depth - 0.03), f.point(u1, y1, depth - 0.03),
+			f.point(u0, y1, depth - 0.03), f.out3(), dark, dark, dark, dark)
 	# Deux vantaux : le gauche fermé, le droit à moitié ouvert (glissé derrière).
+	# Porte qui s'ouvre : les deux fermés, chacun dans son maillage ; ils glissent
+	# dans l'épaisseur du mur, de part et d'autre, sans passer derrière une fenêtre.
 	var w := (u1 - u0) * 0.5
-	var leaves := [[u0, u0 + w + 0.03, depth + 0.07], [u0 + w * 1.55, u1, depth + 0.035]]
+	var panes := [[u0, u0 + w + 0.03, depth + 0.07], [u0 + w * 1.55, u1, depth + 0.035]]
+	if leaves != null:
+		panes = [[u0, u0 + w + 0.03, depth + 0.07], [u0 + w - 0.03, u1, depth + 0.035]]
+	var room := _pocket_room(layout, f, o)
 	var paper := bs.paper_color
 	var low := y0 + minf(0.75, (y1 - y0) * 0.38)
-	for leaf: Array in leaves:
+	var main := mb
+	for li in panes.size():
+		var leaf: Array = panes[li]
+		if leaves != null:
+			mb = BastideMeshBuilder.new()
 		var a: float = leaf[0]
 		var b: float = leaf[1]
 		var d: float = leaf[2]
@@ -805,6 +859,10 @@ static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout,
 		# Haut : papier et lattes.
 		mb.add_quad(ROLE_PAPER, f.point(a + fw, low, d - 0.015), f.point(b - fw, low, d - 0.015),
 			f.point(b - fw, y1 - fw, d - 0.015), f.point(a + fw, y1 - fw, d - 0.015), f.out3(), paper.darkened(0.08), paper.darkened(0.08), paper, paper)
+		if leaves != null:
+			# Vu de dedans aussi (le vantail se voit des deux côtés une fois entré).
+			mb.add_quad(ROLE_PAPER, f.point(a + fw, low, d - 0.022), f.point(b - fw, low, d - 0.022),
+				f.point(b - fw, y1 - fw, d - 0.022), f.point(a + fw, y1 - fw, d - 0.022), -f.out3(), paper, paper, paper, paper)
 		var bars := maxi(3, roundi((b - a - 2.0 * fw) / bs.lattice_spacing))
 		for i in range(1, bars):
 			var u := lerpf(a + fw, b - fw, float(i) / bars)
@@ -815,6 +873,11 @@ static func _sliding_door(mb: BastideMeshBuilder, layout: BastideBuildingLayout,
 		_wood_block(mb, f, a + fw, b - fw, y1 - fw, y1, d - 0.025, d + 0.01, wood)
 		_wood_block(mb, f, a + fw, b - fw, y0, y0 + fw, d - 0.025, d + 0.01, wood)
 		_wood_block(mb, f, a + fw, b - fw, low - 0.025, low + 0.025, d - 0.02, d + 0.008, wood)
+		if leaves != null:
+			var slide := minf(b - a - 0.12, room[li])
+			(leaves as Array).append({"mesh": _commit_leaf(mb, style), "kind": "slide",
+				"slide": f.dir3() * (-slide if li == 0 else slide), "door": (o.u0 + o.u1) * 0.5, "facade": f.index})
+			mb = main
 	# Linteau et montants.
 	var beam := bs.timber_color
 	_wood_block(mb, f, u0 - 0.14, u1 + 0.14, y1, y1 + 0.16, -0.05, 0.06, beam)
@@ -902,14 +965,26 @@ static func _pent_roof(mb: BastideMeshBuilder, col: BastideBuildResult, layout: 
 
 # --- Collisions --------------------------------------------------------------------------
 
-static func _facade_collision(col: BastideBuildResult, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade) -> void:
+static func _facade_collision(col: BastideBuildResult, layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade,
+		open_doors := false) -> void:
 	var th := layout.wall_thickness
 	var y0 := layout.base_y - FOOTING
 	var y1 := layout.eave_y
-	col.add_box([
-		f.point(0.0, y0), f.point(f.length, y0), f.point(f.length, y0, -th), f.point(0.0, y0, -th),
-		f.point(0.0, y1), f.point(f.length, y1), f.point(f.length, y1, -th), f.point(0.0, y1, -th),
-	])
+	var pieces: Array = [Vector2(0.0, f.length)]
+	if open_doors:
+		pieces = _cut_at_doors(f, pieces[0], 0.0)
+		for o in f.openings:
+			if o.kind == Kind.DOOR:
+				# Linteau au-dessus du passage.
+				var top: float = o.y1
+				col.add_box([
+					f.point(o.u0, top), f.point(o.u1, top), f.point(o.u1, top, -th), f.point(o.u0, top, -th),
+					f.point(o.u0, y1), f.point(o.u1, y1), f.point(o.u1, y1, -th), f.point(o.u0, y1, -th)])
+	for p: Vector2 in pieces:
+		col.add_box([
+			f.point(p.x, y0), f.point(p.y, y0), f.point(p.y, y0, -th), f.point(p.x, y0, -th),
+			f.point(p.x, y1), f.point(p.y, y1), f.point(p.y, y1, -th), f.point(p.x, y1, -th),
+		])
 	if f.gable:
 		for i in f.profile.size() - 1:
 			var p := f.profile[i]
@@ -917,3 +992,26 @@ static func _facade_collision(col: BastideBuildResult, layout: BastideBuildingLa
 			for tri in [[Vector2(p.x, y1), Vector2(q.x, y1), q], [Vector2(p.x, y1), q, p]]:
 				for v: Vector2 in tri:
 					col.collision_faces.append(f.point(v.x, v.y))
+
+
+## Place pour ranger chaque vantail dans le mur, à gauche et à droite de la porte :
+## jusqu'à la fenêtre voisine du rez-de-chaussée ou jusqu'à l'angle intérieur.
+static func _pocket_room(layout: BastideBuildingLayout, f: BastideBuildingLayout.Facade, door: Dictionary) -> Array:
+	var left: float = door.u0 - layout.wall_thickness - 0.1
+	var right: float = f.length - layout.wall_thickness - 0.1 - door.u1
+	for o in f.openings:
+		if o == door or o.floor != 0 or o.kind == Kind.ATTIC:
+			continue
+		if o.u1 <= door.u0:
+			left = minf(left, door.u0 - o.u1 - 0.18)
+		elif o.u0 >= door.u1:
+			right = minf(right, o.u0 - door.u1 - 0.18)
+	return [maxf(left, 0.0), maxf(right, 0.0)]
+
+
+static func _commit_leaf(mb: BastideMeshBuilder, style: BastideStyle) -> ArrayMesh:
+	return mb.commit({
+		ROLE_BODY: style.get_material(),
+		ROLE_WOOD: style.get_wood_material(),
+		ROLE_PAPER: style.get_paper_material(),
+	})

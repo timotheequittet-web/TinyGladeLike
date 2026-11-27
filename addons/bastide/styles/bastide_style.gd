@@ -63,6 +63,17 @@ const TILE_SHADER := preload("res://addons/bastide/shaders/bastide_tile.gdshader
 		material = value
 		emit_changed()
 
+## Sols mats des intérieurs (terre battue de l'entrée, pierre de marche).
+func get_earth_material() -> Material:
+	if _default_earth == null:
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.vertex_color_is_srgb = true
+		m.roughness = 0.95
+		_default_earth = m
+	return _default_earth
+
+
 ## Matériau des toits. Vide : celui des murs s'il est donné, sinon le shader pierre réglé pour des tuiles.
 @export var roof_material: Material:
 	set(value):
@@ -95,6 +106,7 @@ var _default_paper: Material
 var _default_foliage: Material
 var _default_gravel: Material
 var _default_paint: Material
+var _default_earth: Material
 
 
 func get_wall_style() -> BastideWallStyle:
@@ -251,3 +263,4 @@ func prepare() -> void:
 	get_foliage_material()
 	get_gravel_material()
 	get_paint_material()
+	get_earth_material()

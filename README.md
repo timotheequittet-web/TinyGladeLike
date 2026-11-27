@@ -34,15 +34,11 @@ Au lancement, la caméra descend doucement vers un petit hameau qui sort de terr
 - **Retoucher** : clique sur une structure pour la sélectionner (un liseré doré l'entoure). Des poignées apparaissent : tire un angle de maison (il reste d'équerre quand tu passes près de l'angle droit), tire le milieu d'un côté pour pousser tout le mur, ou tire un point de muret pour le courber. Clic droit sur une poignée : retirer ce point.
 - **Sélection** : **+ / −** (ou Page haut / Page bas) changent le nombre d'étages, **R** tire une autre variation (seed), **Suppr** retire la structure (elle s'enfonce dans le sol). Les boutons du panneau font la même chose.
 - **Style** : les boutons **Japonais / Médiéval** changent le style des prochaines constructions et celui de la structure sélectionnée.
-- **Rotation** (crans de 15°) : pendant qu'on tire une maison ou une terrasse, ou qu'on tient le clic sur un torii, la **molette** fait tourner ce qu'on pose (**Maj + molette** aussi, sans cliquer). **Maj + molette** fait tourner la structure sélectionnée autour de son centre ; ses engawa la suivent, et elle s'arrête au dernier cran libre si elle allait toucher une maison voisine. Près d'une maison, l'orientation s'aimante sur ses façades (parallèle ou d'équerre) à moins de 8° près. Un seul Ctrl+Z annule toute une rotation. Partie scriptée : `godot --path . -s tools/rotation_play.gd -- <dossier>`.
 - **Annuler / rétablir** : **Ctrl+Z / Ctrl+Y** (ou les boutons). Tout s'annule : tracés, agrandissements, retouches, étages, styles, suppressions.
 - **Caméra** : clic droit (ou molette) maintenu + souris pour tourner autour, molette pour zoomer vers ce que vise la souris, **ZQSD** ou les flèches pour glisser, **A / E** pour pivoter, **F** pour recentrer. Plus tu t'approches, plus elle se baisse à hauteur de promeneur. Tous ses mouvements sont amortis.
 - **Herbe et lumière** : une herbe haute et dense (`BastideGrass`) suit la caméra, foncée au pied et dorée aux pointes, couchée par des vagues de vent ; elle s'écarte toute seule des chemins, maisons, terrasses, murets et de l'étang, et reste plus rase en forêt. Lumière dorée de fin de journée, brume volumétrique où passent les rayons, léger flou au loin et halo doux.
 
 ![Herbe haute et lumière de fin de journée](docs/captures/ambiance_prairie.jpg)
-
-- **Jour et nuit** (touche **N**, ou le bouton **Heure**) : le temps passe (une journée en 16 minutes), du matin doré à la nuit bleutée sous la lune. **N** fait défiler les heures jusqu'au moment suivant (aube, midi, soir, nuit), **Maj + N** arrête ou relance le temps. Au crépuscule, les lanternes suspendues et de pierre s'allument : vraie lumière chaude à faible portée sur les murs et les poutres, halo doux, papier des shoji et vitres éclairés de l'intérieur. Le nombre de vraies lumières suit le niveau graphique (aucune en Bas, 6 en Moyen, 12 en Haut, 19 en Ultra, les plus proches de la caméra) ; les autres lanternes gardent leur papier lumineux et leur halo.
-- **Un hameau vécu** : lierre fin plaqué contre le bois et l'enduit, avec ses tiges ; enduit blanc cassé patiné (remontées d'humidité et mousse au-dessus des fondations, coulures sous l'égout) ; fleurs des champs qui débordent sur les dalles des chemins, fougères et hautes herbes au pied des murets, touffes fleuries dans la prairie, brins d'herbe de hauteurs variées, épis et petites fleurs, mousse sur les pierres.
 
 - **Promenade** (touche **P**) : la caméra descend à hauteur d'homme là où tu regardes. **ZQSD** pour marcher (**Maj** pour courir), clic droit + souris pour regarder. Troncs, murets et maisons arrêtent le pas, et on monte sur les terrasses. **P**, **Échap** ou molette arrière pour remonter.
 
@@ -81,20 +77,19 @@ Le nœud `BastideGraphics` (« Graphismes » dans la démo) règle tout le rendu
 
 | | Bas | Moyen | Haut | Ultra |
 |---|---|---|---|---|
-| Herbe (densité, étendue) | 35 %, 60 % | 60 %, 80 % | 100 % (20 brins/m², 26 m) | 120 %, 115 % |
-| Ombres | 70 m, 2 cascades | 110 m | 150 m | 180 m, plus douces |
-| SSAO / SSIL / brouillard volumétrique | non | SSAO | SSAO, brouillard | tout |
+| Herbe (densité, étendue) | 35 %, 60 % | 60 %, 80 % | 100 % | 140 %, 125 % |
+| Ombres | 70 m, 2 cascades | 110 m | 150 m | 200 m, douces |
+| SSAO / SSIL / brouillard volumétrique | non | SSAO | oui | oui, pleine résolution |
 | Résolution 3D (FSR) | 70 % | 85 % | 100 % | 100 % |
-| Anticrénelage | FXAA | FXAA | MSAA 2× | MSAA 2× |
-| Distances de détail | ×0,5 | ×0,75 | ×1 | ×1,3 |
+| Anticrénelage | FXAA | FXAA | MSAA 2× | MSAA 4× |
+| Distances de détail | ×0,5 | ×0,75 | ×1 | ×1,5 |
 | Images/s max | 60 | 60 | 60 | écran |
 
-- **F3** : compteur (images/s, temps carte graphique, temps des scripts, triangles, appels de dessin). Le temps des scripts est mesuré par le nœud lui-même : le moniteur `TIME_PROCESS` de Godot compte aussi l'attente de la carte graphique.
+- **F3** : compteur (images/s, temps carte graphique, triangles, appels de dessin).
 - **F4** : niveau suivant.
-- **F5** : style de l'herbe. « Peinte » (par défaut) : touffes vert vif façon dessin animé, colorées par la même prairie que le sol (`bastide_meadow.gdshaderinc` : grandes taches de couleur, ombres de nuages qui défilent, vagues de vent qui éclaircissent l'herbe). « Naturelle » : brins dorés de fin de journée.
 - Fenêtre en arrière-plan : 15 images/s, pour ne pas chauffer pour rien.
 
-Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 120 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).
+Niveaux de détail automatiques : l'herbe garde de moins en moins de brins (plus larges) avec la distance et disparaît au-delà de 150 m ; les arbres passent à une couronne allégée au-delà de 75 m, les sous-bois et fleurs disparaissent au loin ; le relief ne porte son ombre que par une grille 16 fois plus légère. Mesure couche par couche : `tools/perf_probe.gd` (voir Tests).
 
 ## Relief du terrain
 
@@ -143,6 +138,45 @@ rectangle une petite maison ou un kura, le reste une grande maison. En jeu, **G*
 (ou le bouton « Silhouette ») passe d'une silhouette à l'autre sur la maison
 sélectionnée ; le choix est enregistré avec elle. Le kura et la tour ne fument pas.
 
+## Entrer dans les maisons
+
+![Dans la grande maison : parquet, escalier fermé, shoji vus de dedans](docs/captures/interieur_maison_dedans.jpg)
+
+En promenade (**P**), on entre dans toutes les maisons : la porte coulisse toute seule
+quand on s'en approche (une porte médiévale pivote vers l'intérieur), on passe le
+seuil et on monte l'escalier jusqu'en haut. Pas encore de mobilier : du parquet et
+des escaliers.
+
+- **Rez-de-chaussée** : une petite entrée en terre battue (genkan) derrière la porte,
+  puis une marche (et une pierre de marche si elle est haute) pour monter sur le
+  plancher surélevé, au niveau du soubassement. Une maison de pierre a un plancher bas.
+- **Escaliers** : droits, raides comme dans les vraies maisons japonaises (environ
+  41°), fermés par un coffre de bois (hako-kaidan), avec main courante ; une trémie et
+  son garde-corps à l'étage. Ils ne se mettent jamais devant la porte, cachent le moins
+  de fenêtres possible et se rangent dans un angle. Dans une tour, chaque volée change
+  de mur pour ne pas mordre la trémie du dessous.
+- **Selon la silhouette** : grande maison et kura ont un étage, la tour trois niveaux,
+  la petite maison un seul (pas d'escalier).
+- **Murs et toit vus de dedans** : enduit, poteaux et bandeaux de bois, papier des
+  shoji qui laisse passer le jour, solives sous les planchers, chevrons sous le toit.
+  Une lumière douce s'allume quand on est dedans.
+- **Sur une pente**, la maison est posée sur un socle : des marches de pierre
+  descendent de la porte jusqu'au sol.
+
+**Rien ne coûte tant qu'on n'entre pas.** L'intérieur n'existe pas en vue
+d'ensemble. En promenade, les quatre maisons les plus proches (à moins de 14 m)
+reçoivent le leur, calculé sur un thread de fond, et le perdent au-delà de 22 m.
+Le reste du temps, la maison garde son maillage habituel (portes fermées) et sa
+collision pleine.
+
+Dans l'éditeur, coche **Preview Interior** sur un `BastideBuilding` pour voir son
+intérieur, portes ouvertes. Dans ton jeu, la caméra de promenade crée toute seule un
+nœud `BastideInteriors` ; poses-en un toi-même pour régler les distances.
+
+Le plan de l'intérieur (`BastideInteriorLayout` : niveaux, pièces, trémies, volées)
+est séparé de son dessin (`BastideInteriorMesher`). Des cloisons, du mobilier ou une
+aile ajoutée quand un village s'agrandit pourront s'y greffer sans toucher aux escaliers.
+
 ## Vie du hameau
 
 ![Fumée sur le toit, lanternes, papillons](docs/captures/vie_hameau.jpg)
@@ -163,8 +197,6 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 
 ![L'étang du hameau : nénuphars, iris, rochers moussus et ponton](docs/captures/etang_rive.jpg)
 
-![Le ponton : la terrasse du hameau avance sur l'étang](docs/captures/etang_ponton.jpg)
-
 ![Une source chaude tracée à la souris : eau laiteuse, cercle de pierres sombres et vapeur](docs/captures/etang_onsen.jpg)
 
 - **Étang** (touche **J**) : maintiens le clic et fais le tour d'une zone. Pendant le tracé, l'encre montre déjà la rive arrondie. Relâche : le sol se creuse et l'eau apparaît. **V** change la sorte : **étang de jardin**, **source chaude** (onsen) ou **mare sauvage**.
@@ -173,7 +205,6 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 - **L'eau** : couleur selon la vraie profondeur (on voit le fond près du bord, l'eau se ferme au milieu), réfraction, reflets du ciel au ras de l'eau, rides poussées par le vent, reflets dansants sur le fond, liseré clair contre la rive.
 - **Rives** : groupes de rochers moussus posés sur les avancées de la berge (ishi-gumi), une plage de galets clairs (suhama), des pierres qui bordent le reste avec des trous. Le fond et la berge mouillée changent de couleur.
 - **Vie** : iris et roseaux les pieds dans l'eau, nénuphars et lotus roses ou blancs, hortensias et azalées sur la berge, fougères au pied des rochers, et des **carpes koï** (kohaku, ogon, showa) qui tournent lentement sous la surface.
-- **Ponton** : une terrasse posée au bord de l'étang avance sur l'eau par une jetée de planches sur pilotis, avec deux poteaux d'amarrage au bout (et une marche si la terrasse est plus haute).
 - **Ponts** : un chemin qui traverse l'eau reçoit tout seul des **pierres de gué** (passage court ou coin de l'étang), un **pont arqué** en bois avec garde-corps et giboshi (bras d'eau), ou une **passerelle en zigzag** (yatsuhashi) sur une longue traversée. Le gravier noyé du chemin disparaît.
 - **Source chaude** : eau laiteuse vert d'eau, cernée de rochers sombres, vapeur qui monte. **Mare sauvage** : eau plus sombre, roseaux, beaucoup de nénuphars, peu de pierres.
 - Les voisins s'adaptent : pas d'herbe dans l'eau, ni plante du jardin, ni arbre de forêt ; les structures posées autour se reposent sur la berge creusée.
@@ -186,13 +217,11 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 
 ![Potager du hameau : planches de choux, daikon, negi, aubergines et potirons, clôture de bambou](docs/captures/champ_potager.jpg)
 
-![La cabane à outils du potager, ouverte sur les planches d'aubergines](docs/captures/champ_cabane.jpg)
-
 ![Champ de thé : longues haies arrondies qui suivent la pente](docs/captures/champ_the.jpg)
 
 - **Champ** (touche **H**) : maintiens le clic et fais le tour d'une zone, relâche. **V** change la sorte : **potager**, **rizière** ou **champ de thé**.
 - **Rangs qui suivent la pente** : sur une pente, les rangs suivent les courbes de niveau ; sur le plat, l'axe long du champ.
-- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) un épouvantail en kimono et chapeau de paille et, dans les grands potagers, une cabane à outils en planches près de l'entrée (houe, râteau, panier, sacs, seau).
+- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) et un épouvantail en kimono et chapeau de paille.
 - **Rizière** : la pente est taillée en **terrasses de niveau** (tanada), retenues par des murets de pierres sèches. Chaque terrasse est une nappe d'eau peu profonde qui renvoie le ciel, bordée de levées herbues ; d'autres levées la recoupent en rizières. Le riz est repiqué en lignes. Sur le plat, un damier de rizières.
 - **Thé** : de longues haies taillées en arrondi, feuillage serré avec ses jeunes pousses claires, de la paille entre les rangs et des ventilateurs antigel sur leurs mâts.
 - **Le sol** est abaissé sous le champ (déblai des terrasses compris) et la terre du champ est posée par-dessus ; ses bords descendent en talus ou en muret. L'herbe, les forêts, les massifs et le jardin automatique évitent les champs ; un chemin qui traverse un potager passe entre les planches.
@@ -395,7 +424,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (371 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (484 vérifications, dont les intérieurs (escaliers, trémies, portes franchissables), dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd
@@ -437,6 +466,12 @@ Et celle des cultures (potager tracé avec la touche H, rizière avec V, sol aba
 godot --path . -s tools/farm_play.gd -- <dossier_des_captures>
 ```
 
+Et celle des intérieurs (on entre dans les quatre silhouettes, la porte s'ouvre, on monte jusqu'en haut, le garde-corps retient, tout disparaît quand on remonte). Elle marche aussi en `--headless` :
+
+```
+godot --path . --fixed-fps 60 -s tools/interior_play.gd -- <dossier_des_captures>
+```
+
 Sous Windows, remplace `godot` par le chemin de ton exécutable, par exemple `C:\Users\timot\Documents\Godot\Godot_v4.7.2-stable_win64.exe`.
 
 ## Organisation
@@ -454,6 +489,7 @@ addons/bastide/
     kit/         kit nature (arbres d'Onsen à couronnes peintes) et forêts
     water/       jardins d'eau : forme de la rive, niveau, creusement du relief, rochers, plantes, koï, ponts
     farm/        cultures : grille de terre, planches et légumes, rizières en terrasses, haies de thé
+    interior/    intérieurs : niveaux, entrée, escaliers et trémies (plan pur)
     terrain/     relief (grille de hauteurs, plans d'eau) et pose des structures dessus
     mesh/        construction des meshes multi-matériaux
   styles/      Resources de style (mur, bâtiment, toit, abords) et presets

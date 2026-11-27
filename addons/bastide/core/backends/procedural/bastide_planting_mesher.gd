@@ -44,6 +44,36 @@ static func footprint(item: Dictionary) -> float:
 			return item["size"] * 0.8
 
 
+## Rayon de la couronne d'un arbre de jardin (m), selon sa hauteur : ce qu'il
+## faut laisser entre le tronc et les murs pour que les branches restent dehors.
+static func crown_reach(type: String, height: float) -> float:
+	match type:
+		MAPLE:
+			return height * 0.74
+		SAKURA:
+			return height * 0.7
+		PINE:
+			return height * 0.58
+	return 0.0
+
+
+## Un arbre trop près d'une maison est rapetissé pour que sa couronne ne traverse
+## pas les murs ; faux s'il faudrait le rendre plus petit que `min_height`.
+static func fit_tree(item: Dictionary, ctx: BastideGardenContext, min_height := 2.0) -> bool:
+	var reach := crown_reach(String(item["type"]), float(item["size"]))
+	if reach <= 0.0 or ctx == null or ctx.houses.is_empty():
+		return true
+	var p: Vector3 = item["pos"]
+	var room := ctx.house_clearance(Vector2(p.x, p.z), reach + 0.5) - 0.25
+	if room >= reach:
+		return true
+	var h: float = float(item["size"]) * room / reach
+	if h < min_height:
+		return false
+	item["size"] = h
+	return true
+
+
 ## Espèce d'arbre selon les poids du style.
 static func tree_species(gs: BastideGardenStyle, key: int) -> String:
 	var w := gs.tree_weights
@@ -73,6 +103,8 @@ static func _try(items: Array, item: Dictionary, ctx: BastideGardenContext, chec
 	var r := footprint(item)
 	if check and ctx.blocked(Vector2(p.x, p.z), r):
 		return false
+	if check and not fit_tree(item, ctx):
+		return false
 	for o: Dictionary in items:
 		var q: Vector3 = o["pos"]
 		if Vector2(p.x - q.x, p.z - q.z).length() < (r + footprint(o)) * spacing:
@@ -95,7 +127,11 @@ static func plan_planting(points: PackedVector3Array, seed: int, gs: BastideGard
 		var p := points[0]
 		var k := BastideRng.key(seed, "tree")
 		var type := tree_species(gs, k)
-		items.append(_item(type, p, tree_height(type, k), k))
+		var tree := _item(type, p, tree_height(type, k), k)
+		# Arbre posé à la main : on le garde, au pire tout petit.
+		fit_tree(tree, ctx, 0.0)
+		tree["size"] = maxf(tree["size"], 1.2)
+		items.append(tree)
 		# Sous-bois : quelques herbes, fougères et une pierre au pied.
 		for i in 5:
 			var a := TAU * (float(i) / 5.0 + BastideGardenMesher.hs(k, 10 + i) * 0.1)
@@ -218,7 +254,19 @@ static func plan_garden(ctx: BastideGardenContext, seed: int, gs: BastideGardenS
 				if ctx.house_clearance(p2) > 1.0:
 					var type := MAPLE if BastideGardenMesher.h(k, 1) < 0.65 else BAMBOO
 					var size := tree_height(MAPLE, k) * 0.8 if type == MAPLE else 0.8
-					_try(items, _item(type, Vector3(p2.x, y, p2.y), size, k), ctx, true, 0.6)
+					if type == BAMBOO:
+						_try(items, _item(type, Vector3(p2.x, y, p2.y), size, k), ctx, true, 0.6)
+					else:
+						# L'érable recule dans l'angle jusqu'à ce que sa couronne tienne
+						# dehors ; sinon, un bosquet de bambous.
+						var placed := false
+						for d: float in [1.6, 2.3, 3.0, 3.7]:
+							var q2 := corner + m.normalized() * d
+							if _try(items, _item(type, Vector3(q2.x, y, q2.y), size, k), ctx, true, 0.6):
+								placed = true
+								break
+						if not placed:
+							_try(items, _item(BAMBOO, Vector3(p2.x, y, p2.y), 0.8, k), ctx, true, 0.6)
 		# Le long des façades : petites plantes basses, en groupes.
 		for i in n:
 			var a := fp[i]

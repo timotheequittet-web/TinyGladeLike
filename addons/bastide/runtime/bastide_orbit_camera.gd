@@ -53,6 +53,9 @@ var _goal_walk_pitch := 0.0
 var _bob := 0.0
 var _orbit_fov := 75.0
 var _eye_y := 0.0
+## En promenade, on entre dans les maisons proches (un BastideInteriors est créé
+## s'il n'y en a pas dans la scène).
+@export var enter_buildings := true
 
 
 func _ready() -> void:
@@ -211,6 +214,8 @@ func set_walking(on: bool) -> void:
 		_walk_pitch = -0.05
 		_goal_walk_pitch = -0.05
 		_orbiting = false
+		if enter_buildings:
+			_ensure_interiors()
 		var tw := create_tween()
 		tw.tween_property(self, "fov", walk_fov, 0.6).set_trans(Tween.TRANS_SINE)
 	else:
@@ -224,6 +229,35 @@ func set_walking(on: bool) -> void:
 		var tw := create_tween()
 		tw.tween_property(self, "fov", _orbit_fov, 0.6).set_trans(Tween.TRANS_SINE)
 	walking_changed.emit(on)
+
+
+## Position des pieds du promeneur (monde).
+func walker_position() -> Vector3:
+	return Vector3(_walk_pos.x, _eye_y, _walk_pos.z)
+
+
+## Place le promeneur (parties scriptées, téléportation).
+func place_walker(p: Vector3, yaw_deg := INF) -> void:
+	_walk_pos = Vector3(p.x, p.y, p.z)
+	_eye_y = p.y
+	_walk_vel = Vector3.ZERO
+	if is_finite(yaw_deg):
+		_goal_yaw = deg_to_rad(yaw_deg)
+		_yaw = _goal_yaw
+
+
+func _ensure_interiors() -> void:
+	if not is_inside_tree():
+		return
+	for n in get_tree().get_nodes_in_group(BastideInteriors.GROUP):
+		var bi := n as BastideInteriors
+		if bi.camera == null:
+			bi.camera = self
+		return
+	var bi := BastideInteriors.new()
+	bi.name = "Interieurs"
+	bi.camera = self
+	add_child(bi)
 
 
 func _walk_input(event: InputEvent) -> void:

@@ -216,10 +216,11 @@ func wall_clearance(p: Vector2) -> float:
 
 
 ## Distance au contour de la maison la plus proche (négative à l'intérieur).
-func house_clearance(p: Vector2) -> float:
+## `reach` : au-delà de cette distance des maisons, on renvoie INF sans calcul.
+func house_clearance(p: Vector2, reach := 2.0) -> float:
 	var best := INF
 	for h: Dictionary in houses:
-		if not (h["rect"] as Rect2).grow(2.0).has_point(p):
+		if not (h["rect"] as Rect2).grow(reach).has_point(p):
 			continue
 		var fp: PackedVector2Array = h["footprint"]
 		var d := INF

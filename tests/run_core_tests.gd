@@ -73,6 +73,12 @@ func _init() -> void:
 	_test_farm_build()
 	_test_farm_rice()
 	_test_farm_neighbours()
+	# Intérieurs.
+	_test_interior_plan()
+	_test_interior_stairs_rules()
+	_test_interior_meshes()
+	_test_interior_terrain()
+	_test_trees_stay_outside()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -725,9 +731,8 @@ func _test_stroke_union() -> void:
 # --- Étape 5 : décor ------------------------------------------------------------------
 
 ## Maison 10 × 6 m au style japonais et sa description pour le voisinage.
-func _garden_house() -> Dictionary:
+func _garden_house(pts := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])) -> Dictionary:
 	var st: BastideStyle = load(JAPANESE_PATH)
-	var pts := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])
 	var layout := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(pts, 5), st)
 	var anchors := BastideBuildingMesher.anchors(layout)
 	var fp := PackedVector3Array()
@@ -1587,3 +1592,200 @@ func _test_farm_neighbours() -> void:
 			if absf(t.origin.x) < 0.75:
 				on_path += 1
 	check(on_path == 0, "aucun légume sur le chemin qui traverse (%d)" % on_path)
+
+
+
+# --- Intérieurs ----------------------------------------------------------------------
+
+func _interior_for(shape: Array, kind: int, style_path: String, seed := 7) -> Array:
+	var spec := BastideBuildingSpec.new()
+	spec.footprint = PackedVector2Array(shape)
+	spec.seed = seed
+	var st := BastideSilhouette.style_for(load(style_path), kind)
+	var layout := BastideBuildingGenerator.generate(spec, st)
+	return [layout, BastideInteriorPlanner.plan(layout, st), st]
+
+
+const JP_PATH := "res://addons/bastide/styles/presets/japanese_wood.tres"
+const TOWER_BASE := [Vector2(0, 0), Vector2(4.6, 0), Vector2(4.6, 4.6), Vector2(0, 4.6)]
+const KURA_BASE := [Vector2(0, 0), Vector2(6.8, 0), Vector2(6.8, 4.4), Vector2(0, 4.4)]
+const SMALL_BASE := [Vector2(0, 0), Vector2(6, 0), Vector2(6, 5), Vector2(0, 5)]
+
+
+func _test_interior_terrain() -> void:
+	print("Intérieurs : les sols restent au-dessus du terrain")
+	var spec := BastideBuildingSpec.new()
+	spec.footprint = PackedVector2Array(RECT)
+	spec.seed = 7
+	var st := BastideSilhouette.style_for(load(JP_PATH), BastideSilhouette.Kind.HOUSE)
+	var layout := BastideBuildingGenerator.generate(spec, st)
+	var flat := BastideInteriorPlanner.plan(layout, st, -0.05)
+	check(flat.genkan_y >= -0.05 + 0.05 and is_equal_approx(flat.genkan_y, layout.base_y + 0.03),
+		"terrain plus bas que l'entrée : rien ne change (%.2f m)" % flat.genkan_y)
+	var bump := BastideInteriorPlanner.plan(layout, st, 0.2)
+	check(bump.genkan_y >= 0.25, "une bosse sous la maison : l'entrée passe au-dessus (%.2f m)" % bump.genkan_y)
+	check(bump.levels[0].y - bump.genkan_y >= 0.12 and bump.levels[0].y >= 0.3,
+		"… et le parquet reste plus haut que l'entrée (%.2f m)" % bump.levels[0].y)
+	check(bump.flights.size() == flat.flights.size(), "… l'escalier monte toujours à l'étage")
+
+
+func _test_trees_stay_outside() -> void:
+	print("Décor : les branches des arbres ne traversent pas les murs")
+	var gs := (load(JAPANESE_PATH) as BastideStyle).get_garden_style()
+	var house := _garden_house()
+	var ctx := BastideGardenContext.from_entries([house])
+	# Maison en L : l'angle rentrant reçoit un arbre.
+	var l_ctx := BastideGardenContext.from_entries([_garden_house(PackedVector3Array([Vector3(0, 0, 0), Vector3(12, 0, 0),
+		Vector3(12, 0, 5), Vector3(6, 0, 5), Vector3(6, 0, 10), Vector3(0, 0, 10)]))])
+	var worst := INF
+	var trees := 0
+	for seed in 40:
+		for it: Dictionary in BastidePlantingMesher.plan_garden(l_ctx, seed, gs)["items"]:
+			var r := BastidePlantingMesher.crown_reach(String(it["type"]), float(it["size"]))
+			if r <= 0.0:
+				continue
+			trees += 1
+			var p: Vector3 = it["pos"]
+			worst = minf(worst, l_ctx.house_clearance(Vector2(p.x, p.z), 10.0) - r)
+	check(trees == 0 or worst >= 0.0, "jardins auto : couronnes hors des murs (%d arbres, marge %.2f m)" % [trees, worst])
+	# Un arbre planté contre le mur : rapetissé, sa couronne reste dehors.
+	var spot := Vector3(5, 0, -1.4)
+	var one := BastidePlantingMesher.plan_planting(PackedVector3Array([spot]), 3, gs, ctx)
+	var t: Dictionary = one[0]
+	var reach := BastidePlantingMesher.crown_reach(String(t["type"]), float(t["size"]))
+	check(ctx.house_clearance(Vector2(spot.x, spot.z), 10.0) - reach >= -0.01 or float(t["size"]) <= 1.21,
+		"arbre posé à 1,4 m d'un mur : plus petit (%.1f m), couronne dehors" % float(t["size"]))
+
+
+func _test_interior_plan() -> void:
+	print("Intérieurs : niveaux et escaliers")
+	var cases := [["grande maison", RECT, BastideSilhouette.Kind.HOUSE], ["maison en L", L_SHAPE, BastideSilhouette.Kind.HOUSE],
+		["petite maison", SMALL_BASE, BastideSilhouette.Kind.SMALL], ["kura", KURA_BASE, BastideSilhouette.Kind.KURA],
+		["tour", TOWER_BASE, BastideSilhouette.Kind.TOWER]]
+	for path in [JP_PATH, MEDIEVAL_PATH]:
+		var tag := "japonais" if path == JP_PATH else "médiéval"
+		for c: Array in cases:
+			var r := _interior_for(c[1], c[2], path)
+			var layout: BastideBuildingLayout = r[0]
+			var il: BastideInteriorLayout = r[1]
+			check(il.levels.size() == layout.floors, "%s %s : un plancher par étage (%d)" % [tag, c[0], il.levels.size()])
+			check(il.flights.size() == layout.floors - 1, "%s %s : un escalier par étage à monter (%d) %s" % [tag, c[0], il.flights.size(), il.notes])
+			check(not il.door.is_empty(), "%s %s : la porte est connue de l'intérieur" % [tag, c[0]])
+			if path == JP_PATH:
+				check(not il.genkan.is_empty() and il.levels[0].y - il.genkan_y > 0.25,
+					"%s %s : entrée en contrebas et plancher surélevé (%.2f m)" % [tag, c[0], il.levels[0].y - il.genkan_y])
+	var a: BastideInteriorLayout = _interior_for(RECT, BastideSilhouette.Kind.HOUSE, JP_PATH, 5)[1]
+	var b: BastideInteriorLayout = _interior_for(RECT, BastideSilhouette.Kind.HOUSE, JP_PATH, 5)[1]
+	check(a.flights[0].start == b.flights[0].start and a.flights[0].dir == b.flights[0].dir, "même maison, même escalier")
+
+
+func _test_interior_stairs_rules() -> void:
+	print("Intérieurs : règles des escaliers")
+	for c: Array in [[RECT, BastideSilhouette.Kind.HOUSE], [L_SHAPE, BastideSilhouette.Kind.HOUSE],
+			[KURA_BASE, BastideSilhouette.Kind.KURA], [TOWER_BASE, BastideSilhouette.Kind.TOWER], [U_SHAPE, BastideSilhouette.Kind.HOUSE]]:
+		for path in [JP_PATH, MEDIEVAL_PATH]:
+			var r := _interior_for(c[0], c[1], path, 11)
+			var layout: BastideBuildingLayout = r[0]
+			var il: BastideInteriorLayout = r[1]
+			var name := "%s, %d côtés" % ["japonais" if path == JP_PATH else "médiéval", c[0].size()]
+			var grown := BastidePolygon.offset(il.inner, -0.03)
+			for fl: BastideInteriorLayout.Flight in il.flights:
+				check(fl.riser() <= BastideInteriorPlanner.RISER_MAX + 1e-4 and fl.riser() > 0.15,
+					"%s : marches de %.0f cm" % [name, fl.riser() * 100.0])
+				# Pente gravissable par le promeneur (normale assez verticale).
+				var slope := atan2(fl.riser(), fl.tread)
+				check(cos(slope) > 0.62, "%s : pente de %.0f°" % [name, rad_to_deg(slope)])
+				check(BastideInteriorPlanner.inside(fl.rect(0.3, 0.3), grown), "%s : la volée tient dans la maison" % name)
+				if not il.genkan.is_empty() and fl.from_level == 0:
+					check(not BastideInteriorPlanner.overlaps(fl.rect(0.3, 0.3), il.genkan), "%s : rien devant la porte" % name)
+			for k in range(1, il.flights.size()):
+				var lo: BastideInteriorLayout.Flight = il.flights[k - 1]
+				var hi: BastideInteriorLayout.Flight = il.flights[k]
+				check(not BastideInteriorPlanner.overlaps(hi.rect(0.3, 0.3), lo.rect(0.0, 0.5)),
+					"%s : la volée %d ne mord pas la trémie du dessous" % [name, k])
+			if il.flights.size() == layout.floors - 1 and layout.floors > 1:
+				var up: BastideInteriorLayout.Level = il.levels[1]
+				var area := 0.0
+				for p: PackedVector2Array in up.pieces:
+					area += BastidePolygon.signed_area(p)
+				var hole: float = BastidePolygon.signed_area(up.holes[0])
+				check(area < BastidePolygon.signed_area(il.inner) - hole * 0.8, "%s : la trémie est découpée dans le plancher" % name)
+				check(up.railings.size() == 2, "%s : garde-corps autour de la trémie" % name)
+
+
+func _test_interior_meshes() -> void:
+	print("Intérieurs : maillages et collisions")
+	var r := _interior_for(RECT, BastideSilhouette.Kind.HOUSE, JP_PATH)
+	var layout: BastideBuildingLayout = r[0]
+	var il: BastideInteriorLayout = r[1]
+	var st: BastideStyle = r[2]
+	var res := BastideInteriorMesher.build(il, layout, st)
+	check(res.mesh != null and res.mesh.get_surface_count() >= 3, "l'intérieur a son maillage (%d surfaces)" % (res.mesh.get_surface_count() if res.mesh else 0))
+	check(int(res.stats["triangles"]) < 12000, "intérieur léger (%d triangles)" % int(res.stats["triangles"]))
+	check(res.collision_faces.size() % 3 == 0 and res.collision_faces.size() > 30, "planchers et escaliers ont une collision")
+	check((res.anchors["lights"] as PackedVector3Array).size() == il.levels.size(), "une lumière douce par niveau")
+	var closed := BastideBuildingMesher.build(layout, st, true, false)
+	var open := BastideBuildingMesher.build(layout, st, true, true)
+	check(not closed.anchors.has("door_leaves"), "de loin : la maison habituelle, sans vantaux à part")
+	check((open.anchors["door_leaves"] as Array).size() == 2, "de près : deux vantaux de shoji qui coulissent")
+	for d: Dictionary in open.anchors["door_leaves"]:
+		check((d["slide"] as Vector3).length() > 0.5, "un vantail glisse de %.2f m dans le mur" % (d["slide"] as Vector3).length())
+	# La porte ouverte est franchissable : un rayon horizontal passe au milieu du seuil.
+	var door: Dictionary = open.anchors["doors"][0]
+	var p: Vector3 = door["pos"] + Vector3(0, 1.0, 0)
+	var dir: Vector3 = -(door["out"] as Vector3)
+	check(_ray_hits(closed.collision_faces, p + (door["out"] as Vector3), dir, 2.0), "porte fermée : le mur arrête le pas")
+	check(not _ray_hits(open.collision_faces, p + (door["out"] as Vector3), dir, 2.0), "porte ouverte : on passe")
+	# Depuis l'entrée, sous le niveau du parquet : on voit le bord du plancher, pas le dessous.
+	var lv0: BastideInteriorLayout.Level = il.levels[0]
+	var in2: Vector2 = il.door["inward"]
+	var inward := Vector3(in2.x, 0, in2.y)
+	var eye_y := lerpf(il.genkan_y, lv0.y, 0.8)
+	var seen := 0
+	for k in 5:
+		var dp: Vector2 = il.door["pos"]
+		var from := Vector3(dp.x, eye_y, dp.y) + inward * 0.25 + Vector3(-inward.z, 0, inward.x) * (k - 2) * 0.15
+		if _front_hit(res.mesh, from, inward, 8.0):
+			seen += 1
+	check(seen == 5, "entrée : le bord du plancher se voit, on ne voit pas dessous (%d/5)" % seen)
+	var med := _interior_for(RECT, BastideSilhouette.Kind.HOUSE, MEDIEVAL_PATH)
+	var mopen := BastideBuildingMesher.build(med[0], med[2], true, true)
+	check((mopen.anchors["door_leaves"] as Array).size() == 1 and mopen.anchors["door_leaves"][0]["kind"] == "hinge",
+		"médiéval : une porte de bois qui pivote")
+
+
+## Vrai si le premier triangle du maillage touché par le rayon est tourné vers lui (visible).
+func _front_hit(mesh: Mesh, from: Vector3, dir: Vector3, length: float) -> bool:
+	var best := INF
+	var front := false
+	for si in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		var count := idx.size() if not idx.is_empty() else v.size()
+		for t in range(0, count, 3):
+			var i0 := idx[t] if not idx.is_empty() else t
+			var i1 := idx[t + 1] if not idx.is_empty() else t + 1
+			var i2 := idx[t + 2] if not idx.is_empty() else t + 2
+			var hit: Variant = Geometry3D.ray_intersects_triangle(from, dir, v[i0], v[i1], v[i2])
+			if hit == null:
+				hit = Geometry3D.ray_intersects_triangle(from, dir, v[i0], v[i2], v[i1])
+			if hit == null:
+				continue
+			var d := from.distance_to(hit)
+			if d < best and d <= length:
+				best = d
+				front = (n[i0] + n[i1] + n[i2]).dot(dir) < 0.0
+	return front
+
+
+func _ray_hits(faces: PackedVector3Array, from: Vector3, dir: Vector3, length: float) -> bool:
+	for i in range(0, faces.size(), 3):
+		var hit: Variant = Geometry3D.ray_intersects_triangle(from, dir, faces[i], faces[i + 1], faces[i + 2])
+		if hit != null and from.distance_to(hit) <= length:
+			return true
+		hit = Geometry3D.ray_intersects_triangle(from, dir, faces[i], faces[i + 2], faces[i + 1])
+		if hit != null and from.distance_to(hit) <= length:
+			return true
+	return false

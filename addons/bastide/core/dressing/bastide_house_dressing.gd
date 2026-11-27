@@ -10,7 +10,8 @@ extends RefCounted
 ## Calcul pur à partir des ancres de la génération (BastideBuildingMesher.anchors) :
 ## tout est rendu dans le repère local de la maison, prêt à être posé à côté d'elle.
 ## Résultat : {props: ArrayMesh (couleurs de sommet), paper: ArrayMesh (lanternes),
-## cloth: ArrayMesh, ivy: {mesh, mat}, berries: {mesh, mat}, plants: [{mesh, mat, xf: Array}]}.
+## cloth: ArrayMesh, ivy: {mesh, mat}, berries: {mesh, mat}, plants: [{mesh, mat, xf: Array}],
+## lights: PackedVector3Array (centres des lanternes, pour leurs lumières)}.
 
 ## Longueur dégagée devant et derrière chaque seuil (m).
 const DOOR_CLEAR := 1.6
@@ -51,7 +52,8 @@ static func build(anchors: Dictionary, seed: int) -> Dictionary:
 	var cloth := SurfaceTool.new()
 	cloth.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var plants := {}   # clé → {mesh, mat, xf: Array}
-	var ivy_pts := []   # [pos, normal, color]
+	var ivy_pts := []   # [pos, normale, taille, angle, couleur]
+	var lights := PackedVector3Array()   # centres des lanternes de papier
 	var berry_pts := []
 	var free := func(p: Vector3, margin: float) -> bool:
 		for d: Dictionary in doors:
@@ -84,6 +86,7 @@ static func build(anchors: Dictionary, seed: int) -> Dictionary:
 		var lp := dp + side * s * (hw + 0.45) + Vector3(0, minf(low_eave - base_y - 0.5, 2.35), 0)
 		_bracket(props, lp, out, 0.42)
 		_lantern(paper, props, lp + out * 0.42 + Vector3(0, -0.12, 0), 0.17, 0.44, r.randf() < 0.25)
+		lights.append(lp + out * 0.42 + Vector3(0, -0.12, 0))
 		# Pots de l'autre côté, contre le mur, hors de l'axe.
 		var pc := 2 + r.randi_range(0, 2)
 		for k in pc:
@@ -131,6 +134,7 @@ static func build(anchors: Dictionary, seed: int) -> Dictionary:
 			var lp := Vector3(a.x, y, a.z) + out * overhang * 0.55
 			_cord(props, lp + Vector3(0, 0.22, 0), eave_y - 0.05)
 			_lantern(paper, props, lp, 0.15, 0.38, r.randf() < 0.2)
+			lights.append(lp)
 	# --- Façades : lierre, plantes au pied, jardinières, bannières ---
 	var ivy_done := 0
 	var ivy_max := 1 + (1 if r.randf() < 0.45 else 0)
@@ -148,10 +152,16 @@ static func build(anchors: Dictionary, seed: int) -> Dictionary:
 		dir.y = 0.0
 		# Lierre : part d'un pied de mur, près d'un angle, et monte jusqu'à l'avant-toit.
 		if ivy_done < ivy_max and flen > 3.0:
-			var u := r.randf_range(0.25, 0.9) if r.randf() < 0.5 else flen - r.randf_range(0.25, 0.9)
-			var root := a + dir * u + out * 0.04
-			if free.call(root, 0.0):
-				_ivy(ivy_pts, root, dir, out, base_y, eave_y - 0.15, r)
+			# Le pied du lierre est contre le poteau d'angle : il monte le long du bois.
+			var from_start := r.randf() < 0.5
+			var u := r.randf_range(0.06, 0.16) if from_start else flen - r.randf_range(0.06, 0.16)
+			var root := a + dir * u
+			if free.call(root + out * 0.3, 0.0):
+				var wall := {"a": a, "dir": dir, "out": out, "len": flen, "posts": f.get("posts", PackedFloat32Array()),
+					"timber": bool(anchors.get("timber", true)), "base_y": base_y, "eave_y": eave_y,
+					"floor_h": floor_h, "floors": floors, "windows": windows, "inward": 1.0 if from_start else -1.0}
+				var ivy_top := (low_eave if bool(anchors.get("pent", false)) and floors > 1 else eave_y) - 0.12
+				_ivy(ivy_pts, props, root, wall, ivy_top, free, r)
 				ivy_done += 1
 				# Un buisson à baies pousse souvent au pied du lierre.
 				_berry_bush(berry_pts, add_plant, root + out * 0.5, r)
@@ -197,49 +207,219 @@ static func build(anchors: Dictionary, seed: int) -> Dictionary:
 				add_plant.call("flowers", BastideKitNature.tuft("flower", Color(1.0, 0.85, 0.9), 0.5), Transform3D(rot, pp))
 			else:
 				add_plant.call("fern_s", BastideKitNature.tuft("fern", Color.WHITE, 0.55), Transform3D(rot, pp))
-	var res := {"props": props.commit(), "paper": paper.commit(), "cloth": cloth.commit(), "plants": plants.values()}
+	var res := {"props": props.commit(), "paper": paper.commit(), "cloth": cloth.commit(), "plants": plants.values(),
+		"lights": lights}
 	if not ivy_pts.is_empty():
-		res["ivy"] = _cards("ivy/%d" % seed, ivy_pts, {"kind": "leaf", "green_only": true, "card": 0.3, "cover": 0.55, "depth": 0.03})
+		res["ivy"] = {"mesh": _ivy_leaves(ivy_pts), "mat": ivy_material()}
 	if not berry_pts.is_empty():
 		res["berries"] = _cards("berries/%d" % seed, berry_pts, {"kind": "bloom", "palette": [Color(0.5, 0.05, 0.1), Color(0.85, 0.15, 0.25)],
 			"card": 0.22, "cover": 0.5, "depth": 0.1})
 	return res
 
 
-## Lierre : quelques tiges qui montent en ondulant et se ramifient ; des feuilles
-## tout du long, plus fournies en bas, quelques rameaux qui retombent sous l'avant-toit.
-static func _ivy(pts: Array, root: Vector3, dir: Vector3, out: Vector3, y0: float, y1: float, r: RandomNumberGenerator) -> void:
-	var leaf := func(q: Vector3, tilt: float) -> void:
-		var c := Color(0.07, 0.15, 0.05).lerp(Color(0.24, 0.38, 0.1), r.randf())
-		pts.append([q + out * r.randf_range(0.04, 0.12), (out + Vector3(0, tilt, 0) + dir * r.randf_range(-0.4, 0.4)).normalized(), c])
-	var stems := 2 + r.randi_range(0, 2)
-	for s in stems:
-		var p := root + dir * r.randf_range(-0.35, 0.35)
-		p.y = y0 + r.randf_range(0.0, 0.2)
-		var drift := r.randf_range(-0.4, 0.4)
-		var top := lerpf(y0 + (y1 - y0) * 0.55, y1, r.randf())
-		var next_shoot := r.randf_range(0.3, 0.7)
-		while p.y < top:
-			var step := r.randf_range(0.16, 0.24)
-			p.y += step
-			p += dir * (drift * step + r.randf_range(-0.05, 0.05))
-			drift = clampf(drift + r.randf_range(-0.25, 0.25), -0.7, 0.7)
-			leaf.call(p + dir * r.randf_range(-0.12, 0.12), 0.3)
-			# Rameaux latéraux : la plante s'étale en nappe sur le mur, pas en colonne.
-			next_shoot -= step
-			if next_shoot <= 0.0:
-				next_shoot = r.randf_range(0.35, 0.8)
-				var sd := 1.0 if r.randf() < 0.5 else -1.0
-				var q := p
-				for j in r.randi_range(2, 5):
-					q += dir * sd * r.randf_range(0.14, 0.22) + Vector3(0, r.randf_range(-0.1, 0.05), 0)
-					leaf.call(q, 0.2)
-		# Rameaux qui pendent depuis le haut.
-		for i in r.randi_range(0, 2):
-			var hp := p + dir * r.randf_range(-0.5, 0.5)
-			for j in r.randi_range(2, 5):
-				hp += Vector3(0, -0.16, 0) + dir * r.randf_range(-0.04, 0.04)
-				leaf.call(hp, -0.1)
+## Lierre plaqué : une tige principale monte le long du poteau d'angle, des rameaux
+## partent à l'horizontale en éventail sur l'enduit (en contournant fenêtres et
+## portes), un rameau court sous la poutre d'égout et laisse pendre quelques brins.
+## Les tiges sont de fins cylindres brun-vert (props) ; les feuilles, de petites
+## cartes à plat contre le mur, à 1-3 cm du bois ou de l'enduit.
+## `leaves` reçoit [pos, normale, taille, angle, couleur].
+static func _ivy(leaves: Array, props: SurfaceTool, root: Vector3, wall: Dictionary, top: float,
+		free: Callable, r: RandomNumberGenerator) -> void:
+	var dir: Vector3 = wall["dir"]
+	var out: Vector3 = wall["out"]
+	var a: Vector3 = wall["a"]
+	var flen: float = wall["len"]
+	var inward: float = wall["inward"]
+	var y0: float = wall["base_y"]
+	var u_root := (root - a).dot(dir)
+	# Distance au nu de l'enduit à (u, y) : le bois (poteaux, poutres, bardage) avance.
+	var relief := func(u: float, y: float) -> float:
+		var d := 0.0
+		if bool(wall["timber"]):
+			if u < 0.24 or u > flen - 0.24:
+				d = 0.05
+			for pu: float in wall["posts"]:
+				if absf(u - pu) < 0.12:
+					d = 0.045
+			if y > float(wall["eave_y"]) - 0.4 or y < y0 + 0.85:
+				d = maxf(d, 0.062)
+			for k in range(1, int(wall["floors"])):
+				if absf(y - (y0 + k * float(wall["floor_h"]))) < 0.12:
+					d = maxf(d, 0.06)
+		return d
+	var at := func(u: float, y: float, lift: float) -> Vector3:
+		return a + dir * u + Vector3(0, y - a.y, 0) + out * (relief.call(u, y) + lift)
+	var blocked := func(u: float, y: float) -> bool:
+		if u < 0.03 or u > flen - 0.03 or y > top + 0.05:
+			return true
+		var p := a + dir * u + Vector3(0, y - a.y, 0)
+		for w: Dictionary in wall["windows"]:
+			if (w["out"] as Vector3).dot(out) < 0.9:
+				continue
+			var q := p - (w["pos"] as Vector3)
+			if absf(q.dot(dir)) < float(w["width"]) * 0.5 + 0.12 and absf(q.y) < float(w["height"]) * 0.5 + 0.12 \
+					and absf(q.dot(out)) < 0.5:
+				return true
+		return not free.call(p + out * 0.3, 0.0)
+	var leaf := func(u: float, y: float, size: float, young: float) -> void:
+		var c := Color(0.045, 0.11, 0.03).lerp(Color(0.1, 0.2, 0.04), r.randf())
+		c = c.lerp(Color(0.2, 0.3, 0.06), young * r.randf())
+		var n := (out + dir * r.randf_range(-0.25, 0.25) + Vector3(0, r.randf_range(0.0, 0.3), 0)).normalized()
+		leaves.append([at.call(u, y, r.randf_range(0.012, 0.03)), n, size * r.randf_range(0.8, 1.2), r.randf() * TAU, c])
+	var old_c := Color(0.15, 0.1, 0.065)
+	var young_c := Color(0.2, 0.24, 0.09)
+	# Tige principale : verticale, collée au poteau, quelques ondulations.
+	var main := PackedVector3Array()
+	var u := u_root
+	var y := y0 + 0.02
+	var stem_top := top - r.randf_range(0.0, 0.25)
+	var next_run := r.randf_range(0.2, 0.45)
+	var runners: Array = []   # [u, y, longueur]
+	while y < stem_top:
+		main.append(at.call(u, y, 0.008))
+		var step := r.randf_range(0.06, 0.09)
+		y += step
+		u = clampf(u + r.randf_range(-0.015, 0.015), 0.05, flen - 0.05)
+		var k := clampf((y - y0) / maxf(stem_top - y0, 0.5), 0.0, 1.0)
+		# Feuilles en quinconce, plus grandes et serrées en bas.
+		leaf.call(u + inward * r.randf_range(0.02, 0.09), y, lerpf(0.22, 0.16, k), k)
+		if r.randf() < 0.75 - k * 0.35:
+			leaf.call(u - inward * r.randf_range(0.0, 0.06), y + step * 0.5, lerpf(0.2, 0.14, k), k)
+		next_run -= step
+		if next_run <= 0.0:
+			next_run = r.randf_range(0.28, 0.6)
+			runners.append([u, y, lerpf(1.7, 0.6, k) * r.randf_range(0.6, 1.1)])
+	main.append(at.call(u, y, 0.008))
+	_stem(props, main, 0.014, 0.007, old_c, young_c)
+	# Rameaux horizontaux en éventail sur l'enduit (et le long des poutres basses).
+	for run: Array in runners:
+		var pts := PackedVector3Array()
+		var ru: float = run[0]
+		var ry: float = run[1]
+		var length: float = run[2]
+		var rise := r.randf_range(-0.12, 0.35)
+		var went := 0.0
+		pts.append(at.call(ru, ry, 0.008))
+		while went < length:
+			var step := r.randf_range(0.06, 0.09)
+			var nu := ru + inward * step
+			var ny := ry + step * rise + r.randf_range(-0.02, 0.02)
+			rise = clampf(rise + r.randf_range(-0.15, 0.15), -0.3, 0.5)
+			if blocked.call(nu, ny):
+				break
+			ru = nu
+			ry = ny
+			went += step
+			pts.append(at.call(ru, ry, 0.008))
+			var k := went / maxf(length, 0.1)
+			leaf.call(ru, ry + r.randf_range(-0.04, 0.05), lerpf(0.18, 0.12, k), 0.4 + k * 0.6)
+			if r.randf() < 0.45:
+				leaf.call(ru - inward * 0.03, ry + r.randf_range(0.03, 0.08), 0.13, k)
+		if pts.size() > 1:
+			_stem(props, pts, 0.008, 0.004, old_c.lerp(young_c, 0.4), young_c)
+	# Sous l'égout : un rameau suit la poutre, des brins pendent.
+	if y > top - 0.4:
+		var pts := PackedVector3Array()
+		var ru := u
+		var ry := top - r.randf_range(0.05, 0.15)
+		var length := r.randf_range(0.8, 2.4)
+		var went := 0.0
+		pts.append(at.call(ru, ry, 0.008))
+		var next_hang := r.randf_range(0.15, 0.4)
+		while went < length:
+			var step := r.randf_range(0.06, 0.09)
+			var nu := ru + inward * step
+			if nu < 0.05 or nu > flen - 0.05:
+				break
+			ru = nu
+			ry += r.randf_range(-0.012, 0.012)
+			went += step
+			pts.append(at.call(ru, ry, 0.008))
+			leaf.call(ru, ry + r.randf_range(-0.05, 0.03), 0.14, 0.7)
+			next_hang -= step
+			if next_hang <= 0.0:
+				next_hang = r.randf_range(0.25, 0.55)
+				var hang := PackedVector3Array([at.call(ru, ry, 0.012)])
+				var hy := ry
+				for j in r.randi_range(2, 6):
+					hy -= r.randf_range(0.07, 0.1)
+					if blocked.call(ru, hy):
+						break
+					hang.append(at.call(ru + r.randf_range(-0.01, 0.01), hy, 0.016))
+					leaf.call(ru + r.randf_range(-0.03, 0.03), hy, 0.12, 1.0)
+				if hang.size() > 1:
+					_stem(props, hang, 0.004, 0.003, young_c, young_c)
+		if pts.size() > 1:
+			_stem(props, pts, 0.008, 0.004, old_c.lerp(young_c, 0.3), young_c)
+
+
+## Tige : prisme fin à trois pans qui suit une polyligne, du rayon r0 au rayon r1.
+static func _stem(st: SurfaceTool, pts: PackedVector3Array, r0: float, r1: float, c0: Color, c1: Color) -> void:
+	var n := pts.size()
+	if n < 2:
+		return
+	var prev: Array = []
+	for i in n:
+		var t := float(i) / (n - 1)
+		var fwd := (pts[mini(i + 1, n - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		var side := fwd.cross(Vector3.UP if absf(fwd.y) < 0.9 else Vector3.RIGHT).normalized()
+		var up := side.cross(fwd).normalized()
+		var rr := lerpf(r0, r1, t)
+		var ring := []
+		for k in 3:
+			var ang := TAU * k / 3.0
+			ring.append(pts[i] + (side * cos(ang) + up * sin(ang)) * rr)
+		if not prev.is_empty():
+			var col := c0.lerp(c1, t)
+			for k in 3:
+				_quad(st, prev[k], prev[(k + 1) % 3], ring[(k + 1) % 3], ring[k], col)
+		prev = ring
+
+
+## Feuilles de lierre : petites cartes à plat contre le mur, texture de feuilles à
+## trois lobes (BastideKitNature.clump_tex("ivy")).
+static func _ivy_leaves(leaves: Array) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for e: Array in leaves:
+		var p: Vector3 = e[0]
+		var n: Vector3 = e[1]
+		var hs := float(e[2]) * 0.5
+		var ang: float = e[3]
+		var col: Color = e[4]
+		var t := n.cross(Vector3.UP).normalized()
+		if t.length_squared() < 0.5:
+			t = Vector3.RIGHT
+		var b := t.cross(n).normalized()
+		var tx := (t * cos(ang) + b * sin(ang)) * hs
+		var bx := (b * cos(ang) - t * sin(ang)) * hs
+		var cs := [p - tx - bx, p + tx - bx, p + tx + bx, p - tx + bx]
+		var uvs := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+		for k: int in [0, 1, 2, 0, 2, 3]:
+			st.set_color(col)
+			st.set_normal(n)
+			st.set_uv(uvs[k])
+			st.add_vertex(cs[k])
+	return st.commit()
+
+
+static var _ivy_mat: StandardMaterial3D
+
+static func ivy_material() -> StandardMaterial3D:
+	if _ivy_mat == null:
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = BastideKitNature.clump_tex("ivy")
+		m.vertex_color_use_as_albedo = true
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.roughness = 0.55
+		m.metallic_specular = 0.35
+		m.backlight_enabled = true
+		m.backlight = Color(0.12, 0.2, 0.05)
+		_ivy_mat = m
+	return _ivy_mat
 
 
 ## Buisson à baies : un petit buisson de feuillage et des grappes rouges dessus.

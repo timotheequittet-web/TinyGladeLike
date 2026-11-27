@@ -31,6 +31,11 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 
 	var lattice := bs.window_kind == BastideBuildingStyle.WindowKind.LATTICE
 	var sliding := bs.door_kind == BastideBuildingStyle.DoorKind.SLIDING
+	# Place de l'enduit dans la hauteur de la maison (shader : humidité et mousse au
+	# pied, ombre et salissures sous l'égout et sous les auvents des étages).
+	var plaster_bottom := layout.base_y + maxf(maxf(bs.plinth_height, bs.wainscot_height), 0.0)
+	mb.set_height_frame(ROLE_BODY, plaster_bottom, layout.eave_y, layout.base_y,
+			layout.floor_height if layout.pent_roof and layout.floors > 1 else 1000.0)
 	for f: BastideBuildingLayout.Facade in layout.facades:
 		var grid := _grid(layout, f, bs)
 		_plaster(mb, layout, f, grid[0], grid[1], bs)
@@ -107,7 +112,7 @@ static func anchors(layout: BastideBuildingLayout) -> Dictionary:
 					"width": o.u1 - o.u0, "height": float(o.y1) - float(o.y0), "floor": int(o.get("floor", 0))})
 	return {"doors": doors, "windows": windows, "facades": facades, "eave_y": layout.eave_y,
 		"floors": layout.floors, "floor_height": layout.floor_height, "footprint": layout.footprint,
-		"base_y": layout.base_y, "pent": layout.pent_roof,
+		"base_y": layout.base_y, "pent": layout.pent_roof, "timber": layout.timber,
 		"overhang": layout.roof.overhang if layout.roof else 0.5, "smoke": smoke_points(layout.roof)}
 
 

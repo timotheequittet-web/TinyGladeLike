@@ -77,6 +77,8 @@ func _init() -> void:
 	_test_interior_plan()
 	_test_interior_stairs_rules()
 	_test_interior_meshes()
+	_test_interior_terrain()
+	_test_trees_stay_outside()
 	print("")
 	print("%d vérifications, %d échec(s)" % [_count, _failures])
 	quit(1 if _failures > 0 else 0)
@@ -729,9 +731,8 @@ func _test_stroke_union() -> void:
 # --- Étape 5 : décor ------------------------------------------------------------------
 
 ## Maison 10 × 6 m au style japonais et sa description pour le voisinage.
-func _garden_house() -> Dictionary:
+func _garden_house(pts := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])) -> Dictionary:
 	var st: BastideStyle = load(JAPANESE_PATH)
-	var pts := PackedVector3Array([Vector3(0, 0, 0), Vector3(10, 0, 0), Vector3(10, 0, 6), Vector3(0, 0, 6)])
 	var layout := BastideBuildingGenerator.generate(BastideBuildingSpec.from_points(pts, 5), st)
 	var anchors := BastideBuildingMesher.anchors(layout)
 	var fp := PackedVector3Array()
@@ -1609,6 +1610,51 @@ const JP_PATH := "res://addons/bastide/styles/presets/japanese_wood.tres"
 const TOWER_BASE := [Vector2(0, 0), Vector2(4.6, 0), Vector2(4.6, 4.6), Vector2(0, 4.6)]
 const KURA_BASE := [Vector2(0, 0), Vector2(6.8, 0), Vector2(6.8, 4.4), Vector2(0, 4.4)]
 const SMALL_BASE := [Vector2(0, 0), Vector2(6, 0), Vector2(6, 5), Vector2(0, 5)]
+
+
+func _test_interior_terrain() -> void:
+	print("Intérieurs : les sols restent au-dessus du terrain")
+	var spec := BastideBuildingSpec.new()
+	spec.footprint = PackedVector2Array(RECT)
+	spec.seed = 7
+	var st := BastideSilhouette.style_for(load(JP_PATH), BastideSilhouette.Kind.HOUSE)
+	var layout := BastideBuildingGenerator.generate(spec, st)
+	var flat := BastideInteriorPlanner.plan(layout, st, -0.05)
+	check(flat.genkan_y >= -0.05 + 0.05 and is_equal_approx(flat.genkan_y, layout.base_y + 0.03),
+		"terrain plus bas que l'entrée : rien ne change (%.2f m)" % flat.genkan_y)
+	var bump := BastideInteriorPlanner.plan(layout, st, 0.2)
+	check(bump.genkan_y >= 0.25, "une bosse sous la maison : l'entrée passe au-dessus (%.2f m)" % bump.genkan_y)
+	check(bump.levels[0].y - bump.genkan_y >= 0.12 and bump.levels[0].y >= 0.3,
+		"… et le parquet reste plus haut que l'entrée (%.2f m)" % bump.levels[0].y)
+	check(bump.flights.size() == flat.flights.size(), "… l'escalier monte toujours à l'étage")
+
+
+func _test_trees_stay_outside() -> void:
+	print("Décor : les branches des arbres ne traversent pas les murs")
+	var gs := (load(JAPANESE_PATH) as BastideStyle).get_garden_style()
+	var house := _garden_house()
+	var ctx := BastideGardenContext.from_entries([house])
+	# Maison en L : l'angle rentrant reçoit un arbre.
+	var l_ctx := BastideGardenContext.from_entries([_garden_house(PackedVector3Array([Vector3(0, 0, 0), Vector3(12, 0, 0),
+		Vector3(12, 0, 5), Vector3(6, 0, 5), Vector3(6, 0, 10), Vector3(0, 0, 10)]))])
+	var worst := INF
+	var trees := 0
+	for seed in 40:
+		for it: Dictionary in BastidePlantingMesher.plan_garden(l_ctx, seed, gs)["items"]:
+			var r := BastidePlantingMesher.crown_reach(String(it["type"]), float(it["size"]))
+			if r <= 0.0:
+				continue
+			trees += 1
+			var p: Vector3 = it["pos"]
+			worst = minf(worst, l_ctx.house_clearance(Vector2(p.x, p.z), 10.0) - r)
+	check(trees == 0 or worst >= 0.0, "jardins auto : couronnes hors des murs (%d arbres, marge %.2f m)" % [trees, worst])
+	# Un arbre planté contre le mur : rapetissé, sa couronne reste dehors.
+	var spot := Vector3(5, 0, -1.4)
+	var one := BastidePlantingMesher.plan_planting(PackedVector3Array([spot]), 3, gs, ctx)
+	var t: Dictionary = one[0]
+	var reach := BastidePlantingMesher.crown_reach(String(t["type"]), float(t["size"]))
+	check(ctx.house_clearance(Vector2(spot.x, spot.z), 10.0) - reach >= -0.01 or float(t["size"]) <= 1.21,
+		"arbre posé à 1,4 m d'un mur : plus petit (%.1f m), couronne dehors" % float(t["size"]))
 
 
 func _test_interior_plan() -> void:

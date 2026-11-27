@@ -85,12 +85,13 @@ func _start() -> void:
 	var st := BastideSilhouette.style_for(building.get_effective_style(), kind)
 	st.prepare()
 	var with_collision := building.generate_collision
+	var ground_top := _ground_top(spec.footprint)
 	var job := func() -> Array:
 		var lay := BastideBuildingGenerator.generate(spec, st)
 		if lay.is_empty():
 			return []
 		var ext := BastideBuildingMesher.build(lay, st, with_collision, true)
-		var il := BastideInteriorPlanner.plan(lay, st)
+		var il := BastideInteriorPlanner.plan(lay, st, ground_top)
 		var inr := BastideInteriorMesher.build(il, lay, st)
 		return [ext, inr, il]
 	var me := weakref(self)
@@ -101,6 +102,33 @@ func _start() -> void:
 		if host:
 			host.call_deferred(&"_finish", gen, out)
 	, false, "Bastide : intérieur")
+
+
+## Point le plus haut du terrain sous la maison, dans son repère (pose comprise) :
+## les sols de l'intérieur restent au-dessus, même quand le sol bosse sous la maison.
+func _ground_top(footprint: PackedVector2Array) -> float:
+	var field := BastideTerrain.field_for(building)
+	if field == null or footprint.size() < 3 or not building.last_stats.has("terrain_lift"):
+		return -INF
+	var lift := float(building.last_stats.get("terrain_lift", 0.0)) - 0.01
+	var xf := building.global_transform
+	var inv := xf.affine_inverse()
+	var poly := BastidePolygon.ensure_direct(footprint)
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for q in poly:
+		box = box.expand(q)
+	var step := 0.4
+	var best := -INF
+	var x := box.position.x + step * 0.5
+	while x < box.end.x:
+		var z := box.position.y + step * 0.5
+		while z < box.end.y:
+			if Geometry2D.is_point_in_polygon(Vector2(x, z), poly):
+				var w := xf * Vector3(x, 0.0, z)
+				best = maxf(best, (inv * Vector3(w.x, field.height(w.x, w.z), w.z)).y - lift)
+			z += step
+		x += step
+	return best
 
 
 func _finish(gen: int, out: Array) -> void:

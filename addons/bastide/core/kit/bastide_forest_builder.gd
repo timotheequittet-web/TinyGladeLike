@@ -89,6 +89,9 @@ static func plan(points: PackedVector3Array, seed: int, kind: int, tree_scale: f
 		var spacing := crown_r * 1.3 / density * (1.0 + 0.5 * (1.0 - clampf(d_edge / minf(edge_soft, scallop_amp + 1.0), 0.0, 1.0)))
 		if ctx.blocked(q, trunk_r + 1.2):
 			continue
+		# Les branches basses restent hors des maisons.
+		if ctx.house_clearance(q, crown_r) < crown_r * 0.75:
+			continue
 		var ok := true
 		for t: Dictionary in trees:
 			var tq := Vector2((t["pos"] as Vector3).x, (t["pos"] as Vector3).z)

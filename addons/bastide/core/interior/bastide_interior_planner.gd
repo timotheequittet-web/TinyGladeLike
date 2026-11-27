@@ -26,7 +26,13 @@ const ARRIVAL := 0.6
 const FLIGHT_TRIES := [[0.8, 0.24, APPROACH, ARRIVAL], [0.72, 0.21, APPROACH, ARRIVAL], [0.7, 0.19, 0.5, 0.5]]
 
 
-static func plan(layout: BastideBuildingLayout, style: BastideStyle) -> BastideInteriorLayout:
+## Le terrain monte au plus à cet endroit, sous la maison (marge pour les sols) ;
+## sans terrain, la marge vient du socle seul.
+const GROUND_CLEAR := 0.07
+
+
+## `ground_top` : point le plus haut du terrain sous la maison (repère local), ou -INF.
+static func plan(layout: BastideBuildingLayout, style: BastideStyle, ground_top := -INF) -> BastideInteriorLayout:
 	var bs := style.get_building_style()
 	var il := BastideInteriorLayout.new()
 	if layout == null or layout.is_empty():
@@ -40,7 +46,9 @@ static func plan(layout: BastideBuildingLayout, style: BastideStyle) -> BastideI
 		return il
 
 	var raise := clampf(bs.plinth_height, 0.25, 0.42) if layout.timber else 0.12
-	var ground_y := layout.base_y + raise
+	var ground_y := maxf(layout.base_y + raise, ground_top + GROUND_CLEAR + 0.12)
+	# L'entrée en terre battue ne doit jamais passer sous le terrain : on verrait l'herbe.
+	var genkan_y := maxf(layout.base_y + 0.03, ground_top + GROUND_CLEAR)
 
 	# --- Porte et entrée -------------------------------------------------------------
 	var door_zone := PackedVector2Array()
@@ -60,7 +68,7 @@ static func plan(layout: BastideBuildingLayout, style: BastideStyle) -> BastideI
 			if layout.timber and hi - lo > 0.9 and gd > 0.7:
 				il.genkan = BastidePolygon.ensure_direct(PackedVector2Array([
 					_fp(f, lo, -th + 0.05), _fp(f, hi, -th + 0.05), _fp(f, hi, -th - gd), _fp(f, lo, -th - gd)]))
-				il.genkan_y = layout.base_y + 0.03
+				il.genkan_y = genkan_y
 				if ground_y - il.genkan_y > 0.3:
 					il.step_stone = BastidePolygon.ensure_direct(PackedVector2Array([
 						_fp(f, c - 0.38, -th - gd + 0.04), _fp(f, c + 0.38, -th - gd + 0.04),

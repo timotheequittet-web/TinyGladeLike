@@ -40,6 +40,9 @@ Au lancement, la caméra descend doucement vers un petit hameau qui sort de terr
 
 ![Herbe haute et lumière de fin de journée](docs/captures/ambiance_prairie.jpg)
 
+- **Jour et nuit** (touche **N**, ou le bouton **Heure**) : le temps passe (une journée en 16 minutes), du matin doré à la nuit bleutée sous la lune. **N** fait défiler les heures jusqu'au moment suivant (aube, midi, soir, nuit), **Maj + N** arrête ou relance le temps. Au crépuscule, les lanternes suspendues et de pierre s'allument : vraie lumière chaude à faible portée sur les murs et les poutres, halo doux, papier des shoji et vitres éclairés de l'intérieur. Le nombre de vraies lumières suit le niveau graphique (aucune en Bas, 6 en Moyen, 12 en Haut, 19 en Ultra, les plus proches de la caméra) ; les autres lanternes gardent leur papier lumineux et leur halo.
+- **Un hameau vécu** : lierre fin plaqué contre le bois et l'enduit, avec ses tiges ; enduit blanc cassé patiné (remontées d'humidité et mousse au-dessus des fondations, coulures sous l'égout) ; fleurs des champs qui débordent sur les dalles des chemins, fougères et hautes herbes au pied des murets, touffes fleuries dans la prairie, brins d'herbe de hauteurs variées, épis et petites fleurs, mousse sur les pierres.
+
 - **Promenade** (touche **P**) : la caméra descend à hauteur d'homme là où tu regardes. **ZQSD** pour marcher (**Maj** pour courir), clic droit + souris pour regarder. Troncs, murets et maisons arrêtent le pas, et on monte sur les terrasses. **P**, **Échap** ou molette arrière pour remonter.
 
 ![Promenade dans la forêt du hameau](docs/captures/foret_promenade.jpg)

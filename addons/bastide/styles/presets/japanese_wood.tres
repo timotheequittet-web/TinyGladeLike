@@ -131,7 +131,7 @@ shader_parameter/grain_strength = 0.1
 shader_parameter/blotch_scale = 1.6
 shader_parameter/blotch_strength = 0.1
 shader_parameter/moss_color = Color(0.36, 0.45, 0.22, 1)
-shader_parameter/moss_amount = 0.2
+shader_parameter/moss_amount = 0.45
 shader_parameter/roughness_value = 0.92
 shader_parameter/plaster_amount = 1.0
 

@@ -115,6 +115,9 @@ func _ready() -> void:
 	tool.removed.connect(func(_k: String) -> void: ambience.play_remove())
 	site.structure_changed.connect(func(_id: int) -> void: _refresh_selection())
 	camera.walking_changed.connect(_on_walking)
+	var day := get_node_or_null("JourNuit") as BastideDayNight
+	if day:
+		day.announced.connect(_toast_msg)
 	_refresh_mode()
 	_refresh_selection()
 	_undo_btn.disabled = true
@@ -288,6 +291,9 @@ func _build_ui() -> void:
 	_redo_btn = _button(hb, "Rétablir", tool.redo)
 	_sep(hb)
 	_walk_btn = _button(hb, "Promenade  P", func() -> void: camera.set_walking(not camera.walking), true)
+	var day := get_node_or_null("JourNuit") as BastideDayNight
+	if day:
+		_button(hb, "Heure  N", day.skip_to_next)
 
 	# Variantes du muret (touche V), juste au-dessus quand le mode Muret est actif.
 	_variant_panel = PanelContainer.new()

@@ -18,6 +18,13 @@ uniform float socle_stone_size = 0.5;
 // sous les poutres et pied un peu sali. 0 = pierre seule.
 uniform float plaster_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float plaster_threshold : hint_range(0.0, 1.0) = 0.62;
+// Patine de l'enduit des maisons (lue dans UV/UV2, voir BastideMeshBuilder.set_height_frame) :
+// nuances blanc cassé / beige, remontées d'humidité et mousse au-dessus des fondations,
+// coulures et salissures sous l'égout et sous les auvents des étages.
+uniform float patina_amount : hint_range(0.0, 1.0) = 1.0;
+uniform float damp_height = 0.6;        // hauteur moyenne des remontées d'humidité (m)
+uniform float eave_stain = 0.9;         // longueur moyenne des coulures sous l'égout (m)
+uniform vec4 moss_light : source_color = vec4(0.48, 0.56, 0.24, 1.0);
 
 varying vec3 world_pos;
 varying vec3 world_nrm;
@@ -90,7 +97,10 @@ void fragment() {
 	// Mousse : sur les faces orientées vers le haut, par plaques.
 	float up = smoothstep(0.55, 0.95, world_nrm.y);
 	float patches = smoothstep(0.45, 0.7, fbm(world_pos * 0.9 + vec3(4.2)));
-	col = mix(col, moss_color.rgb * (0.8 + grain * 0.4), up * patches * moss_amount);
+	// Mousse en coussins : deux verts mêlés, bord effrangé par le grain.
+	vec3 moss_mix = mix(moss_color.rgb, moss_light.rgb, vnoise(world_pos * 6.0 + vec3(3.1)));
+	float fringe = smoothstep(0.35, 0.65, patches + (grain - 0.5) * 0.6);
+	col = mix(col, moss_mix * (0.75 + grain * 0.45), up * fringe * moss_amount);
 	// Soubassement : pierres appareillées, joints sombres, teinte par pierre.
 	float socle = (1.0 - step(0.985, COLOR.a)) * (1.0 - smoothstep(0.5, 0.8, abs(world_nrm.y)));
 	if (socle > 0.0) {
@@ -123,6 +133,42 @@ void fragment() {
 		vec3 pcol = base * tint * (0.97 + (trowel - 0.5) * 0.12);
 		pcol *= 1.0 - drip * 0.22;
 		pcol *= 0.97 + (grain - 0.5) * 0.05;
+		// Nuances blanc cassé / beige : grandes plages et petites taches.
+		float beige = fbm(world_pos * 0.8 + vec3(9.1)) * 0.7 + vnoise(world_pos * 3.1) * 0.3;
+		pcol *= mix(vec3(1.0), vec3(0.95, 0.9, 0.8), smoothstep(0.35, 0.8, beige) * patina_amount);
+		// Maisons seulement (UV2.y > 0) : humidité, mousse et coulures selon la hauteur.
+		if (UV2.y > 0.0 && patina_amount > 0.0) {
+			float h = UV.x;          // au-dessus du bas de l'enduit
+			float e = UV.y;          // sous l'égout
+			float ef = UV2.y - mod(max(UV2.x, 0.0), UV2.y);   // sous la ligne d'étage suivante
+			float along = vnoise(vec3(world_pos.x * 1.7, 0.0, world_pos.z * 1.7)) * 0.65
+					+ vnoise(vec3(world_pos.x * 5.3, 1.7, world_pos.z * 5.3)) * 0.35;
+			// Remontées d'humidité : franges irrégulières, auréole plus sombre au bord.
+			float rise = damp_height * (0.45 + along * 1.1);
+			float damp = 1.0 - smoothstep(rise * 0.55, rise, h);
+			float tide = smoothstep(rise * 0.7, rise * 0.95, h) * (1.0 - smoothstep(rise * 0.95, rise * 1.05, h));
+			vec3 wet = pcol * vec3(0.74, 0.74, 0.68);
+			pcol = mix(pcol, wet, damp * 0.75 * patina_amount);
+			pcol *= 1.0 - tide * 0.08 * patina_amount;
+			// Mousse qui grimpe juste au-dessus des fondations, en touffes.
+			float tuft = fbm(world_pos * 4.2 + vec3(1.7)) * 0.6 + grain * 0.4;
+			float mband = 1.0 - smoothstep(0.0, 0.08 + 0.32 * along, h);
+			float moss_m = mband * smoothstep(0.42, 0.62, tuft);
+			vec3 mcol = mix(moss_color.rgb, moss_light.rgb, vnoise(world_pos * 9.0)) * (0.75 + grain * 0.4);
+			pcol = mix(pcol, mcol, moss_m * patina_amount);
+			// Sous l'égout et sous les auvents : ombre de suie et coulures verticales.
+			vec3 sp2 = vec3(world_pos.x * 6.0, world_pos.y * 0.35, world_pos.z * 6.0);
+			float streak = fbm(sp2 + vec3(2.2));
+			float run = eave_stain * (0.25 + streak * streak * 1.6);
+			float under = min(e, ef);
+			float stain = (1.0 - smoothstep(0.0, run, under)) * smoothstep(0.38, 0.62, streak);
+			float soot = 1.0 - smoothstep(0.0, 0.35 + along * 0.25, under);
+			pcol = mix(pcol, pcol * vec3(0.7, 0.69, 0.64), stain * 0.65 * patina_amount);
+			pcol *= 1.0 - soot * 0.18 * patina_amount;
+			// Un peu de mousse dans l'angle humide sous l'égout.
+			float top_moss = (1.0 - smoothstep(0.0, 0.1 + 0.15 * along, under)) * smoothstep(0.5, 0.68, tuft);
+			pcol = mix(pcol, mcol * 0.85, top_moss * 0.8 * patina_amount);
+		}
 		col = mix(col, pcol, pl);
 	}
 	ALBEDO = col;

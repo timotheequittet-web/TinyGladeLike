@@ -40,10 +40,19 @@ uniform float lod_d0 = 18.0;
 uniform float lod_min = 0.06;
 uniform float blade_width = 0.04;
 uniform float max_widen = 2.0;
+// Herbe sauvage : quelques brins bien plus hauts (épis), touffes plus denses ou plus
+// rases, tons variés (vert bleuté, jaune, roux) et des pointes fleuries.
+uniform float wild_tall = 0.6;          // allongement des brins les plus hauts
+uniform float flower_share = 0.035;     // part des brins qui portent une petite fleur
+uniform vec3 seed_color : source_color = vec3(0.72, 0.6, 0.38);
+uniform vec3 blue_green : source_color = vec3(0.3, 0.5, 0.32);
+uniform vec3 rust_color : source_color = vec3(0.62, 0.36, 0.2);
 
 varying float v_t;
 varying float v_tone;
 varying float v_wave;
+varying float v_kind;    // tirage propre au brin (épi, fleur, ton)
+varying float v_hue;
 varying vec2 v_root;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -75,6 +84,14 @@ void vertex() {
 	// Hauteur : grandes plages plus hautes ou plus rases, et chaque brin un peu différent.
 	float patch = noise(root.xz * 0.08) * 0.7 + noise(root.xz * 0.31) * 0.3;
 	float h = blade_height * (0.55 + patch * 0.9) * (1.0 - height_jitter * hash(root.xz));
+	// Touffes : des petites plages plus fournies et hautes, d'autres plus rases.
+	h *= 0.75 + 0.5 * noise(root.xz * 1.15 + 3.7);
+	// Brins sauvages : quelques épis montent bien au-dessus du tapis.
+	float kind = hash(root.xz * 1.37 + 5.1);
+	h *= 1.0 + smoothstep(0.86, 1.0, kind) * wild_tall;
+	// Les brins fleuris dépassent juste un peu, pour que la fleur se voie.
+	float flowered = step(1.0 - flower_share, hash(root.xz * 2.11 + 9.3));
+	h *= 1.0 + flowered * 0.25;
 	// Masque : couché sur les chemins, raccourci à leurs abords.
 	vec2 muv = (root.xz - mask_rect.xy) / mask_rect.zw;
 	float occ = 0.0;
@@ -108,6 +125,8 @@ void vertex() {
 	v_t = t;
 	v_tone = noise(root.xz * 0.045 + 7.0) * 0.6 + hash(root.xz + 1.3) * 0.4;
 	v_wave = wave;
+	v_kind = flowered > 0.5 ? -1.0 : kind;
+	v_hue = hash(root.xz * 0.73 + 2.9);
 }
 
 void fragment() {
@@ -129,6 +148,18 @@ void fragment() {
 		// La vague couche l'herbe et montre le dessus clair des brins.
 		col = mix(col, col * 1.35 + vec3(0.04, 0.05, 0.0), v_wave * smoothstep(0.2, 1.0, v_t) * 0.8);
 		col *= meadow_clouds(v_root, TIME);
+	}
+	// Tons variés par brin : vert bleuté, ou pointes rousses (oseille sauvage).
+	col = mix(col, mix(col, blue_green, 0.55), step(0.82, v_hue) * smoothstep(0.1, 0.6, v_t));
+	col = mix(col, rust_color, step(v_hue, 0.07) * smoothstep(0.55, 1.0, v_t) * 0.7);
+	// Épis : tige paille et tête plus sombre et dorée.
+	float seed_head = smoothstep(0.9, 0.97, v_kind) * smoothstep(0.62, 0.85, v_t);
+	col = mix(col, seed_color * (0.75 + 0.35 * v_hue), seed_head);
+	// Petites fleurs au bout de quelques brins : blanc, jaune, mauve, rose.
+	if (v_kind < 0.0) {
+		vec3 petal = v_hue < 0.3 ? vec3(0.95, 0.93, 0.85) : (v_hue < 0.55 ? vec3(0.98, 0.8, 0.25)
+				: (v_hue < 0.8 ? vec3(0.62, 0.52, 0.9) : vec3(0.95, 0.55, 0.68)));
+		col = mix(col, petal, smoothstep(0.8, 0.9, v_t));
 	}
 	ALBEDO = col;
 	ROUGHNESS = 0.9;

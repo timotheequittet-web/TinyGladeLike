@@ -548,6 +548,8 @@ static func _draw_clump(kind: String) -> Image:
 	img.fill(Color(1, 1, 1, 0))
 	var r := RandomNumberGenerator.new()
 	r.seed = 5
+	if kind == "ivy":
+		return _draw_ivy()
 	var n := 34 if kind == "flower" else (90 if kind == "bloom" else 60)
 	for f in n:
 		var d := 0.0 if f == 0 else sqrt(r.randf()) * 44.0
@@ -577,6 +579,35 @@ static func _draw_clump(kind: String) -> Image:
 				if inside:
 					var k := q.length() / fr
 					img.set_pixel(x, y, Color(tone.r, tone.g * (0.92 + 0.08 * k), tone.b * (0.94 + 0.06 * k), 1.0))
+	img.generate_mipmaps()
+	return img
+
+
+## Feuilles de lierre (128 px) : cinq à sept feuilles à trois lobes pointus, nervure
+## centrale plus claire, tons un peu différents (le vert vient des sommets).
+static func _draw_ivy() -> Image:
+	var sz := 128
+	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+	img.fill(Color(1, 1, 1, 0))
+	var r := RandomNumberGenerator.new()
+	r.seed = 11
+	var centers := [Vector2(64, 60), Vector2(36, 40), Vector2(92, 42), Vector2(40, 90), Vector2(90, 88), Vector2(64, 24), Vector2(64, 102)]
+	for f in centers.size():
+		var fc: Vector2 = centers[f] + Vector2(r.randf_range(-5, 5), r.randf_range(-5, 5))
+		var fr := 26.0 if f == 0 else r.randf_range(15.0, 21.0)
+		var spin := r.randf_range(-0.6, 0.6) + (0.0 if f == 0 else (fc - Vector2(64, 64)).angle() + PI * 0.5)
+		var tone := r.randf_range(0.72, 1.0)
+		for y in range(maxi(0, int(fc.y - fr - 1)), mini(sz, int(fc.y + fr + 2))):
+			for x in range(maxi(0, int(fc.x - fr - 1)), mini(sz, int(fc.x + fr + 2))):
+				var q := (Vector2(x, y) - fc).rotated(-spin)
+				var ang := atan2(q.x, -q.y)   # 0 = pointe du lobe central
+				var lobe := 0.5 + 0.5 * pow(absf(cos(ang * 1.5)), 1.6)
+				lobe *= 1.0 - 0.35 * smoothstep(2.4, PI, absf(ang))   # échancrure du pétiole
+				if q.length() < fr * lobe:
+					var k := q.length() / fr
+					var vein := 1.0 - smoothstep(0.0, 1.6, absf(q.x)) * 1.0
+					var c := tone * (0.82 + 0.18 * k) + vein * 0.12 * float(q.y < 0.0)
+					img.set_pixel(x, y, Color(c, c, c, 1.0))
 	img.generate_mipmaps()
 	return img
 

@@ -142,6 +142,8 @@ func get_paper_material() -> Material:
 		m.emission_enabled = true
 		m.emission = Color(1.0, 0.86, 0.62)
 		m.emission_energy_multiplier = 0.18
+		# La nuit, les shoji et les lanternes de pierre s'allument (cycle jour/nuit).
+		BastideGlow.register(m, 0.18, 1.5)
 		_default_paper = m
 	return _default_paper
 
@@ -204,6 +206,11 @@ func get_glass_material() -> Material:
 		m.roughness = 0.08
 		m.metallic = 0.35
 		m.metallic_specular = 0.8
+		# Vitres éclairées de l'intérieur la nuit (lumière chaude du foyer).
+		m.emission_enabled = true
+		m.emission = Color(1.0, 0.66, 0.34)
+		m.emission_energy_multiplier = 0.0
+		BastideGlow.register(m, 0.0, 0.9)
 		_default_glass = m
 	return _default_glass
 

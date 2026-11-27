@@ -17,7 +17,11 @@ extends Node3D
 
 const PROPS_KEY := &"bastide_dressing"
 
+## Les lanternes habillées ont changé (voir light_points).
+signal lights_changed
+
 var _hosts := {}       # id → Node3D
+var _lights := {}      # id → PackedVector3Array (monde)
 var _pending := {}     # id → true
 var _watched := {}     # id → true (signal rebuilt branché)
 var _props_mat: StandardMaterial3D
@@ -57,6 +61,19 @@ func _remove(id: int) -> void:
 	if _hosts.has(id):
 		(_hosts[id] as Node).queue_free()
 		_hosts.erase(id)
+	if _lights.erase(id):
+		lights_changed.emit()
+
+
+## Centres (monde) des lanternes de papier des maisons habillées ; rien quand
+## l'habillage est masqué (niveaux Bas et Moyen).
+func light_points() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	if not visible:
+		return out
+	for id: int in _lights:
+		out.append_array(_lights[id])
+	return out
 
 
 func _process(_delta: float) -> void:
@@ -111,6 +128,11 @@ func _dress(id: int, node: BastideStructure) -> void:
 		_setup(mmi, range_end)
 		host.add_child(mmi)
 	_hosts[id] = host
+	var pts := PackedVector3Array()
+	for p: Vector3 in res.get("lights", PackedVector3Array()):
+		pts.append(host.global_transform * p)
+	_lights[id] = pts
+	lights_changed.emit()
 	BastideGraphics.scale_ranges(host)
 
 
@@ -146,6 +168,8 @@ func _make_materials() -> void:
 	_paper_mat.emission_energy_multiplier = 0.9
 	_paper_mat.backlight_enabled = true
 	_paper_mat.backlight = Color(0.9, 0.6, 0.3)
+	# La nuit, le papier luit fort : le halo (bloom) déborde sur les poutres.
+	BastideGlow.register(_paper_mat, 0.9, 4.0)
 	_cloth_mat = StandardMaterial3D.new()
 	_cloth_mat.vertex_color_use_as_albedo = true
 	_cloth_mat.roughness = 0.95

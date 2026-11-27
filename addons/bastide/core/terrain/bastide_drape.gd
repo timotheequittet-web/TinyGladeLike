@@ -155,7 +155,7 @@ static func clip_water(result: BastideBuildResult, field: BastideHeightField, xf
 			else:
 				var na := []
 				na.resize(Mesh.ARRAY_MAX)
-				for a in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV]:
+				for a in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV, Mesh.ARRAY_TEX_UV2]:
 					if arr[a] == null:
 						continue
 					var src = arr[a]

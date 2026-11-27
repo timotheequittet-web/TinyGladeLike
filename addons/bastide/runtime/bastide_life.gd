@@ -11,6 +11,8 @@ extends Node3D
 
 @export var site: BastideBuildSite
 @export var camera: Camera3D
+## Habillage des maisons : ses lanternes de papier s'allument aussi (facultatif).
+@export var dressing: BastideDressing
 ## Sens et force du vent (m/s) pour la fumée.
 @export var wind := Vector3(0.7, 0.0, 0.3)
 @export_group("Fumée")
@@ -23,8 +25,18 @@ extends Node3D
 @export var lantern_color := Color(1.0, 0.68, 0.36)
 @export var lantern_energy := 1.8
 @export var lantern_range := 5.0
-## Au-delà, les lumières les plus lointaines de la caméra sont éteintes.
-@export var max_lights := 16
+## Portée des lanternes de papier suspendues (plus petite : elles éclairent le mur
+## et les poutres autour d'elles, pas la rue).
+@export var hanging_range := 3.6
+@export var hanging_energy := 1.3
+## Lumières réelles allumées au niveau Haut (les plus proches de la caméra) ; la
+## moitié en Moyen, aucune en Bas, une fois et demie en Ultra. Les autres lanternes
+## gardent leur papier lumineux et leur halo.
+@export var max_lights := 12
+## Distance (m) où les lumières s'éteignent en fondu (× le niveau de détail).
+@export var light_fade_distance := 34.0
+## Halo doux autour de chaque lanterne, plus fort la nuit.
+@export var halos := true
 @export_group("Oiseaux")
 @export var bird_flocks := 2
 @export var birds_per_flock := 6
@@ -39,7 +51,8 @@ extends Node3D
 const FLYER_SHADER := preload("res://addons/bastide/shaders/bastide_flyer.gdshader")
 
 var _smokes := {}    # Vector3i (clé de position) → CPUParticles3D
-var _lights: Array = []   # [{light: OmniLight3D, pos: Vector3, phase: float}]
+var _lights: Array = []   # [{light: OmniLight3D, pos: Vector3, phase: float, hang: bool}]
+var _halos: MultiMeshInstance3D
 var _light_keys := {}
 var _birds: MultiMeshInstance3D
 var _flocks: Array = []   # [{center, radius, height, speed, angle, offsets: Array[Vector3]}]
@@ -58,6 +71,8 @@ func _ready() -> void:
 		site.structure_removed.connect(_dirty.unbind(1))
 	_make_birds()
 	_make_butterflies()
+	if dressing:
+		dressing.lights_changed.connect(_dirty)
 
 
 func _dirty() -> void:
@@ -99,12 +114,13 @@ func _scan() -> void:
 		var gx := site.garden.global_transform
 		for p: Vector3 in site.garden.last_anchors["lights"]:
 			light_pts.append(gx * p)
-	var sig := "%s|%s" % [smoke_pts, light_pts]
+	var hang_pts := dressing.light_points() if dressing and lanterns_enabled else PackedVector3Array()
+	var sig := "%s|%s|%s" % [smoke_pts, light_pts, hang_pts]
 	if sig == _signature:
 		return
 	_signature = sig
 	_sync_smokes(smoke_pts)
-	_sync_lights(light_pts)
+	_sync_lights(light_pts, Array(hang_pts))
 
 
 static func _key(p: Vector3) -> Vector3i:
@@ -200,10 +216,12 @@ static func _puff_mesh() -> QuadMesh:
 	return _puff
 
 
-func _sync_lights(points: Array) -> void:
+func _sync_lights(points: Array, hanging: Array) -> void:
 	var keep := {}
 	for p: Vector3 in points:
-		keep[_key(p)] = p
+		keep[_key(p)] = [p, false]
+	for p: Vector3 in hanging:
+		keep[_key(p)] = [p, true]
 	var still: Array = []
 	for l: Dictionary in _lights:
 		if keep.has(_key(l["pos"])):
@@ -212,19 +230,32 @@ func _sync_lights(points: Array) -> void:
 		else:
 			(l["light"] as Node).queue_free()
 	for k: Vector3i in keep:
-		var p: Vector3 = keep[k]
+		var p: Vector3 = keep[k][0]
+		var hang: bool = keep[k][1]
 		var o := OmniLight3D.new()
 		o.name = "Lanterne"
 		o.light_color = lantern_color
-		o.light_energy = lantern_energy
-		o.omni_range = lantern_range
-		o.omni_attenuation = 1.4
+		o.light_energy = 0.0
+		o.omni_range = hanging_range if hang else lantern_range
+		o.omni_attenuation = 1.6
 		o.shadow_enabled = false
-		o.light_specular = 0.2
+		o.light_specular = 0.15
+		o.light_volumetric_fog_energy = 0.0
+		o.distance_fade_enabled = true
+		o.visible = false
 		add_child(o)
 		o.global_position = p
-		still.append({"light": o, "pos": p, "phase": _rng.randf() * TAU})
+		still.append({"light": o, "pos": p, "phase": _rng.randf() * TAU, "hang": hang})
 	_lights = still
+	_rebuild_halos()
+
+
+## Nombre de vraies lumières selon le niveau graphique (BastideGraphics.detail).
+func _light_budget() -> int:
+	var d := BastideGraphics.detail
+	if d < 0.6:
+		return 0
+	return int(round(max_lights * clampf((d - 0.5) * 2.0, 0.5, 1.6)))
 
 
 func _update_lights() -> void:
@@ -232,18 +263,104 @@ func _update_lights() -> void:
 		return
 	var t := Time.get_ticks_msec() / 1000.0
 	var eye := camera.global_position if camera else Vector3.ZERO
-	# Seules les plus proches restent allumées (les autres gardent leur papier lumineux).
+	var strength := BastideGlow.lamp_strength()
+	var budget := _light_budget() if strength > 0.02 else 0
+	var d := BastideGraphics.detail
+	var fog := 0.6 if d > 1.2 else 0.0   # halo dans la brume volumétrique : Ultra seulement
+	# Seules les plus proches restent allumées (les autres gardent papier et halo).
 	var order := range(_lights.size())
-	order.sort_custom(func(a: int, b: int) -> bool:
-		return (_lights[a]["pos"] as Vector3).distance_squared_to(eye) < (_lights[b]["pos"] as Vector3).distance_squared_to(eye))
+	if budget > 0:
+		order.sort_custom(func(a: int, b: int) -> bool:
+			return (_lights[a]["pos"] as Vector3).distance_squared_to(eye) < (_lights[b]["pos"] as Vector3).distance_squared_to(eye))
 	for rank in order.size():
 		var l: Dictionary = _lights[order[rank]]
 		var o: OmniLight3D = l["light"]
-		o.visible = rank < max_lights
+		o.visible = rank < budget
 		if o.visible:
 			var ph: float = l["phase"]
 			var f := 0.9 + 0.06 * sin(t * 7.3 + ph) + 0.04 * sin(t * 13.1 + ph * 2.0)
-			o.light_energy = lantern_energy * f
+			o.light_energy = (hanging_energy if l["hang"] else lantern_energy) * f * strength
+			o.distance_fade_begin = light_fade_distance * d
+			o.distance_fade_length = 8.0
+			o.light_volumetric_fog_energy = fog
+	_update_halos(t, strength)
+
+
+# --- Halos des lanternes ---------------------------------------------------------
+
+static var _halo_mesh: QuadMesh
+
+## Un disque lumineux face caméra, additif : un seul appel de dessin pour tous.
+static func _halo_quad() -> QuadMesh:
+	if _halo_mesh:
+		return _halo_mesh
+	var tex := GradientTexture2D.new()
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 64
+	tex.height = 64
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.18, 0.5, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0.55), Color(1, 1, 1, 0.14), Color(1, 1, 1, 0)])
+	tex.gradient = g
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	mat.vertex_color_use_as_albedo = true
+	mat.albedo_texture = tex
+	mat.no_depth_test = false
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	mat.proximity_fade_enabled = true
+	mat.proximity_fade_distance = 0.5
+	mat.disable_receive_shadows = true
+	mat.disable_fog = false
+	_halo_mesh = QuadMesh.new()
+	_halo_mesh.size = Vector2(1, 1)
+	_halo_mesh.material = mat
+	return _halo_mesh
+
+
+func _rebuild_halos() -> void:
+	if not halos:
+		return
+	if _halos == null:
+		_halos = MultiMeshInstance3D.new()
+		_halos.name = "Halos"
+		_halos.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_halos.custom_aabb = AABB(Vector3(-200, -50, -200), Vector3(400, 200, 400))
+		add_child(_halos)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = _halo_quad()
+	mm.instance_count = _lights.size()
+	for i in _lights.size():
+		var l: Dictionary = _lights[i]
+		var size := 0.95 if l["hang"] else 1.25
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * size), l["pos"]))
+		mm.set_instance_color(i, Color(0, 0, 0, 0))
+	_halos.multimesh = mm
+
+
+func _update_halos(t: float, strength: float) -> void:
+	if _halos == null or _halos.multimesh == null:
+		return
+	_halos.visible = strength > 0.02
+	if not _halos.visible:
+		return
+	var mm := _halos.multimesh
+	# Le halo n'est vraiment visible qu'à la nuit tombante : le jour, il se perd.
+	var k := strength * (0.25 + 0.75 * BastideGlow.night) if BastideGlow.cycle else 0.3
+	var warm := Color(1.0, 0.58, 0.26)
+	for i in mini(mm.instance_count, _lights.size()):
+		var ph: float = _lights[i]["phase"]
+		var f := 0.92 + 0.05 * sin(t * 6.1 + ph) + 0.03 * sin(t * 11.7 + ph * 1.7)
+		var c := warm * (k * f * 0.9)
+		mm.set_instance_color(i, Color(c.r, c.g, c.b, 1.0))
 
 
 # --- Oiseaux -------------------------------------------------------------------

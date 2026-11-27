@@ -14,17 +14,33 @@ class Surface:
 	var v := PackedVector3Array()
 	var n := PackedVector3Array()
 	var c := PackedColorArray()
+	## Repère de hauteur (voir set_height_frame) : UV et UV2 remplis si `framed`.
+	var framed := false
+	var frame := Vector4()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
 
 	func push(a: Vector3, b: Vector3, cc: Vector3, nrm: Vector3, ca: Color, cb: Color, ccol: Color) -> void:
 		v.append(a); v.append(b); v.append(cc)
 		n.append(nrm); n.append(nrm); n.append(nrm)
 		c.append(ca); c.append(cb); c.append(ccol)
+		if framed:
+			_frame(a); _frame(b); _frame(cc)
 
 	func push_smooth(a: Vector3, b: Vector3, cc: Vector3, na: Vector3, nb: Vector3, nc: Vector3,
 			ca: Color, cb: Color, ccol: Color) -> void:
 		v.append(a); v.append(b); v.append(cc)
 		n.append(na); n.append(nb); n.append(nc)
 		c.append(ca); c.append(cb); c.append(ccol)
+		if framed:
+			_frame(a); _frame(b); _frame(cc)
+
+	## UV = (hauteur au-dessus du bas de l'enduit, distance sous l'égout),
+	## UV2 = (hauteur au-dessus du sol de la maison, hauteur d'un étage). Toutes
+	## linéaires en y : l'interpolation sur une face reste exacte.
+	func _frame(p: Vector3) -> void:
+		uv.append(Vector2(p.y - frame.x, frame.y - p.y))
+		uv2.append(Vector2(p.y - frame.z, frame.w))
 
 
 ## En dessous de ce biseau, une face « bombée » est dessinée plate : le biseau
@@ -47,6 +63,18 @@ func _surface(role: StringName) -> Surface:
 		s = Surface.new()
 		_surfaces[role] = s
 	return s
+
+
+## Donne aux triangles du rôle `role` leur place en hauteur dans la maison (UV/UV2,
+## lus par le shader d'enduit pour l'humidité du pied et l'ombre sous l'égout).
+## `bottom` : bas de l'enduit, `top` : égout, `base` : sol, `floor_h` : hauteur d'étage.
+func set_height_frame(role: StringName, bottom: float, top: float, base: float, floor_h: float) -> void:
+	var s := _surface(role)
+	if not s.framed:
+		s.uv.resize(s.v.size())
+		s.uv2.resize(s.v.size())
+	s.framed = true
+	s.frame = Vector4(bottom, top, base, maxf(floor_h, 0.01))
 
 
 func roles() -> Array:
@@ -251,6 +279,9 @@ func commit(materials := {}) -> ArrayMesh:
 		arrays[Mesh.ARRAY_VERTEX] = surf.v
 		arrays[Mesh.ARRAY_NORMAL] = surf.n
 		arrays[Mesh.ARRAY_COLOR] = surf.c
+		if surf.framed:
+			arrays[Mesh.ARRAY_TEX_UV] = surf.uv
+			arrays[Mesh.ARRAY_TEX_UV2] = surf.uv2
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var idx := mesh.get_surface_count() - 1
 		mesh.surface_set_name(idx, String(role))

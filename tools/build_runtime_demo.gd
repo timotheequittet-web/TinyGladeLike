@@ -137,6 +137,14 @@ func _init() -> void:
 	dressing.name = "Habillage"
 	_add(root, dressing)
 	dressing.site = site
+	life.dressing = dressing
+
+	# --- Lisière sauvage : fleurs, fougères et touffes au bord des chemins et murets ---
+	var wild := BastideWildEdge.new()
+	wild.name = "Lisiere"
+	_add(root, wild)
+	wild.site = site
+	wild.camera = cam
 
 	# --- Réglages graphiques (F3 compteur, F4 niveau) ---
 	var gfx := BastideGraphics.new()
@@ -146,6 +154,13 @@ func _init() -> void:
 	gfx.sun = sun
 	gfx.grass = grass
 	gfx.camera = cam
+
+	# --- Cycle jour/nuit (N : moment suivant, Maj + N : arrêter le temps) ---
+	var day := BastideDayNight.new()
+	day.name = "JourNuit"
+	_add(root, day)
+	day.sun = sun
+	day.world_environment = we
 
 	var amb := Node.new()
 	amb.name = "Ambiance"

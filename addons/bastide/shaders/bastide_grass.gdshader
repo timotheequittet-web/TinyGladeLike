@@ -3,8 +3,15 @@
 // Chaque sommet porte dans UV : x = côté du brin (-1..1), y = hauteur relative (0..1),
 // et dans UV2 : la position du pied du brin dans la tuile (xz), pour que le vent et
 // le masque soient lus au même point pour tout le brin.
+// Deux styles : « naturelle » (brins dorés de fin de journée) et « peinte » (painted
+// = 1 : touffes vert vif colorées par la prairie partagée avec le sol, ombres de
+// nuages, vagues de vent qui éclaircissent l'herbe, façon dessin animé).
 shader_type spatial;
 render_mode cull_disabled, diffuse_lambert_wrap, specular_disabled, depth_draw_opaque;
+
+#include "res://addons/bastide/shaders/bastide_meadow.gdshaderinc"
+
+uniform float painted = 0.0;
 
 uniform vec3 base_color : source_color = vec3(0.17, 0.31, 0.1);
 uniform vec3 mid_color : source_color = vec3(0.46, 0.63, 0.22);
@@ -13,8 +20,6 @@ uniform vec3 dry_color : source_color = vec3(0.88, 0.78, 0.44);
 uniform float blade_height = 0.55;
 uniform float height_jitter = 0.45;
 uniform float wind_strength = 0.32;
-uniform float wind_speed = 1.1;
-uniform vec2 wind_dir = vec2(0.8, 0.6);
 // Centre et rayons de fondu (en xz) : l'herbe s'efface doucement au bord.
 uniform vec3 center = vec3(0.0);
 uniform float fade_in = 0.0;      // en deçà, la nappe est encore rase (anneau lointain)
@@ -39,6 +44,7 @@ uniform float max_widen = 2.0;
 varying float v_t;
 varying float v_tone;
 varying float v_wave;
+varying vec2 v_root;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -81,10 +87,8 @@ void vertex() {
 	h *= smoothstep(fade_in, fade_in + fade_in_width, d) * (1.0 - smoothstep(fade_out - fade_out_width, fade_out, d));
 	h *= lod_h;
 	// Vent : longues vagues qui traversent la prairie, et un frémissement propre au brin.
-	vec2 wd = normalize(wind_dir);
-	float phase = dot(root.xz, wd) * 0.22 - TIME * wind_speed + noise(root.xz * 0.05) * 3.0;
-	float wave = 0.5 + 0.5 * sin(phase);
-	wave = wave * wave;
+	vec2 wd = normalize(meadow_wind_dir);
+	float wave = meadow_wave(root.xz, TIME);
 	float gust = noise(root.xz * 0.12 - wd * TIME * 0.6);
 	float bend = wind_strength * (0.35 + wave * 0.9 + gust * 0.4) + sin(TIME * 2.3 + hash(root.xz) * 6.28) * 0.04;
 	vec3 local = VERTEX;
@@ -98,7 +102,9 @@ void vertex() {
 	// Élargit les brins restants (UV.x = côté du brin, -1..1, perpendiculaire à la normale).
 	VERTEX.xz += normalize(vec2(-NORMAL.z, NORMAL.x) + 1e-5) * UV.x * blade_width * 0.5 * (widen - 1.0) * (1.0 - t * 0.55);
 	// Éclairage doux : la nappe reçoit la lumière comme un tapis, pas comme des lames.
-	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.85));
+	// En style peint, exactement comme le sol : l'herbe et la prairie ne font qu'un.
+	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), mix(0.85, 1.0, painted)));
+	v_root = root.xz;
 	v_t = t;
 	v_tone = noise(root.xz * 0.045 + 7.0) * 0.6 + hash(root.xz + 1.3) * 0.4;
 	v_wave = wave;
@@ -111,9 +117,22 @@ void fragment() {
 	// La vague de vent éclaircit les pointes qu'elle couche (reflet du ciel).
 	col *= 1.0 + v_wave * 0.18 * v_t;
 	col *= 0.9 + v_tone * 0.2;
+	if (painted > 0.5) {
+		// Teinte de la prairie au pied du brin : foncée à la racine (même teinte que
+		// le sol assombri), lumineuse et un peu jaune vers la pointe.
+		vec3 tone = meadow_tone(v_root);
+		vec3 root_c = tone * 0.72;
+		vec3 tip_c = mix(tone * 1.35, meadow_sun * 1.15, 0.3 + v_tone * 0.25);
+		col = mix(root_c, tone, smoothstep(0.0, 0.45, v_t));
+		col = mix(col, tip_c, smoothstep(0.5, 1.0, v_t));
+		col *= 0.93 + v_tone * 0.14;
+		// La vague couche l'herbe et montre le dessus clair des brins.
+		col = mix(col, col * 1.35 + vec3(0.04, 0.05, 0.0), v_wave * smoothstep(0.2, 1.0, v_t) * 0.8);
+		col *= meadow_clouds(v_root, TIME);
+	}
 	ALBEDO = col;
 	ROUGHNESS = 0.9;
-	BACKLIGHT = vec3(0.35, 0.33, 0.15) * v_t;
-	AO = mix(0.75, 1.0, v_t);
+	BACKLIGHT = vec3(0.35, 0.33, 0.15) * v_t * (1.0 - painted * 0.5);
+	AO = mix(mix(0.75, 0.9, painted), 1.0, v_t);
 	AO_LIGHT_AFFECT = 0.4;
 }

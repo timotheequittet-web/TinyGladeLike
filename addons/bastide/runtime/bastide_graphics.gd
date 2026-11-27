@@ -6,7 +6,8 @@ extends Node
 ## dans user://bastide_graphics.cfg.
 ##
 ## En jeu : F3 affiche le compteur (images/s, temps d'image, triangles, appels de
-## dessin), F4 passe au niveau suivant. Quand la fenêtre n'a pas le focus, le jeu
+## dessin), F4 passe au niveau suivant, F5 change le style de l'herbe (peinte ou
+## naturelle). Quand la fenêtre n'a pas le focus, le jeu
 ## ralentit à 15 images/s pour ne pas chauffer pour rien.
 
 signal changed(preset: int)
@@ -87,6 +88,8 @@ func _ready() -> void:
 		if cfg.load(SAVE_PATH) == OK:
 			preset = clampi(int(cfg.get_value("graphismes", "niveau", preset)), 0, PRESETS.size() - 1) as Preset
 			show_stats = bool(cfg.get_value("graphismes", "compteur", show_stats))
+			if grass and cfg.has_section_key("graphismes", "herbe"):
+				grass.style = clampi(int(cfg.get_value("graphismes", "herbe")), 0, 1) as BastideGrass.Style
 	_build_overlay()
 	process_priority = 1 << 30
 	var clock := _ScriptClock.new()
@@ -118,6 +121,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif k.physical_keycode == KEY_F4:
 		apply((preset + 1) % PRESETS.size())
+		get_viewport().set_input_as_handled()
+	elif k.physical_keycode == KEY_F5 and grass:
+		grass.style = (grass.style + 1) % 2 as BastideGrass.Style
+		_show_toast("Herbe %s" % BastideGrass.STYLE_NAMES[grass.style])
+		_save()
 		get_viewport().set_input_as_handled()
 
 
@@ -191,6 +199,8 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphismes", "niveau", int(preset))
 	cfg.set_value("graphismes", "compteur", show_stats)
+	if grass:
+		cfg.set_value("graphismes", "herbe", int(grass.style))
 	cfg.save(SAVE_PATH)
 
 
@@ -218,7 +228,7 @@ func _process(delta: float) -> void:
 	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	var cpu := RenderingServer.viewport_get_measured_render_time_cpu(rid) + RenderingServer.get_frame_setup_time_cpu()
 	var script_ms := _script_ms + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
-	_stats.text = "%s · %d i/s\ncarte graphique %.1f ms · rendu %.1f ms · scripts %.1f ms\n%s triangles · %d appels · %d objets\n[F3 compteur · F4 niveau]" % [
+	_stats.text = "%s · %d i/s\ncarte graphique %.1f ms · rendu %.1f ms · scripts %.1f ms\n%s triangles · %d appels · %d objets\n[F3 compteur · F4 niveau · F5 herbe]" % [
 		NAMES[preset], int(fps), gpu, cpu, script_ms, _millions(tris), int(calls), int(objs)]
 
 

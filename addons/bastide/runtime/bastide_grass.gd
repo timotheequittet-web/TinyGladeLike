@@ -19,6 +19,20 @@ extends Node3D
 
 const SHADER := preload("res://addons/bastide/shaders/bastide_grass.gdshader")
 
+enum Style { PEINTE, NATURELLE }
+const STYLE_NAMES := ["peinte", "naturelle"]
+
+## Style de l'herbe : « peinte » (touffes vert vif façon dessin animé, même teinte
+## que le sol, ombres de nuages) ou « naturelle » (brins dorés de fin de journée).
+@export var style := Style.PEINTE:
+	set(v):
+		if v == style:
+			return
+		style = v
+		if is_inside_tree() and _viewport:
+			_build_rings()
+			_bind_terrain()
+			_process(0.0)
 ## Chantier dont les constructions écartent l'herbe.
 @export var site: BastideBuildSite
 ## Caméra suivie (son point visé, ou le promeneur).
@@ -117,10 +131,15 @@ func _build_rings() -> void:
 	var fr := far_radius * radius_scale
 	_near_mat = _material(0.0, 0.0, nr, 5.0, near_lod_distance * sqrt(density_scale), near_width)
 	_far_mat = _material(nr - 5.0, 5.0, fr, 14.0, far_lod_distance * sqrt(density_scale), far_width)
+	if ground_material:
+		ground_material.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
 	_near_mat.set_shader_parameter("mask", _viewport.get_texture())
 	_far_mat.set_shader_parameter("mask", _viewport.get_texture())
-	_near_meshes = build_tile_levels(near_tile, near_density * minf(density_scale, 1.0), near_width, 1)
-	_far_meshes = build_tile_levels(far_tile, far_density * minf(density_scale, 1.0), far_width, 2)
+	# Style peint : plus de brins, plus larges, pour un tapis sans trou.
+	var pd := 1.7 if style == Style.PEINTE else 1.0
+	var pw := 1.25 if style == Style.PEINTE else 1.0
+	_near_meshes = build_tile_levels(near_tile, near_density * pd * minf(density_scale, 1.0), near_width * pw, 1)
+	_far_meshes = build_tile_levels(far_tile, far_density * pd * minf(density_scale, 1.0), far_width * pw, 2)
 	_near_offsets = _ring_offsets(near_tile, nr)
 	_far_offsets = _ring_offsets(far_tile, fr)
 	for o in _near_offsets:
@@ -267,6 +286,10 @@ func _material(fade_in: float, fade_in_w: float, fade_out: float, fade_out_w: fl
 	m.set_shader_parameter("fade_out", fade_out)
 	m.set_shader_parameter("fade_out_width", fade_out_w)
 	m.set_shader_parameter("mask_rect", Vector4(mask_rect.position.x, mask_rect.position.y, mask_rect.size.x, mask_rect.size.y))
+	m.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
+	if style == Style.PEINTE:
+		m.set_shader_parameter("blade_height", blade_height * 1.15)
+		m.set_shader_parameter("wind_strength", wind_strength * 1.4)
 	return m
 
 
@@ -314,20 +337,39 @@ func build_tile(size: float, density: float, width: float, seed: int) -> ArrayMe
 	idx.resize(count * BLADE_I)
 	var h := blade_height
 	var levels := [0.0, 0.4, 0.75]
+	# Style peint : les brins poussent en touffes de 3 à 6 qui s'ouvrent en éventail,
+	# plus pointus. Les touffes sont tirées dans le désordre pour que les niveaux de
+	# détail (qui gardent les premiers brins) gardent des brins partout.
+	var painted := style == Style.PEINTE
+	var tufts := PackedVector2Array()
+	if painted:
+		var nt := maxi(1, count / 4)
+		for k in nt:
+			tufts.append(Vector2(rng.randf() * size, rng.randf() * size))
+	var taper := 0.82 if painted else 0.6
 	for b in count:
 		var root := Vector2(rng.randf() * size, rng.randf() * size)
 		var ang := rng.randf() * TAU
+		var spread := rng.randf_range(0.12, 0.42)
+		if painted:
+			var tc := tufts[rng.randi() % tufts.size()]
+			var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 0.09)
+			root = (tc + off).posmod(size)
+			# La pointe part vers l'extérieur de la touffe.
+			var out_a := off.angle() if off.length() > 0.01 else rng.randf() * TAU
+			ang = out_a - PI * 0.5 + rng.randf_range(-0.5, 0.5)
+			spread = rng.randf_range(0.3, 0.7)
 		var side := Vector3(cos(ang), 0, sin(ang))
 		var face := Vector3(-side.z, 0, side.x)
 		# Brins longs et courbés (façon BotW) : la pointe part loin du pied.
-		var lean := face * rng.randf_range(0.12, 0.42)
+		var lean := face * spread
 		var w := width * rng.randf_range(0.7, 1.3)
 		var base := Vector3(root.x, 0, root.y)
 		var v := b * BLADE_V
 		for l in levels.size():
 			var t: float = levels[l]
 			var c := base + Vector3(0, t * h, 0) + lean * t * t * h
-			var ww := w * (1.0 - t * 0.6)
+			var ww := w * (1.0 - t * taper)
 			verts[v + l * 2] = c - side * ww * 0.5
 			verts[v + l * 2 + 1] = c + side * ww * 0.5
 			uvs[v + l * 2] = Vector2(-1, t)

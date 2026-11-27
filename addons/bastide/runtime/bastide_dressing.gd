@@ -86,6 +86,15 @@ func _process(_delta: float) -> void:
 		if node == null:
 			_pending.erase(id)
 			continue
+		# Les terriers portent leur propre habillage (BastideBurrowBuilder).
+		if node is BastideBuilding and node.last_anchors.get("burrow", false):
+			if _hosts.has(id):
+				(_hosts[id] as Node).queue_free()
+				_hosts.erase(id)
+			if _lights.erase(id):
+				lights_changed.emit()
+			_pending.erase(id)
+			continue
 		if not node is BastideBuilding or node.last_anchors.is_empty():
 			_pending.erase(id)
 			continue

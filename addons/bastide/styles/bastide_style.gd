@@ -17,6 +17,7 @@ const WOOD_SHADER := preload("res://addons/bastide/shaders/bastide_wood.gdshader
 const FOLIAGE_SHADER := preload("res://addons/bastide/shaders/bastide_foliage.gdshader")
 const GRAVEL_SHADER := preload("res://addons/bastide/shaders/bastide_gravel.gdshader")
 const TILE_SHADER := preload("res://addons/bastide/shaders/bastide_tile.gdshader")
+const TURF_SHADER := preload("res://addons/bastide/shaders/bastide_turf.gdshader")
 
 @export var display_name := "Médiéval pierre"
 
@@ -107,6 +108,7 @@ var _default_foliage: Material
 var _default_gravel: Material
 var _default_paint: Material
 var _default_earth: Material
+var _default_turf: Material
 
 
 func get_wall_style() -> BastideWallStyle:
@@ -176,6 +178,15 @@ func get_gravel_material() -> Material:
 		m.shader = GRAVEL_SHADER
 		_default_gravel = m
 	return _default_gravel
+
+
+## Herbe rase des buttes des terriers : les mêmes taches de prairie que le sol.
+func get_turf_material() -> Material:
+	if _default_turf == null:
+		var m := ShaderMaterial.new()
+		m.shader = TURF_SHADER
+		_default_turf = m
+	return _default_turf
 
 
 ## Bois laqué (torii) : couleur unie, satinée.
@@ -264,3 +275,4 @@ func prepare() -> void:
 	get_gravel_material()
 	get_paint_material()
 	get_earth_material()
+	get_turf_material()

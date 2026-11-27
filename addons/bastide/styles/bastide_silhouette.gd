@@ -57,6 +57,9 @@ static func has_hearth(kind: int) -> bool:
 static func style_for(base: BastideStyle, kind: int) -> BastideStyle:
 	if base == null or kind == Kind.HOUSE or kind == Kind.AUTO:
 		return base
+	# Les terriers n'ont qu'une silhouette : la butte.
+	if base.get_building_style().form == BastideBuildingStyle.Form.BURROW:
+		return base
 	# Le style de base peut être retouché (éditeur) : un compteur de version, tenu à
 	# jour par son signal « changed », invalide les variantes.
 	var bid := base.get_instance_id()

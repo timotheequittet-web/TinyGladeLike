@@ -5,7 +5,9 @@ extends RefCounted
 ## - STONE : muret bas de pierres sèches arrondies, assises décalées, pierres de
 ##   couronnement plus larges, grandes pierres dressées aux extrémités ;
 ## - BAMBOO : clôture de bambou à claire-voie (yotsume-gaki) : poteaux réguliers,
-##   lisses horizontales, bambous verticaux en quinconce, liens de corde noire.
+##   lisses horizontales, bambous verticaux en quinconce, liens de corde noire ;
+## - HEDGE : haie taillée en dos rond, constellée de fleurs (variante légère du
+##   style terrier, voir BastideGardenStyle.soft_fence).
 ##
 ## Règles : la clôture s'ouvre là où un chemin la traverse (deux poteaux de portail
 ## encadrent le passage) ; poteaux répartis en nombre entier sur chaque tronçon,
@@ -13,6 +15,7 @@ extends RefCounted
 
 const ROLE_STONE := BastideGardenMesher.ROLE_STONE
 const ROLE_WOOD := BastideGardenMesher.ROLE_WOOD
+const ROLE_HEDGE := &"hedge"
 
 
 static func build(points: PackedVector3Array, closed: bool, variant: int, seed: int, style: BastideStyle,
@@ -31,16 +34,25 @@ static func build(points: PackedVector3Array, closed: bool, variant: int, seed: 
 	var runs := _runs(openings, total, closed)
 	var mb := BastideMeshBuilder.new()
 	var stone := variant == BastideGardenStyle.FenceKind.STONE
+	var hedge := not stone and (variant == BastideGardenStyle.FenceKind.HEDGE or gs.soft_fence == BastideGardenStyle.FenceKind.HEDGE)
 	var h := height if height > 0.0 else (gs.stone_fence_height if stone else gs.bamboo_fence_height)
+	var groups := {}
 	for ri in runs.size():
 		var run: Dictionary = runs[ri]
 		if run["s1"] - run["s0"] < 0.35:
 			continue
 		if stone:
 			_stone_run(mb, result, points, cum, total, closed, run, h, gs, BastideRng.combine(seed, ri), with_collision)
+		elif hedge:
+			_hedge_run(mb, result, groups, points, cum, total, closed, run, h, gs, BastideRng.combine(seed, ri), with_collision)
 		else:
 			_bamboo_run(mb, result, points, cum, total, closed, run, h, gs, BastideRng.combine(seed, ri), with_collision)
-	result.mesh = mb.commit(BastideGardenMesher.materials(style))
+	var mats := BastideGardenMesher.materials(style)
+	mats[ROLE_HEDGE] = BastideFarmBuilder.hedge_material()
+	result.mesh = mb.commit(mats)
+	for key: String in groups:
+		var g: Dictionary = groups[key]
+		result.add_instances(g["mesh"], g["mat"], g["xf"], GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, 0.0, 80.0)
 	result.stats = {"triangles": mb.triangle_count, "openings": openings.size(), "runs": runs.size()}
 	return result
 
@@ -89,6 +101,93 @@ static func _at(points: PackedVector3Array, cum: PackedFloat32Array, total: floa
 	var t := (s - cum[i - 1]) / seg if seg > 1e-6 else 0.0
 	var dir := BastidePolyline.flat_dir(a, b)
 	return [a.lerp(b, t), dir if dir != Vector3.ZERO else Vector3.RIGHT]
+
+
+# --- Haie fleurie --------------------------------------------------------------------
+
+## Haie taillée en dos rond le long du tracé (bouts arrondis), semée de fleurs en
+## cartes peintes sur le dessus et les flancs.
+static func _hedge_run(mb: BastideMeshBuilder, result: BastideBuildResult, groups: Dictionary, points: PackedVector3Array,
+		cum: PackedFloat32Array, total: float, closed: bool, run: Dictionary, h: float,
+		gs: BastideGardenStyle, key: int, with_collision: bool) -> void:
+	var s0: float = run["s0"]
+	var s1: float = run["s1"]
+	var loop: bool = run["loop"]
+	var length := s1 - s0
+	var nseg := 12
+	var n := maxi(3, ceili(length / 0.3))
+	var half_w := 0.48
+	var dark := Color(0.12, 0.22, 0.1)
+	var mid := Color(0.22, 0.36, 0.14)
+	var top := Color(0.34, 0.48, 0.17)
+	var prev: Array = []
+	var prev_n: Array = []
+	var prev_c: Array = []
+	var flowers := gs.flower_colors
+	for si in n + 1:
+		var s := lerpf(s0, s1, float(si) / n)
+		var at := _at(points, cum, total, closed, s)
+		var c: Vector3 = at[0]
+		var d: Vector3 = at[1]
+		var side := Vector3(-d.z, 0.0, d.x)
+		var e := INF if loop else minf(s - s0, s1 - s)
+		var k := sqrt(clampf(e / 0.5, 0.0, 1.0))
+		var wk := lerpf(0.5, 1.0, k)
+		var hk := lerpf(0.6, 1.0, k)
+		var sec: Array = []
+		var nrm: Array = []
+		var cols: Array = []
+		for ai in nseg + 1:
+			var a := PI * ai / nseg
+			var bump := 1.0 + 0.05 * sin(s * 2.1 + float(key % 89)) + 0.03 * sin(s * 4.7 + ai * 1.3) \
+					+ BastideGardenMesher.h(key, si * 31 + ai) * 0.03
+			var w := half_w * wk * bump
+			var hh := h * hk * bump * pow(sin(a), 0.45)
+			sec.append(c + side * (cos(a) * w) + Vector3(0.0, hh - 0.05, 0.0))
+			nrm.append((side * cos(a) / maxf(w, 0.05) + Vector3.UP * sin(a) / maxf(h * hk, 0.05)).normalized())
+			var up_k := sin(a)
+			var col := dark.lerp(mid, clampf(up_k * 1.4, 0.0, 1.0)).lerp(top, clampf((up_k - 0.75) * 4.0, 0.0, 1.0))
+			cols.append(BastideGardenMesher.tint(col, BastideGardenMesher.h(key, 400 + si * 13 + ai) * 0.05))
+		if si > 0:
+			for ai in nseg:
+				mb.add_tri_smooth(ROLE_HEDGE, prev[ai], sec[ai], sec[ai + 1], prev_n[ai], nrm[ai], nrm[ai + 1],
+						prev_c[ai], cols[ai], cols[ai + 1])
+				mb.add_tri_smooth(ROLE_HEDGE, prev[ai], sec[ai + 1], prev[ai + 1], prev_n[ai], nrm[ai + 1], prev_n[ai + 1],
+						prev_c[ai], cols[ai + 1], prev_c[ai + 1])
+		if not loop and (si == 0 or si == n):
+			var dir := -1.0 if si == 0 else 1.0
+			var tip := c + d * (dir * 0.2) + Vector3(0.0, h * 0.35, 0.0)
+			for ai in nseg:
+				mb.add_tri_smooth(ROLE_HEDGE, sec[ai], sec[ai + 1], tip, nrm[ai], nrm[ai + 1], d * dir,
+						cols[ai], cols[ai + 1], mid)
+		# Fleurs : sur le dos et les flancs, par petites grappes.
+		if si < n and not flowers.is_empty():
+			for f in 2:
+				var r := BastideGardenMesher.h(key, 900 + si * 7 + f)
+				if r < 0.25:
+					continue
+				var a := PI * lerpf(0.15, 0.85, BastideGardenMesher.h(key, 950 + si * 7 + f))
+				var w := half_w * wk
+				var hh := h * hk * pow(sin(a), 0.45)
+				var p := c + side * (cos(a) * w * 0.92) + Vector3(0.0, hh - 0.2, 0.0) + d * (0.15 * f)
+				var fc: Color = flowers[int(r * 97.0) % flowers.size()]
+				var tint := Color(snappedf(0.7 + fc.r * 0.45, 0.05), snappedf(0.7 + fc.g * 0.45, 0.05), snappedf(0.7 + fc.b * 0.45, 0.05))
+				var gk := "flower/%s" % str(tint)
+				if not groups.has(gk):
+					var item := BastideKitNature.tuft("flower", tint, 1.0)
+					if item.is_empty():
+						continue
+					groups[gk] = {"mesh": item["mesh"], "mat": item["mat"], "xf": []}
+				var sc := 0.42 + r * 0.2
+				(groups[gk]["xf"] as Array).append(Transform3D(Basis(Vector3.UP, r * 40.0).scaled(Vector3.ONE * sc), p))
+		prev = sec
+		prev_n = nrm
+		prev_c = cols
+	if with_collision:
+		var m := maxi(1, ceili(length / 1.2))
+		for i in m:
+			var at := _at(points, cum, total, closed, lerpf(s0, s1, (i + 0.5) / m))
+			result.add_prism(at[0], half_w * 0.85, h, 6)
 
 
 # --- Pierres sèches -----------------------------------------------------------------

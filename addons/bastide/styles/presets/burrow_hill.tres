@@ -1,0 +1,90 @@
+[gd_resource type="Resource" script_class="BastideStyle" format=3]
+
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_style.gd" id="1_bur01"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_wall_style.gd" id="2_bur02"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_building_style.gd" id="3_bur03"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_roof_style.gd" id="4_bur04"]
+[ext_resource type="Script" path="res://addons/bastide/styles/bastide_garden_style.gd" id="5_bur05"]
+
+[sub_resource type="Resource" id="Resource_bwal"]
+script = ExtResource("2_bur02")
+thickness = 0.6
+height = 1.05
+batter = 0.06
+top_amplitude = 0.12
+top_wavelength = 3.0
+course_height = 0.26
+stone_length_min = 0.32
+stone_length_max = 0.7
+stone_bevel = 0.06
+stone_bulge_max = 0.05
+plinth_height = 0.0
+coping_thickness = 0.0
+coping_overhang = 0.0
+crenellations = false
+end_pillars = false
+gate_kind = 3
+gate_wood_color = Color(0.36, 0.25, 0.16, 1)
+stone_color = Color(0.6, 0.57, 0.5, 1)
+stone_color_alt = Color(0.52, 0.51, 0.46, 1)
+quoin_color = Color(0.66, 0.62, 0.54, 1)
+mortar_color = Color(0.3, 0.28, 0.22, 1)
+color_variance = 0.15
+
+[sub_resource type="Resource" id="Resource_bbld"]
+script = ExtResource("3_bur03")
+form = 1
+floors = 1
+min_edge = 1.5
+door_width = 1.95
+window_width = 0.86
+flower_box_chance = 0.75
+mound_height = 4.0
+burrow_width = 8.5
+door_colors = PackedColorArray(0.24, 0.5, 0.24, 1, 0.22, 0.42, 0.66, 1, 0.72, 0.24, 0.18, 1, 0.92, 0.72, 0.24, 1, 0.24, 0.55, 0.5, 1)
+plaster_color = Color(0.9, 0.83, 0.68, 1)
+plaster_color_alt = Color(0.84, 0.75, 0.58, 1)
+interior_color = Color(0.12, 0.09, 0.07, 1)
+wood_color = Color(0.4, 0.27, 0.16, 1)
+door_color = Color(0.2, 0.4, 0.2, 1)
+glass_color = Color(0.2, 0.28, 0.34, 1)
+flower_colors = PackedColorArray(0.92, 0.3, 0.35, 1, 0.98, 0.78, 0.25, 1, 0.85, 0.5, 0.78, 1, 0.97, 0.96, 0.9, 1, 0.55, 0.6, 0.95, 1)
+
+[sub_resource type="Resource" id="Resource_brof"]
+script = ExtResource("4_bur04")
+chimney_chance = 1.0
+
+[sub_resource type="Resource" id="Resource_bgar"]
+script = ExtResource("5_bur05")
+path_color = Color(0.62, 0.5, 0.36, 1)
+path_width = 1.4
+stepping_stones = false
+path_edging = false
+drip_edge = false
+edging_color = Color(0.52, 0.5, 0.44, 1)
+pebble_color = Color(0.48, 0.45, 0.4, 1)
+stone_fence_height = 0.75
+fence_stone_color = Color(0.6, 0.57, 0.5, 1)
+soft_fence = 2
+bamboo_fence_height = 1.1
+bamboo_color = Color(0.5, 0.4, 0.28, 1)
+cord_color = Color(0.36, 0.3, 0.22, 1)
+foliage_colors = PackedColorArray(0.3, 0.48, 0.2, 1, 0.4, 0.55, 0.24, 1)
+blossom_colors = PackedColorArray(0.97, 0.76, 0.82, 1)
+flower_colors = PackedColorArray(0.92, 0.3, 0.35, 1, 0.98, 0.8, 0.28, 1, 0.85, 0.5, 0.78, 1, 0.97, 0.96, 0.9, 1)
+maple_colors = PackedColorArray(0.85, 0.32, 0.12, 1, 0.9, 0.48, 0.15, 1, 0.75, 0.22, 0.1, 1)
+tree_weights = Vector3(0.45, 0.4, 0.15)
+gate_color = Color(0.4, 0.28, 0.18, 1)
+gate_top_color = Color(0.3, 0.22, 0.15, 1)
+lanterns = false
+terrace_color = Color(0.58, 0.44, 0.3, 1)
+terrace_frame_color = Color(0.32, 0.23, 0.15, 1)
+giboshi = false
+
+[resource]
+script = ExtResource("1_bur01")
+display_name = "Terrier des collines"
+wall = SubResource("Resource_bwal")
+building = SubResource("Resource_bbld")
+roof = SubResource("Resource_brof")
+garden = SubResource("Resource_bgar")

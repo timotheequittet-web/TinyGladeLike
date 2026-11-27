@@ -106,6 +106,8 @@ func resolved_silhouette() -> int:
 
 ## Calcul pur (aucun accès à l'arbre de scène) : peut tourner sur n'importe quel thread.
 static func compute(spec: BastideBuildingSpec, st: BastideStyle, with_collision: bool) -> BastideBuildResult:
+	if st.get_building_style().form == BastideBuildingStyle.Form.BURROW:
+		return BastideBurrowBuilder.build(spec, st, with_collision)
 	var layout := BastideBuildingGenerator.generate(spec, st)
 	if layout.is_empty():
 		return BastideBuildResult.new()
@@ -152,12 +154,20 @@ func build_spec() -> BastideBuildingSpec:
 ## Crée (ou retire) l'intérieur : variante de la maison qu'on peut franchir, planchers,
 ## escaliers, vantaux mobiles, lumière. Rien n'existe tant qu'il n'est pas actif.
 func set_interior_active(on: bool) -> void:
+	# Les terriers n'ont pas (encore) d'intérieur : la butte reste fermée.
+	if on and is_burrow():
+		return
 	if on:
 		if _interior == null:
 			_interior = BastideInteriorHost.new(self)
 		_interior.activate()
 	elif _interior:
 		_interior.deactivate()
+
+
+## Maison-terrier (style à buttes herbeuses) plutôt que maison à murs et toit.
+func is_burrow() -> bool:
+	return get_effective_style().get_building_style().form == BastideBuildingStyle.Form.BURROW
 
 
 func is_interior_active() -> bool:
@@ -228,6 +238,8 @@ static func add_door_steps(result: BastideBuildResult, field: BastideHeightField
 	var base_y := float(result.anchors.get("base_y", 0.0))
 	var inv := xf.affine_inverse()
 	var ws := st.get_wall_style()
+	if result.anchors.get("burrow", false):
+		return
 	var sliding := st.get_building_style().door_kind == BastideBuildingStyle.DoorKind.SLIDING
 	var start := 0.58 if sliding else 0.4
 	var top := base_y + lift + (0.12 if sliding else 0.13)

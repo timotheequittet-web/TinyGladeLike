@@ -150,6 +150,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			for c in _ui.get_children():
 				var tw := create_tween()
 				tw.tween_property(c, "modulate:a", 1.0 if _ui_visible else 0.0, 0.3)
+		elif k.keycode == KEY_TAB and not camera.walking:
+			_pick_style(BastideStyleCatalog.next(tool.style, -1 if k.shift_pressed else 1))
+			get_viewport().set_input_as_handled()
 		elif (k.ctrl_pressed or k.meta_pressed) and k.keycode == KEY_S:
 			_save()
 		elif (k.ctrl_pressed or k.meta_pressed) and (k.keycode == KEY_O or k.keycode == KEY_L):
@@ -246,6 +249,40 @@ func _button(parent: Control, text: String, cb: Callable, toggle := false) -> Bu
 	return b
 
 
+## Carte du sélecteur de styles : icône dessinée et nom.
+func _style_card(parent: Control, i: int) -> Button:
+	var e: Dictionary = BastideStyleCatalog.ENTRIES[i]
+	var st := BastideStyleCatalog.style(i)
+	var b := Button.new()
+	b.toggle_mode = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(104, 92)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.tooltip_text = "%s : %s" % [e["name"], e["blurb"]]
+	b.pressed.connect(func() -> void: _pick_style(st))
+	var icon := Control.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.offset_left = 14
+	icon.offset_right = -14
+	icon.offset_top = 8
+	icon.offset_bottom = -28
+	icon.draw.connect(func() -> void:
+		BastideStyleCatalog.draw_icon(icon, e["icon"], Rect2(Vector2.ZERO, icon.size), INK, e["color"]))
+	b.add_child(icon)
+	var lab := Label.new()
+	lab.text = e["name"]
+	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lab.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	lab.offset_top = -27
+	lab.offset_bottom = -5
+	lab.add_theme_font_size_override("font_size", 15)
+	b.add_child(lab)
+	parent.add_child(b)
+	return b
+
+
 func _sep(parent: Control) -> void:
 	var s := VSeparator.new()
 	var sb := StyleBoxLine.new()
@@ -284,9 +321,6 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.POND] = _button(hb, "Étang  J", func() -> void: tool.mode = BastideBuildTool.Mode.POND, true)
 	_mode_buttons[BastideBuildTool.Mode.FARM] = _button(hb, "Champ  H", func() -> void: tool.mode = BastideBuildTool.Mode.FARM, true)
 	_sep(hb)
-	_style_buttons[JAPANESE] = _button(hb, "Japonais", func() -> void: _pick_style(JAPANESE), true)
-	_style_buttons[MEDIEVAL] = _button(hb, "Médiéval", func() -> void: _pick_style(MEDIEVAL), true)
-	_sep(hb)
 	_undo_btn = _button(hb, "Annuler", tool.undo)
 	_redo_btn = _button(hb, "Rétablir", tool.redo)
 	_sep(hb)
@@ -294,6 +328,24 @@ func _build_ui() -> void:
 	var day := get_node_or_null("JourNuit") as BastideDayNight
 	if day:
 		_button(hb, "Heure  N", day.skip_to_next)
+
+	# Sélecteur de styles, en colonne à gauche : une carte illustrée par style du
+	# catalogue (Tab : style suivant).
+	var sp := PanelContainer.new()
+	sp.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_KEEP_SIZE, 16)
+	sp.grow_vertical = Control.GROW_DIRECTION_BOTH
+	root.add_child(sp)
+	var svb := VBoxContainer.new()
+	svb.add_theme_constant_override("separation", 6)
+	sp.add_child(svb)
+	var stitle := Label.new()
+	stitle.text = "Style  ·  Tab"
+	stitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stitle.add_theme_font_size_override("font_size", 13)
+	stitle.add_theme_color_override("font_color", Color(INK, 0.7))
+	svb.add_child(stitle)
+	for i in BastideStyleCatalog.size():
+		_style_buttons[BastideStyleCatalog.style(i)] = _style_card(svb, i)
 
 	# Variantes du muret (touche V), juste au-dessus quand le mode Muret est actif.
 	_variant_panel = PanelContainer.new()
@@ -407,7 +459,7 @@ func _build_ui() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card_box.add_child(title)
 	var keys := Label.new()
-	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   V : variante (muret, forêt)   ·   G : silhouette   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
+	keys.text = "Clic droit + souris : tourner   ·   molette : zoomer\nZQSD : glisser   ·   A / E : pivoter   ·   F : recentrer\n1 à 5, T, B : outils   ·   Tab : style   ·   V : variante (muret, forêt)   ·   G : silhouette   ·   P : promenade\nCtrl+S / Ctrl+O : enregistrer / recharger   ·   M : son   ·   H : masquer"
 	keys.add_theme_font_size_override("font_size", 13)
 	keys.add_theme_color_override("font_color", Color(1, 0.98, 0.94, 0.92))
 	keys.add_theme_color_override("font_shadow_color", Color(0.15, 0.1, 0.05, 0.5))
@@ -437,7 +489,10 @@ func _build_ui() -> void:
 
 func _pick_style(st: BastideStyle) -> void:
 	tool.set_style(st)
-	_refresh_style_buttons()
+	_refresh_mode()
+	var i := BastideStyleCatalog.index_of(st)
+	if i >= 0:
+		_toast_msg("Style : %s" % BastideStyleCatalog.ENTRIES[i]["name"])
 
 
 func _refresh_style_buttons() -> void:
@@ -450,6 +505,9 @@ func _refresh_mode() -> void:
 		(_mode_buttons[m] as Button).set_pressed_no_signal(m == tool.mode)
 	for v: int in _variant_buttons:
 		(_variant_buttons[v] as Button).set_pressed_no_signal(v == tool.wall_variant)
+	# La variante légère du muret dépend du style : bambou, ou haie fleurie.
+	var hedge := tool.style != null and tool.style.get_garden_style().soft_fence == BastideGardenStyle.FenceKind.HEDGE
+	(_variant_buttons[BastideBuildTool.WallVariant.BAMBOO] as Button).text = "Haie fleurie" if hedge else "Bambou"
 	for k: int in _forest_buttons:
 		(_forest_buttons[k] as Button).set_pressed_no_signal(k == int(tool.forest_kind))
 	for k: int in _pond_buttons:

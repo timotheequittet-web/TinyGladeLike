@@ -8,7 +8,7 @@ extends Resource
 ## aussi le jardin (pas japonais et lanternes de pierre, ou chemin de terre et
 ## clôture de bois).
 
-enum FenceKind { STONE, BAMBOO }
+enum FenceKind { STONE, BAMBOO, HEDGE }
 
 @export_group("Sol")
 @export var ground_color: Color = Color(0.42, 0.55, 0.3):
@@ -54,6 +54,12 @@ enum FenceKind { STONE, BAMBOO }
 		emit_changed()
 
 @export_group("Clôtures")
+## Clôture légère du style (variante « bambou » du muret) : bambou à claire-voie,
+## ou haie fleurie (style terrier).
+@export var soft_fence: FenceKind = FenceKind.BAMBOO:
+	set(value):
+		soft_fence = value
+		emit_changed()
 @export_range(0.3, 1.5, 0.05, "suffix:m") var stone_fence_height: float = 0.65:
 	set(value):
 		stone_fence_height = value

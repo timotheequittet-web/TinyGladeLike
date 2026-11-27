@@ -12,6 +12,14 @@ enum FacadeKind { MASONRY, TIMBER }
 enum WindowKind { CASEMENT, LATTICE }
 ## Porte battante en planches, ou porte coulissante à claire-voie.
 enum DoorKind { PLANK, SLIDING }
+## Forme d'habitation : maison à murs et toit, ou terrier creusé dans une butte
+## herbeuse (porte et fenêtres rondes, voir BastideBurrowBuilder).
+enum Form { HOUSE, BURROW }
+
+@export var form: Form = Form.HOUSE:
+	set(value):
+		form = value
+		emit_changed()
 
 @export_group("Construction")
 @export var facade_kind: FacadeKind = FacadeKind.MASONRY:
@@ -201,6 +209,25 @@ enum DoorKind { PLANK, SLIDING }
 	set(value):
 		noren_colors = value
 		emit_changed()
+@export_group("Terrier")
+## Hauteur d'une butte (au sommet, pour une butte de taille moyenne).
+@export_range(1.8, 6.0, 0.05, "suffix:m") var mound_height: float = 3.2:
+	set(value):
+		mound_height = value
+		emit_changed()
+## Largeur visée d'une butte : un long tracé donne plusieurs buttes côte à côte,
+## chacune avec sa porte.
+@export_range(5.0, 16.0, 0.1, "suffix:m") var burrow_width: float = 8.5:
+	set(value):
+		burrow_width = value
+		emit_changed()
+## Couleurs des portes rondes (une par butte, tirée par la seed).
+@export var door_colors: PackedColorArray = PackedColorArray([Color(0.22, 0.4, 0.22), Color(0.2, 0.33, 0.52),
+		Color(0.6, 0.2, 0.15), Color(0.82, 0.62, 0.2)]):
+	set(value):
+		door_colors = value
+		emit_changed()
+
 @export_group("Couleurs")
 ## Enduit des murs.
 @export var plaster_color: Color = Color(0.93, 0.87, 0.75):

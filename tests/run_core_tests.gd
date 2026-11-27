@@ -76,6 +76,8 @@ func _init() -> void:
 	_test_farm_neighbours()
 	# Rotation des structures.
 	_test_orientation()
+	# Maisons-terriers et catalogue des styles.
+	_test_burrows()
 	# Intérieurs.
 	_test_interior_plan()
 	_test_interior_stairs_rules()
@@ -1842,3 +1844,55 @@ func _ray_hits(faces: PackedVector3Array, from: Vector3, dir: Vector3, length: f
 		if hit != null and from.distance_to(hit) <= length:
 			return true
 	return false
+
+
+# --- Maisons-terriers ------------------------------------------------------------------
+
+func _test_burrows() -> void:
+	print("Terriers")
+	var st: BastideStyle = load("res://addons/bastide/styles/presets/burrow_hill.tres")
+	st.prepare()
+	check(st.get_building_style().form == BastideBuildingStyle.Form.BURROW, "le style terrier construit des buttes")
+	var mk := func(pts: Array, door := -1, seed := 5) -> BastideBuildResult:
+		var spec := BastideBuildingSpec.new()
+		spec.footprint = PackedVector2Array(pts)
+		spec.seed = seed
+		spec.door_facade = door
+		return BastideBuilding.compute(spec, st, true)
+	var one: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)], 2)
+	check(int(one.stats.get("buttes", 0)) == 1, "un petit tracé : une seule butte")
+	check((one.anchors["doors"] as Array).size() == 1, "une porte par butte")
+	check(one.anchors.get("burrow", false), "les ancres signalent un terrier")
+	var door: Dictionary = one.anchors["doors"][0]
+	check(absf((door["pos"] as Vector3).z - 6.0) < 0.6 and (door["out"] as Vector3).z > 0.9,
+			"la porte est sur le côté demandé, tournée vers l'extérieur")
+	check((one.anchors["smoke"] as PackedVector3Array).size() == 1, "une cheminée qui fume")
+	check(not one.collision_faces.is_empty(), "la butte a des collisions")
+	check(one.instances.size() > 3, "fleurs, touffes et buissons sur la butte (%d groupes)" % one.instances.size())
+	var roles := []
+	for i in one.mesh.get_surface_count():
+		roles.append(one.mesh.surface_get_name(i))
+	check(roles.has("turf") and roles.has("body") and roles.has("wood"), "herbe, façade et bois : %s" % ", ".join(roles))
+	# La butte est plus haute que la porte, et ne descend jamais sous le sol.
+	var lo := INF
+	var hi := -INF
+	for i in one.mesh.get_surface_count():
+		if one.mesh.surface_get_name(i) != "turf":
+			continue
+		for v: Vector3 in one.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+			lo = minf(lo, v.y)
+			hi = maxf(hi, v.y)
+	check(lo > -0.01 and hi > 2.6 and hi < 5.5, "butte entre le sol et %.1f m" % hi)
+	var long: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(20, 0), Vector2(20, 7), Vector2(0, 7)])
+	check(int(long.stats.get("buttes", 0)) == 2 and (long.anchors["doors"] as Array).size() == 2,
+			"un long tracé : deux buttes, deux portes")
+	var tiny: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(4, 0), Vector2(4, 4), Vector2(0, 4)])
+	check(not tiny.is_empty() and (tiny.anchors["doors"] as Array).size() == 1, "un tout petit tracé donne quand même sa butte")
+	var again: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)], 2)
+	check(again.mesh.get_faces().size() == one.mesh.get_faces().size(), "même tracé, même seed : même terrier")
+	check(BastideSilhouette.style_for(st, BastideSilhouette.Kind.TOWER) == st, "pas de tour ni de kura en style terrier")
+	# Catalogue : les trois styles, dans l'ordre, et le passage au suivant en boucle.
+	check(BastideStyleCatalog.size() >= 3, "trois styles au catalogue")
+	var last := BastideStyleCatalog.style(BastideStyleCatalog.size() - 1)
+	check(BastideStyleCatalog.next(last) == BastideStyleCatalog.style(0), "Tab revient au premier style après le dernier")
+	check(BastideStyleCatalog.index_of(st) >= 0, "le terrier est au catalogue")

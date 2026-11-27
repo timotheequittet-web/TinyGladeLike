@@ -1497,6 +1497,8 @@ func current_hint() -> String:
 	match mode:
 		Mode.WALL:
 			var names := ["muret à petit toit", "muret de pierres sèches", "clôture de bambou"]
+			if style and style.get_garden_style().soft_fence == BastideGardenStyle.FenceKind.HEDGE:
+				names[2] = "haie fleurie"
 			return "Maintiens le clic et dessine un %s  ·  V : changer" % names[int(wall_variant)]
 		Mode.PATH:
 			return "Maintiens le clic et dessine un chemin  ·  pars d'une porte ou d'un autre chemin"

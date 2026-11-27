@@ -102,7 +102,7 @@ void vertex() {
 	vec2 wd = normalize(meadow_wind_dir);
 	float wave = meadow_wave(root.xz, TIME);
 	float gust = noise(root.xz * 0.12 - wd * TIME * 0.6);
-	float bend = wind_strength * (0.3 + wave * 0.9 + gust * 0.35) + sin(TIME * 2.1 + COLOR.g * 6.28) * 0.04;
+	float bend = wind_strength * (0.3 + wave * 0.9 + gust * 0.35) + sin(TIME * 2.1 + COLOR.g * 6.28) * 0.02;
 	float tt = t * t;
 	p.xz += wd * bend * tt * h * 1.3;
 	p.y -= bend * bend * tt * h * 0.3;
@@ -123,29 +123,36 @@ void fragment() {
 	float hit_edge = 0.0;
 	float hit_h = 1.0;
 	float hit_s = 0.5;
-	for (int k = 0; k < 7; k++) {
-		float fk = float(k);
-		float s1 = hash(v_rnd.xy * 91.7 + fk * 1.618);
-		float s2 = hash(v_rnd.yz * 57.3 + fk * 2.414);
-		float s3 = hash(v_rnd.zx * 33.1 + fk * 3.141);
+	// Carte petite à l'écran : moins de brins, plus larges (moins de calcul et pas
+	// de brins plus fins qu'un pixel qui scintillent quand le vent les bouge).
+	float n = px > 0.018 ? 4.0 : 7.0;
+	float wscale = 7.0 / n;
+	// Tirages par brin : suites à pas irrationnel (bien moins chères que des sinus).
+	// Du brin de devant (le dernier) vers le fond : on s'arrête au premier touché.
+	for (float fk = n - 1.0; fk >= 0.0; fk -= 1.0) {
+		float s1 = fract(v_rnd.x + fk * 0.6180340);
+		float s2 = fract(v_rnd.y + fk * 0.7548777);
+		float s3 = fract(v_rnd.z + fk * 0.5698403);
 		// Hauteurs bien variées : pas de dessus plat.
 		float hk = 0.35 + 0.65 * s1 * s1 * (2.0 - s1);
 		if (uv.y >= hk) {
 			continue;
 		}
-		float xk = 0.16 + 0.68 * ((fk + 0.5) / 7.0) + (s2 - 0.5) * 0.14;
+		float xk = 0.16 + 0.68 * ((fk + 0.5) / n) + (s2 - 0.5) * 0.14;
 		// En éventail, et tous couchés du côté où souffle le vent.
 		float lean = (xk - 0.5) * 0.5 + (s3 - 0.5) * 0.25 + v_side * (0.35 + 0.3 * s1);
 		float yn = uv.y / hk;
 		float cx = xk + lean * yn * yn * 0.42;
-		float wk = 0.055 + 0.05 * s3;
-		float half_w = max(wk * pow(1.0 - yn, 0.75), px * 0.55 * step(yn, 0.97));
-		float e = (uv.x - cx) / max(half_w, 1e-4);
+		float wk = (0.055 + 0.05 * s3) * wscale;
+		// Pointe effilée ; jamais moins d'un pixel de large (sauf tout au bout).
+		float half_w = max(wk * (1.0 - yn) * (1.25 - 0.25 * (1.0 - yn)), px * 0.75 * step(yn, 0.95));
+		float e = (uv.x - cx) / half_w;
 		if (abs(e) < 1.0) {
 			hit = fk;
 			hit_edge = e * sign(lean + 1e-3);
 			hit_h = yn;
 			hit_s = s2;
+			break;
 		}
 	}
 	// Découpe nette hors des brins (comme un alpha scissor, mais sûre dans toutes
@@ -160,7 +167,7 @@ void fragment() {
 	vec3 col = mix(root_c, tone * 1.1, smoothstep(0.0, 0.45, uv.y));
 	col = mix(col, tip_c, smoothstep(0.45, 1.0, uv.y) * (0.6 + 0.4 * hit_h));
 	// Valeur propre au brin : ceux de devant un peu plus clairs (profondeur peinte).
-	col *= 0.8 + 0.12 * (hit / 6.0) + 0.24 * hit_s;
+	col *= 0.8 + 0.12 * (hit / (n - 1.0)) + 0.24 * hit_s;
 	// Coup de pinceau : un bord éclairé, l'autre dans l'ombre.
 	col *= hit_edge > 0.15 ? 1.09 : (hit_edge < -0.45 ? 0.9 : 1.0);
 	// La vague couche l'herbe et montre le dessus clair des brins.

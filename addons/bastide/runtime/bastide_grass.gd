@@ -71,11 +71,14 @@ const STYLE_NAMES := ["peinte", "naturelle"]
 @export_group("Herbe peinte")
 ## Style peint : petites cartes de 6 brins dessinés au pinceau (voir
 ## bastide_grass_painted.gdshader). Cartes par m² et largeur d'une carte (m).
-@export var painted_near_density := 34.0
-@export var painted_near_width := 0.42
+@export var painted_near_density := 26.0
+@export var painted_near_width := 0.46
 @export var painted_far_density := 4.0
 @export var painted_far_width := 0.8
 @export var painted_height := 0.48
+## Distance (m) jusqu'à laquelle l'herbe peinte garde toutes ses touffes (au-delà,
+## moins de touffes mais plus larges : c'est là que se superposent le plus de cartes).
+@export var painted_lod_distance := 13.0
 @export_group("Masque")
 ## Zone couverte par le masque des constructions (monde, xz) et sa résolution.
 @export var mask_rect := Rect2(-80, -80, 160, 160)
@@ -142,7 +145,7 @@ func _build_rings() -> void:
 	var nr := near_radius * radius_scale
 	var fr := far_radius * radius_scale
 	var painted := style == Style.PEINTE
-	_near_mat = _material(0.0, 0.0, nr, 5.0, near_lod_distance * sqrt(density_scale), painted_near_width if painted else near_width)
+	_near_mat = _material(0.0, 0.0, nr, 5.0, _near_lod() * sqrt(density_scale), painted_near_width if painted else near_width)
 	_far_mat = _material(nr - 5.0, 5.0, fr, 14.0, far_lod_distance * sqrt(density_scale), painted_far_width if painted else far_width)
 	if ground_material:
 		ground_material.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
@@ -217,7 +220,7 @@ func _process(_delta: float) -> void:
 func _update_lods(c: Vector3) -> void:
 	var eye := _eye()
 	var hidden := eye.distance_to(c) > hide_distance
-	visible_tiles(_near_tiles, _near_meshes, near_tile, near_lod_distance * sqrt(density_scale), eye, hidden)
+	visible_tiles(_near_tiles, _near_meshes, near_tile, _near_lod() * sqrt(density_scale), eye, hidden)
 	visible_tiles(_far_tiles, _far_meshes, far_tile, far_lod_distance * sqrt(density_scale), eye, hidden)
 	if ground_material:
 		ground_material.set_shader_parameter("grass_far", 0.0 if hidden else far_radius * radius_scale)
@@ -245,6 +248,10 @@ func visible_tiles(tiles: Array[MeshInstance3D], meshes: Array[ArrayMesh], size:
 ## Part de brins gardés à une distance donnée (même formule que le shader).
 func keep_at(dist: float, d0: float) -> float:
 	return clampf(pow(d0 / maxf(dist, 0.01), 1.5), min_keep, 1.0)
+
+
+func _near_lod() -> float:
+	return painted_lod_distance if style == Style.PEINTE else near_lod_distance
 
 
 func _eye() -> Vector3:

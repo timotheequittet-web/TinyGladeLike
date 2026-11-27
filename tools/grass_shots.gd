@@ -82,6 +82,20 @@ func _run() -> void:
 			cam.look_at_from_position(eye, tgt)
 			for i in 16:
 				await process_frame
+			if OS.has_environment("BENCH"):
+				# Temps moyen d'une image (relatif : à comparer sur la même machine).
+				for style in [0, 1]:
+					var g := scene.get_node("Herbe") as BastideGrass
+					g.style = style as BastideGrass.Style
+					for i in 8:
+						await process_frame
+					var t1 := Time.get_ticks_usec()
+					for i in 20:
+						await process_frame
+					print("bench %s %s : %.1f ms" % [v[0], BastideGrass.STYLE_NAMES[style], (Time.get_ticks_usec() - t1) / 20000.0])
+				(scene.get_node("Herbe") as BastideGrass).style = BastideGrass.Style.PEINTE
+				for i in 8:
+					await process_frame
 			var img := root.get_viewport().get_texture().get_image()
 			var path := out_dir.path_join("%s_h%02d_%s.png" % [prefix, int(h), v[0]])
 			img.save_png(path)

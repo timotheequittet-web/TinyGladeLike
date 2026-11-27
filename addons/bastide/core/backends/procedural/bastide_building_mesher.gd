@@ -93,11 +93,21 @@ static func build(layout: BastideBuildingLayout, style: BastideStyle, with_colli
 ## pour le décor : chemins qui rejoignent les portes, galets au pied des murs.
 static func anchors(layout: BastideBuildingLayout) -> Dictionary:
 	var doors: Array = []
+	var windows: Array = []
+	var facades: Array = []
 	for f: BastideBuildingLayout.Facade in layout.facades:
+		facades.append({"a": f.point(0.0, layout.base_y), "b": f.point(f.length, layout.base_y), "out": f.out3(),
+			"gable": f.gable, "posts": f.posts})
 		for o in f.openings:
 			if o.kind == Kind.DOOR and o.floor == 0:
 				doors.append({"pos": f.point((o.u0 + o.u1) * 0.5, layout.base_y), "out": f.out3(), "width": o.u1 - o.u0})
-	return {"doors": doors, "footprint": layout.footprint, "base_y": layout.base_y,
+			elif o.kind == Kind.WINDOW:
+				# Fenêtres, pour l'habillage (jardinières, lierre qui les contourne).
+				windows.append({"pos": f.point((o.u0 + o.u1) * 0.5, (float(o.y0) + float(o.y1)) * 0.5), "out": f.out3(),
+					"width": o.u1 - o.u0, "height": float(o.y1) - float(o.y0), "floor": int(o.get("floor", 0))})
+	return {"doors": doors, "windows": windows, "facades": facades, "eave_y": layout.eave_y,
+		"floors": layout.floors, "floor_height": layout.floor_height, "footprint": layout.footprint,
+		"base_y": layout.base_y, "pent": layout.pent_roof,
 		"overhang": layout.roof.overhang if layout.roof else 0.5, "smoke": smoke_points(layout.roof)}
 
 

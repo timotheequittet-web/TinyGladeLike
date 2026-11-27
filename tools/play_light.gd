@@ -4,6 +4,9 @@
 ## FULL_RENDER=1 garde le rendu complet. En headless, la fenêtre par défaut est
 ## trop petite pour les clics simulés : on lui donne la taille des captures.
 static func apply(scene: Node) -> void:
+	var gfx := scene.get_node_or_null("Graphismes") as BastideGraphics
+	if gfx:
+		gfx.auto_apply = false
 	if DisplayServer.get_name() == "headless":
 		scene.get_tree().root.size = Vector2i(1600, 900)
 		return

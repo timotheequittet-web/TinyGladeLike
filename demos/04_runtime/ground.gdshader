@@ -3,6 +3,11 @@
 shader_type spatial;
 render_mode diffuse_burley, specular_disabled;
 
+#include "res://addons/bastide/shaders/bastide_meadow.gdshaderinc"
+
+// Style peint (donné par BastideGrass) : même prairie que l'herbe, ombres de nuages.
+uniform float painted = 0.0;
+
 uniform vec3 grass_a : source_color = vec3(0.4, 0.55, 0.26);
 uniform vec3 grass_b : source_color = vec3(0.56, 0.64, 0.31);
 uniform vec3 dry : source_color = vec3(0.66, 0.64, 0.4);
@@ -49,6 +54,10 @@ void fragment() {
 	vec3 col = mix(grass_a, grass_b, smoothstep(0.35, 0.7, big));
 	col = mix(col, dry, smoothstep(0.62, 0.8, fbm(p * 0.06 + 11.0)) * 0.55);
 	col *= 0.9 + mid * 0.18 + (fine - 0.5) * 0.08;
+	vec3 tone = meadow_tone(p);
+	if (painted > 0.5) {
+		col = tone * (0.92 + mid * 0.12 + (fine - 0.5) * 0.06);
+	}
 	// Petites fleurs des champs : quelques points blancs, jaunes et roses.
 	vec2 cell = floor(p * 2.2);
 	vec2 fp = fract(p * 2.2) - 0.5;
@@ -59,12 +68,22 @@ void fragment() {
 	col = mix(col, petal, flower);
 	// Vent sur l'herbe : de longues vagues de lumière qui traversent la prairie.
 	float wave = sin(dot(p, vec2(0.08, 0.05)) - TIME * wind_speed * 2.0 + fbm(p * 0.05) * 4.0);
-	col *= 1.0 + wave * 0.035;
-	// Au loin, la prairie prend la teinte moyenne de l'herbe dorée ; sous les brins, elle s'assombrit.
-	col = mix(col, far_tint * (0.85 + big * 0.3), 0.45);
-	if (grass_center.y > -999.0) {
-		float gd = length(wp.xz - grass_center.xz);
-		col = mix(under_grass * (0.85 + mid * 0.3), col, smoothstep(grass_far * 0.55, grass_far, gd));
+	if (painted > 0.5) {
+		// Au loin, le sol peint joue l'herbe : il porte les mêmes vagues claires.
+		float mw = meadow_wave(p, TIME);
+		col = mix(col, col * 1.25 + vec3(0.03, 0.04, 0.0), mw * 0.45);
+		if (grass_center.y > -999.0) {
+			float gd = length(wp.xz - grass_center.xz);
+			col = mix(tone * (0.72 + mid * 0.12), col, smoothstep(grass_far * 0.55, grass_far, gd));
+		}
+	} else {
+		col *= 1.0 + wave * 0.035;
+		// Au loin, la prairie prend la teinte moyenne de l'herbe dorée ; sous les brins, elle s'assombrit.
+		col = mix(col, far_tint * (0.85 + big * 0.3), 0.45);
+		if (grass_center.y > -999.0) {
+			float gd = length(wp.xz - grass_center.xz);
+			col = mix(under_grass * (0.85 + mid * 0.3), col, smoothstep(grass_far * 0.55, grass_far, gd));
+		}
 	}
 	// Sentier de terre qui serpente vers le hameau.
 	float path_x = sin(wp.z * 0.045) * 7.0 + 3.0;
@@ -84,6 +103,9 @@ void fragment() {
 	vec3 mud = mix(bed_color, bed_color * 1.25, mid);
 	mud = mix(mud, pebble_color * 0.8, pebble * 0.6);
 	col = mix(col, mud, bed);
+	if (painted > 0.5) {
+		col *= meadow_clouds(p, TIME);
+	}
 	ALBEDO = col;
 	ROUGHNESS = mix(0.95, 0.6, max(bank * 0.6, bed));
 }

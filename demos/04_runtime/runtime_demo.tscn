@@ -9,6 +9,8 @@
 [ext_resource type="Script" path="res://addons/bastide/runtime/bastide_grass.gd" id="7_ndi6n"]
 [ext_resource type="Script" path="res://addons/bastide/runtime/bastide_life.gd" id="8_nxrwe"]
 [ext_resource type="Script" path="res://demos/04_runtime/ambience.gd" id="9_2sv16"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_graphics.gd" id="10_gfx01"]
+[ext_resource type="Script" path="res://addons/bastide/runtime/bastide_dressing.gd" id="11_dress"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_dkw7m"]
 sky_top_color = Color(0.46, 0.6, 0.8, 1)
@@ -112,6 +114,17 @@ script = ExtResource("8_nxrwe")
 site = NodePath("../Chantier")
 camera = NodePath("../Camera")
 butterfly_colors = PackedColorArray(0.98, 0.96, 0.9, 1, 0.98, 0.84, 0.36, 1, 0.95, 0.56, 0.24, 1, 0.7, 0.78, 0.98, 1)
+
+[node name="Habillage" type="Node3D" parent="." unique_id=1873330211 node_paths=PackedStringArray("site")]
+script = ExtResource("11_dress")
+site = NodePath("../Chantier")
+
+[node name="Graphismes" type="Node" parent="." unique_id=1450931207 node_paths=PackedStringArray("world_environment", "sun", "grass", "camera")]
+script = ExtResource("10_gfx01")
+world_environment = NodePath("../WorldEnvironment")
+sun = NodePath("../Soleil")
+grass = NodePath("../Herbe")
+camera = NodePath("../Camera")
 
 [node name="Ambiance" type="Node" parent="." unique_id=1789318627]
 script = ExtResource("9_2sv16")

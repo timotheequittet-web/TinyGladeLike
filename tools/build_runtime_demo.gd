@@ -132,6 +132,21 @@ func _init() -> void:
 	life.site = site
 	life.camera = cam
 
+	# --- Habillage des maisons (lanternes, lierre, pots…), niveaux Haut et Ultra ---
+	var dressing := BastideDressing.new()
+	dressing.name = "Habillage"
+	_add(root, dressing)
+	dressing.site = site
+
+	# --- Réglages graphiques (F3 compteur, F4 niveau) ---
+	var gfx := BastideGraphics.new()
+	gfx.name = "Graphismes"
+	_add(root, gfx)
+	gfx.world_environment = we
+	gfx.sun = sun
+	gfx.grass = grass
+	gfx.camera = cam
+
 	var amb := Node.new()
 	amb.name = "Ambiance"
 	amb.set_script(load("res://demos/04_runtime/ambience.gd"))

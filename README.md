@@ -162,6 +162,8 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 
 ![L'étang du hameau : nénuphars, iris, rochers moussus et ponton](docs/captures/etang_rive.jpg)
 
+![Le ponton : la terrasse du hameau avance sur l'étang](docs/captures/etang_ponton.jpg)
+
 ![Une source chaude tracée à la souris : eau laiteuse, cercle de pierres sombres et vapeur](docs/captures/etang_onsen.jpg)
 
 - **Étang** (touche **J**) : maintiens le clic et fais le tour d'une zone. Pendant le tracé, l'encre montre déjà la rive arrondie. Relâche : le sol se creuse et l'eau apparaît. **V** change la sorte : **étang de jardin**, **source chaude** (onsen) ou **mare sauvage**.
@@ -170,6 +172,7 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 - **L'eau** : couleur selon la vraie profondeur (on voit le fond près du bord, l'eau se ferme au milieu), réfraction, reflets du ciel au ras de l'eau, rides poussées par le vent, reflets dansants sur le fond, liseré clair contre la rive.
 - **Rives** : groupes de rochers moussus posés sur les avancées de la berge (ishi-gumi), une plage de galets clairs (suhama), des pierres qui bordent le reste avec des trous. Le fond et la berge mouillée changent de couleur.
 - **Vie** : iris et roseaux les pieds dans l'eau, nénuphars et lotus roses ou blancs, hortensias et azalées sur la berge, fougères au pied des rochers, et des **carpes koï** (kohaku, ogon, showa) qui tournent lentement sous la surface.
+- **Ponton** : une terrasse posée au bord de l'étang avance sur l'eau par une jetée de planches sur pilotis, avec deux poteaux d'amarrage au bout (et une marche si la terrasse est plus haute).
 - **Ponts** : un chemin qui traverse l'eau reçoit tout seul des **pierres de gué** (passage court ou coin de l'étang), un **pont arqué** en bois avec garde-corps et giboshi (bras d'eau), ou une **passerelle en zigzag** (yatsuhashi) sur une longue traversée. Le gravier noyé du chemin disparaît.
 - **Source chaude** : eau laiteuse vert d'eau, cernée de rochers sombres, vapeur qui monte. **Mare sauvage** : eau plus sombre, roseaux, beaucoup de nénuphars, peu de pierres.
 - Les voisins s'adaptent : pas d'herbe dans l'eau, ni plante du jardin, ni arbre de forêt ; les structures posées autour se reposent sur la berge creusée.
@@ -182,11 +185,13 @@ constructions exposent (points `smoke` et `lights`, posés sur le relief) :
 
 ![Potager du hameau : planches de choux, daikon, negi, aubergines et potirons, clôture de bambou](docs/captures/champ_potager.jpg)
 
+![La cabane à outils du potager, ouverte sur les planches d'aubergines](docs/captures/champ_cabane.jpg)
+
 ![Champ de thé : longues haies arrondies qui suivent la pente](docs/captures/champ_the.jpg)
 
 - **Champ** (touche **H**) : maintiens le clic et fais le tour d'une zone, relâche. **V** change la sorte : **potager**, **rizière** ou **champ de thé**.
 - **Rangs qui suivent la pente** : sur une pente, les rangs suivent les courbes de niveau ; sur le plat, l'axe long du champ.
-- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) et un épouvantail en kimono et chapeau de paille.
+- **Potager** : des planches de terre surélevées, chacune avec sa culture en lignes (choux, daikon, negi, aubergines et tomates sur tuteurs, potirons), une clôture basse de bambou qui s'ouvre vers le chemin le plus proche (ou là où un chemin la traverse) un épouvantail en kimono et chapeau de paille et, dans les grands potagers, une cabane à outils en planches près de l'entrée (houe, râteau, panier, sacs, seau).
 - **Rizière** : la pente est taillée en **terrasses de niveau** (tanada), retenues par des murets de pierres sèches. Chaque terrasse est une nappe d'eau peu profonde qui renvoie le ciel, bordée de levées herbues ; d'autres levées la recoupent en rizières. Le riz est repiqué en lignes. Sur le plat, un damier de rizières.
 - **Thé** : de longues haies taillées en arrondi, feuillage serré avec ses jeunes pousses claires, de la paille entre les rangs et des ventilateurs antigel sur leurs mâts.
 - **Le sol** est abaissé sous le champ (déblai des terrasses compris) et la terre du champ est posée par-dessus ; ses bords descendent en talus ou en muret. L'herbe, les forêts, les massifs et le jardin automatique évitent les champs ; un chemin qui traverse un potager passe entre les planches.
@@ -389,7 +394,7 @@ add_child(garden)
 
 ## Tests
 
-Les tests du cœur de l'addon (367 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
+Les tests du cœur de l'addon (371 vérifications, dont les champs (planches, terrasses, haies de thé), dont les étangs (forme, creusement, ponts), dont les arbres d'Onsen et les forêts, dont les portails et les terrasses, dont les règles du jardin, dont le squelette droit sur 900 contours aléatoires et le toit irimoya sur 400) tournent sans affichage :
 
 ```
 godot --headless --path . -s tests/run_core_tests.gd

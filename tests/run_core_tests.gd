@@ -70,6 +70,7 @@ func _init() -> void:
 	_test_pond_build()
 	_test_pond_bridges()
 	_test_pond_neighbours()
+	_test_pond_pier()
 	_test_farm_build()
 	_test_farm_rice()
 	_test_farm_neighbours()
@@ -1475,6 +1476,31 @@ func _test_pond_bridges() -> void:
 	check(gone > 20 and after < before, "le gravier noyé du chemin disparaît (%d triangles)" % gone)
 
 
+func _test_pond_pier() -> void:
+	print("Étang : ponton")
+	var jp: BastideStyle = load(JAPANESE_PATH)
+	var pts := _blob(0, 0, 5.0)
+	var poly := BastidePondShape.outline(pts, 7)
+	var right := -INF
+	for p in poly:
+		right = maxf(right, p.x)
+	# Une terrasse posée juste à droite de la rive.
+	var tp := PackedVector3Array([Vector3(right + 0.3, 0, -1.5), Vector3(right + 3.3, 0, -1.5), Vector3(right + 3.3, 0, 1.5), Vector3(right + 0.3, 0, 1.5)])
+	var ctx := BastideGardenContext.from_entries([{"kind": "terrace", "footprint": tp, "height": 0.45}])
+	var r := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.GARDEN, jp, ctx, null, Transform3D.IDENTITY)
+	check(r.stats.get("piers", 0) == 1, "la terrasse au bord de l'eau reçoit un ponton")
+	var pier: Dictionary = {}
+	for e: Dictionary in r.anchors.get("bridges", []):
+		if e["kind"] == "pier":
+			pier = e
+	if not pier.is_empty():
+		var tip: Vector3 = pier["b"]
+		check(BastidePondShape.signed_distance(Vector2(tip.x, tip.z), poly) < -1.0, "il s'avance sur l'eau (%.1f m)" % float(pier["span"]))
+	var far := BastideGardenContext.from_entries([{"kind": "terrace", "footprint": PackedVector3Array([Vector3(20, 0, 0), Vector3(23, 0, 0), Vector3(23, 0, 3), Vector3(20, 0, 3)]), "height": 0.45}])
+	var r2 := BastidePondBuilder.build(pts, 7, BastidePondBuilder.Kind.GARDEN, jp, far, null, Transform3D.IDENTITY)
+	check(r2.stats.get("piers", 0) == 0, "loin de l'eau, pas de ponton")
+
+
 func _test_pond_neighbours() -> void:
 	print("Étang : voisins")
 	var poly := BastidePondShape.outline(_blob(0, 0, 4.0), 3)
@@ -1508,6 +1534,7 @@ func _test_farm_build() -> void:
 	check(r.stats.get("crops", 0) >= 100, "des légumes plantés en lignes (%d)" % r.stats.get("crops", 0))
 	check(r.stats.get("fence_posts", 0) >= 15 and r.stats.get("gate", false), "une clôture de bambou avec son entrée (%d poteaux)" % r.stats.get("fence_posts", 0))
 	check(r.stats.get("scarecrows", 0) == 1, "un épouvantail")
+	check(r.stats.get("sheds", 0) == 1, "une cabane à outils près de l'entrée")
 	var kinds := {}
 	for g: Dictionary in r.instances:
 		kinds[g["mesh"]] = true

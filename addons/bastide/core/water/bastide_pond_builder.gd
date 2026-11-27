@@ -127,6 +127,8 @@ static func build(points: PackedVector3Array, seed: int, kind: int, style: Basti
 
 	_water(b)
 	_bridges(b)
+	if kind != Kind.ONSEN:
+		_pier(b)
 	_rocks(b)
 	if kind == Kind.GARDEN:
 		_beach(b)
@@ -159,7 +161,7 @@ static func build(points: PackedVector3Array, seed: int, kind: int, style: Basti
 		"bridges": b.bridges, "kind": kind}
 	result.stats = {"area": snappedf(b.area, 0.1), "level": snappedf(level, 0.01), "depth": snappedf(float(carve["depth"]), 0.01),
 		"rocks": b.rocks, "stones": b.stones, "pebbles": b.pebbles, "plants": b.plants, "lilies": b.lilies, "koi": b.koi,
-		"bridges": b.bridges.size(), "triangles": b.mb.triangle_count}
+		"bridges": b.bridges.size(), "piers": b.piers, "triangles": b.mb.triangle_count}
 	return result
 
 
@@ -192,6 +194,7 @@ class _Ctx:
 	var plants := 0
 	var lilies := 0
 	var koi := 0
+	var piers := 0
 
 	## Hauteur du sol (local) en un point, étang creusé compris.
 	func ground(q: Vector2) -> float:
@@ -308,6 +311,129 @@ static func _crossing(b: _Ctx, line: PackedVector3Array, i0: int, i1: int, width
 			_arch_bridge(b, a, c, width, key)
 		_:
 			_zigzag(b, a, c, width, key)
+
+
+## Ponton : une terrasse posée au bord de l'eau avance sur l'étang par une jetée
+## de planches sur pilotis, juste au-dessus de l'eau, avec deux poteaux d'amarrage
+## au bout. Un seul ponton par étang, depuis la terrasse la plus proche.
+static func _pier(b: _Ctx) -> void:
+	if b.ctx.terraces.is_empty() or b.area < 14.0:
+		return
+	var shore := _resample2(b.poly, 0.4)
+	var best := INF
+	var q_best := Vector2.ZERO
+	var start := Vector2.ZERO
+	var height := 0.45
+	for t: Dictionary in b.ctx.terraces:
+		var fp: PackedVector2Array = t["footprint"]
+		if not (t["rect"] as Rect2).grow(3.0).intersects(BastidePondShape.rect_of(b.poly)):
+			continue
+		for q in shore:
+			if Geometry2D.is_point_in_polygon(q, fp):
+				continue
+			var c := _closest_on_poly(fp, q)
+			var d := c.distance_to(q)
+			if d < best:
+				best = d
+				q_best = q
+				start = c
+				height = float(t.get("height", 0.45))
+	if best > 2.2:
+		return
+	var i := _nearest_index(b.poly, q_best)
+	var dir := -BastidePondShape.outward(b.poly, i)
+	# La jetée part du bord de la terrasse et s'avance tant que l'eau est franche.
+	var length := 0.0
+	var step := 0.25
+	var max_len := clampf(sqrt(b.area) * 0.45, 2.4, 5.0)
+	while length < max_len:
+		var p := start + dir * (length + step)
+		if b.dist(p) > -0.6 and length > best + 0.5:
+			break
+		length += step
+	var reach := length - best
+	if reach < 1.6:
+		return
+	var a := start
+	var c := start + dir * length
+	for k in 9:
+		var q := a.lerp(c, k / 8.0)
+		if not b.is_free(q, 0.3):
+			return
+	var key := BastideGardenMesher.key_at(b.seed, Vector3(a.x, 0, a.y), 13)
+	var side := Vector2(-dir.y, dir.x)
+	var w := 0.6
+	var y := b.level_local + 0.3
+	var deck := b.gs.terrace_color
+	var frame := b.gs.terrace_frame_color
+	var mb := b.mb
+	# Planches en travers, légèrement disjointes.
+	var n := maxi(4, int(length / 0.24))
+	for k in n:
+		var p0 := a.lerp(c, float(k) / n)
+		var p1 := a.lerp(c, (k + 0.86) / n)
+		var tone := BastideGardenMesher.tint(deck, BastideGardenMesher.hs(key, k) * 0.08)
+		var dy := BastideGardenMesher.hs(key, 300 + k) * 0.008
+		var wk := w + BastideGardenMesher.hs(key, 200 + k) * 0.03
+		var corners := [
+			Vector3(p0.x - side.x * wk, y - 0.06 + dy, p0.y - side.y * wk), Vector3(p0.x + side.x * wk, y - 0.06 + dy, p0.y + side.y * wk),
+			Vector3(p1.x + side.x * wk, y - 0.06 + dy, p1.y + side.y * wk), Vector3(p1.x - side.x * wk, y - 0.06 + dy, p1.y - side.y * wk),
+			Vector3(p0.x - side.x * wk, y + dy, p0.y - side.y * wk), Vector3(p0.x + side.x * wk, y + dy, p0.y + side.y * wk),
+			Vector3(p1.x + side.x * wk, y + dy, p1.y + side.y * wk), Vector3(p1.x - side.x * wk, y + dy, p1.y - side.y * wk)]
+		mb.add_block(ROLE_WOOD, corners, 0.01, 0.0, tone, tone.darkened(0.12), true)
+	# Deux longerons et des pilotis plantés dans le fond.
+	for sg: float in [-1.0, 1.0]:
+		var o := side * (w - 0.1) * sg
+		BastideGardenMesher.tube(mb, ROLE_WOOD, Vector3(a.x + o.x, y - 0.1, a.y + o.y), Vector3(c.x + o.x, y - 0.1, c.y + o.y), 0.06, 0.06, frame, 6)
+	var posts := maxi(2, ceili(length / 1.2))
+	for k in range(1, posts + 1):
+		var p := a.lerp(c, float(k) / posts)
+		for sg: float in [-1.0, 1.0]:
+			var q := p + side * (w - 0.1) * sg
+			var top := y - 0.08
+			if k == posts:
+				top = y + 0.55
+			BastideGardenMesher.prism(mb, ROLE_WOOD, Vector3(q.x, 0, q.y), 0.065, 0.06, b.ground(q) - 0.1, top, 6, frame)
+			if k == posts:
+				# Poteaux d'amarrage : tête arrondie et une corde de chanvre.
+				BastideGardenMesher.blob(mb, ROLE_WOOD, Vector3(q.x, top + 0.03, q.y), Vector3(0.07, 0.05, 0.07), frame.darkened(0.1),
+						BastideRng.combine(key, 40), 3, 6)
+				BastideGardenMesher.tube(mb, ROLE_WOOD, Vector3(q.x, top - 0.18, q.y), Vector3(q.x, top - 0.12, q.y), 0.085, 0.085,
+						Color(0.72, 0.62, 0.42), 7)
+	# Une marche si la terrasse est plus haute que la jetée.
+	var terrace_y := b.ground(a) + height
+	if terrace_y - y > 0.22:
+		var sy := (terrace_y + y) * 0.5
+		var p0 := a
+		var p1 := a + dir * 0.4
+		var tone := deck.darkened(0.05)
+		var corners := [
+			Vector3(p0.x - side.x * w, y - 0.05, p0.y - side.y * w), Vector3(p0.x + side.x * w, y - 0.05, p0.y + side.y * w),
+			Vector3(p1.x + side.x * w, y - 0.05, p1.y + side.y * w), Vector3(p1.x - side.x * w, y - 0.05, p1.y - side.y * w),
+			Vector3(p0.x - side.x * w, sy, p0.y - side.y * w), Vector3(p0.x + side.x * w, sy, p0.y + side.y * w),
+			Vector3(p1.x + side.x * w, sy, p1.y + side.y * w), Vector3(p1.x - side.x * w, sy, p1.y - side.y * w)]
+		mb.add_block(ROLE_WOOD, corners, 0.01, 0.0, tone, tone.darkened(0.12))
+	if b.collision:
+		var mid := a.lerp(c, 0.5)
+		_box_collision(b, Vector3(mid.x, y - 0.06, mid.y), Vector3(w, 0.06, length * 0.5), atan2(dir.x, dir.y))
+	# La jetée occupe la rive : ni rocher, ni iris, ni nénuphar dessous.
+	for k in 9:
+		var q := a.lerp(c, k / 8.0)
+		b.taken.append(Vector3(q.x, q.y, w + 0.5))
+	b.bridges.append({"kind": "pier", "a": Vector3(a.x, 0, a.y), "b": Vector3(c.x, 0, c.y), "span": snappedf(length, 0.01)})
+	b.piers += 1
+
+
+static func _closest_on_poly(poly: PackedVector2Array, q: Vector2) -> Vector2:
+	var best := poly[0]
+	var bd := INF
+	for i in poly.size():
+		var c := Geometry2D.get_closest_point_to_segment(q, poly[i], poly[(i + 1) % poly.size()])
+		var d := c.distance_squared_to(q)
+		if d < bd:
+			bd = d
+			best = c
+	return best
 
 
 ## Pierres de gué (sawatari-ishi) : grosses pierres plates qui dépassent de l'eau.

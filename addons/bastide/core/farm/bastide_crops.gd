@@ -146,12 +146,13 @@ static func _eggplant(mb: BastideMeshBuilder, k: int) -> void:
 	# Tuteur de bambou, tiges violacées, feuilles larges, aubergines pendantes.
 	BastideGardenMesher.tube(mb, ROLE, Vector3(0.06, -0.05, 0), Vector3(0.06, 0.85, 0), 0.012, 0.01, Color(0.66, 0.6, 0.4), 5, 0.0)
 	BastideGardenMesher.tube(mb, ROLE, Vector3(0, 0, 0), Vector3(0.02, 0.5, 0), 0.016, 0.01, Color(0.32, 0.24, 0.3), 5, 0.2)
-	for i in 3:
-		var y := 0.28 + i * 0.14
-		var a := TAU * h(k, i)
-		var c := Vector3(cos(a) * 0.08, y, sin(a) * 0.08)
-		BastideGardenMesher.blob(mb, ROLE, c, Vector3(0.17, 0.1, 0.17) * (1.0 - i * 0.15), Color(0.25, 0.4, 0.21), k + i,
-				4, 8, 0.4, 0.3, Color(0, 0, 0, 0), 0.7)
+	# Grandes feuilles ovales, étagées autour de la tige, un peu pendantes.
+	for i in 9:
+		var y := 0.14 + i * 0.045
+		var a := TAU * (i * 0.382 + h(k, i) * 0.1)
+		var dir := Vector3(cos(a), 0, sin(a))
+		leaf(mb, Vector3(0, y, 0) + dir * 0.02, dir, 0.24 - i * 0.008, 0.15, 0.5, 0.75,
+				Color(0.22, 0.36, 0.19), Color(0.3, 0.45, 0.24), 3, 0.2)
 	for i in 3:
 		var a := TAU * (h(k, 10 + i) + i / 3.0)
 		var p := Vector3(cos(a) * 0.11, 0.22 + h(k, 20 + i) * 0.12, sin(a) * 0.11)

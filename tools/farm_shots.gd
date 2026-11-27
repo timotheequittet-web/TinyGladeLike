@@ -66,6 +66,14 @@ func _run() -> void:
 		await _wait(2.5)
 		await _shot(names[i] + "_pres")
 		cam.set_walking(false)
+		if node and node.last_anchors.has("shed"):
+			var sh: Vector2 = node.last_anchors["shed"]
+			var shed := node.to_global(Vector3(sh.x, 0, sh.y))
+			var away := (c - shed).normalized()
+			_walk_at(shed + away * 4.5 + Vector3(away.z, 0, -away.x) * 1.5, shed, -0.1)
+			await _wait(2.5)
+			await _shot(names[i] + "_cabane")
+			cam.set_walking(false)
 	quit()
 
 

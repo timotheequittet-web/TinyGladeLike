@@ -28,6 +28,9 @@ uniform vec3 pebble_color : source_color = vec3(0.62, 0.6, 0.55);
 
 varying vec3 wp;
 varying vec2 water_paint;
+// COLOR.b = 1 : gazon sans touffes d'herbe dessus (buttes des terriers) : pas d'ombre
+// de sous-herbe, il prend la teinte du pré vu de loin.
+varying float lawn;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -44,6 +47,7 @@ float fbm(vec2 p) {
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	water_paint = COLOR.rg;
+	lawn = COLOR.b;
 }
 
 void fragment() {
@@ -75,7 +79,7 @@ void fragment() {
 		if (grass_center.y > -999.0) {
 			float gd = length(wp.xz - grass_center.xz);
 			// Sous l'herbe peinte, le sol fait l'ombre entre les touffes.
-			col = mix(tone * vec3(0.44, 0.54, 0.52) * (0.9 + mid * 0.2), col, smoothstep(grass_far * 0.55, grass_far, gd));
+			col = mix(tone * vec3(0.44, 0.54, 0.52) * (0.9 + mid * 0.2), col, max(smoothstep(grass_far * 0.55, grass_far, gd), lawn));
 		}
 	} else {
 		col *= 1.0 + wave * 0.035;
@@ -83,7 +87,7 @@ void fragment() {
 		col = mix(col, far_tint * (0.85 + big * 0.3), 0.45);
 		if (grass_center.y > -999.0) {
 			float gd = length(wp.xz - grass_center.xz);
-			col = mix(under_grass * (0.85 + mid * 0.3), col, smoothstep(grass_far * 0.55, grass_far, gd));
+			col = mix(under_grass * (0.85 + mid * 0.3), col, max(smoothstep(grass_far * 0.55, grass_far, gd), lawn));
 		}
 	}
 	// Sentier de terre qui serpente vers le hameau.

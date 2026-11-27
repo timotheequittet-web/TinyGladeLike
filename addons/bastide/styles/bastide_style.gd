@@ -182,6 +182,9 @@ func get_gravel_material() -> Material:
 
 ## Herbe rase des buttes des terriers : les mêmes taches de prairie que le sol.
 func get_turf_material() -> Material:
+	# Même matériau que le sol quand un relief en a un : aucune teinte à part.
+	if BastideTerrain.shared_material:
+		return BastideTerrain.shared_material
 	if _default_turf == null:
 		var m := ShaderMaterial.new()
 		m.shader = TURF_SHADER

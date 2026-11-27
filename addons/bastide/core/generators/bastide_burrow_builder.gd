@@ -48,6 +48,9 @@ const LOG_END := Color(0.72, 0.56, 0.36)
 const IRON := Color(0.12, 0.11, 0.1)
 const BRASS := Color(0.86, 0.66, 0.26)
 const SOIL := Color(0.24, 0.17, 0.11)
+const SOFFIT := Color(0.3, 0.2, 0.12)
+const BRICK := Color(0.62, 0.33, 0.24)
+const BRICK_ALT := Color(0.52, 0.27, 0.2)
 
 
 ## Une butte : un dôme, sa façade et sa porte.
@@ -121,7 +124,7 @@ class Frame:
 		var m := owner(px)
 		var d := absf(px - m.cx)
 		var u := clampf(d / m.face_half, 0.0, 1.0)
-		var c := m.cap * pow(1.0 - u * u, 0.25)
+		var c := m.cap * (1.0 - 0.25 * u * u) * sqrt(1.0 - smoothstep(0.86, 1.0, u))
 		return c + LIP_DROP * smoothstep(0.0, 0.5, c)
 
 	## Hauteur de l'herbe au bord de l'avancée, au-dessus de la façade.
@@ -162,7 +165,7 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	var win_r := clampf(bs.window_width * 0.5, 0.3, 0.75)
 	for m: Mound in fr.mounds:
 		m.cap = minf(door_r * 1.97 + 0.55, m.h * 0.72)
-		m.face_half = minf(door_r + 0.95 + win_r * 2.0 + 0.6, m.w * 0.5 + 0.3)
+		m.face_half = minf(door_r + 0.95 + win_r * 2.0 + 0.95, m.w * 0.5 + 0.3)
 	for m: Mound in fr.mounds:
 		var mz := m.face_z(m.cx)
 		var dyc := door_r * 0.97
@@ -192,6 +195,8 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	var x_hi := width * 0.5 + SKIRT + 0.2
 	_mound(mb, fr, x_lo, x_hi, depth + SKIRT, result if with_collision else null)
 	_facade(mb, fr, x_lo, x_hi, holes, bs, result if with_collision else null)
+	for m: Mound in fr.mounds:
+		_timber(mb, fr, m, door_r, holes, bs)
 
 	# --- Cheminées, abords, végétation ---
 	for i in fr.mounds.size():
@@ -274,14 +279,13 @@ static func _frame(fp: PackedVector2Array, spec: BastideBuildingSpec, bs: Bastid
 	fr.z = fz
 	fr.o = a + fx * (x0 + x1) * 0.5
 	fr.y0 = spec.base_y
-	var width := maxf(x1 - x0, 3.0)
-	var depth := maxf(z1, 3.0)
+	# Un terrier par tracé, de taille bornée : un grand tracé ne fait pas une rangée
+	# de maisons, juste une maison un peu plus large, centrée.
+	var width := clampf(x1 - x0, 3.0, bs.burrow_width * 1.3)
+	var depth := clampf(z1, 3.0, 9.0)
 	fr.set_meta("width", width)
 	fr.set_meta("depth", depth)
-	var bs_w := bs.burrow_width
 	var count := 1
-	if width > bs_w * 1.35:
-		count = maxi(1, roundi(width / bs_w))
 	var w := width / count
 	for i in count:
 		var m := Mound.new()
@@ -328,10 +332,7 @@ static func _mound(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float, 
 			# relief (voir terrain_height) : c'est l'herbe du terrain qu'on voit.
 			var y := maxf(fr.surface(x, z) - SINK * maxf(1.0 - near, smoothstep(zf + 0.9, zf + 1.9, z)), 0.0)
 			var n := _normal(fr, x, z)
-			var ao := 0.8 + 0.2 * smoothstep(0.0, 1.2, y)
-			if j == 0:
-				ao *= 0.97
-			col.append([fr.p(x, y, z), n, Color(ao, ao, ao, 0.0)])
+			col.append([fr.p(x, y, z), n, Color(0.0, 0.0, 1.0, 0.0)])
 		grid.append(col)
 	for i in cols:
 		for j in ROWS:
@@ -358,12 +359,12 @@ static func _mound(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float, 
 		var zb := fr.face_z(xb)
 		var ba := maxf(ta - LIP_DROP, 0.0)
 		var bb := maxf(tb - LIP_DROP, 0.0)
-		var soil_a := Color(0.74, 0.74, 0.74, clampf(ta - 0.3, 0.0, 0.3))
-		var soil_b := Color(0.74, 0.74, 0.74, clampf(tb - 0.3, 0.0, 0.3))
+		var soil_a := SOFFIT
+		var soil_b := SOFFIT.darkened(0.06)
 		var dn := (out + Vector3.DOWN).normalized()
-		mb.add_tri_smooth(ROLE_TURF, fr.p(xa, ta, za - LIP), fr.p(xb, tb, zb - LIP), fr.p(xb, bb, zb), dn, dn, dn,
+		mb.add_tri_smooth(ROLE_WOOD, fr.p(xa, ta, za - LIP), fr.p(xb, tb, zb - LIP), fr.p(xb, bb, zb), dn, dn, dn,
 				soil_a, soil_b, soil_b)
-		mb.add_tri_smooth(ROLE_TURF, fr.p(xa, ta, za - LIP), fr.p(xb, bb, zb), fr.p(xa, ba, za), dn, dn, dn,
+		mb.add_tri_smooth(ROLE_WOOD, fr.p(xa, ta, za - LIP), fr.p(xb, bb, zb), fr.p(xa, ba, za), dn, dn, dn,
 				soil_a, soil_b, soil_a)
 	if coll:
 		var ci := maxi(2, cols / 3)
@@ -512,7 +513,7 @@ static func _door(mb: BastideMeshBuilder, fr: Frame, m: Mound, r: float, cy: flo
 	# Huisserie de bois, puis couronne de pierres taillées.
 	_ring(mb, fr, ROLE_WOOD, m.cx, cy, r - 0.03, r + 0.15, fz - 0.06, fz + 0.18, 28, wood, wood.darkened(0.3), m.seed)
 	var stone := ws.stone_color
-	var dark := stone.darkened(0.12)
+	var dark := stone.lightened(0.14)
 	_ring(mb, fr, ROLE_BODY, m.cx, cy, r + 0.15, r + 0.5, fz - 0.12, fz + 0.12, 15, Color(dark.r, dark.g, dark.b, 1.0),
 			ws.mortar_color, m.seed + 3, 0.05, 0.06)
 	# Seuil de pierre et dalles de pas.
@@ -602,7 +603,7 @@ static func _chimney(mb: BastideMeshBuilder, fr: Frame, m: Mound, side: float, w
 	var s := 0.3
 	var stone := ws.stone_color
 	for k in 5:
-		var hh := 0.3 if k < 4 else 0.12
+		var hh := 0.34 if k < 4 else 0.1
 		var ss := s if k < 4 else s + 0.08
 		var jx := BastideRng.signed_at(m.seed, "chem", k) * 0.02
 		var kk: Array = []
@@ -610,8 +611,8 @@ static func _chimney(mb: BastideMeshBuilder, fr: Frame, m: Mound, side: float, w
 			for q: Vector2 in [Vector2(x - ss + jx, z - ss), Vector2(x + ss + jx, z - ss), Vector2(x + ss + jx, z + ss), Vector2(x - ss + jx, z + ss)]:
 				kk.append(fr.p(q.x, yy, q.y))
 		var t := BastideRng.signed_at(m.seed, "chem_t", k) * 0.07
-		var c := (stone.lightened(t) if t > 0.0 else stone.darkened(-t))
-		mb.add_block(ROLE_BODY, kk, 0.035, 0.012, Color(c.r, c.g, c.b, 0.9), ws.mortar_color)
+		var c := BRICK.lerp(BRICK_ALT, t * 5.0 + 0.5) if k < 4 else Color(0.5, 0.47, 0.42)
+		mb.add_block(ROLE_BODY, kk, 0.02, 0.008, Color(c.r, c.g, c.b, 1.0), c.darkened(0.35))
 		y += hh
 	# Petit pot de terre cuite.
 	var pot: Array = []
@@ -688,37 +689,20 @@ static func _at(pts: Array, u: float) -> Vector2:
 	return pts[pts.size() - 1]
 
 
-## Lanterne sur un poteau, près du seuil. Retourne le centre de sa lumière.
+## Lanterne accrochée au poteau de la porte. Retourne le centre de sa lumière.
 static func _lantern(mb: BastideMeshBuilder, fr: Frame, m: Mound, side: float, door_r: float) -> Vector3:
-	var x := m.cx + side * (door_r + 0.55)
-	var z := m.dz - 1.55
-	var post := 0.06
-	var kk: Array = []
-	for yy in [-0.2, 1.75]:
-		for q: Vector2 in [Vector2(x - post, z - post), Vector2(x + post, z - post), Vector2(x + post, z + post), Vector2(x - post, z + post)]:
-			kk.append(fr.p(q.x, yy, q.y))
-	mb.add_block(ROLE_WOOD, kk, 0.012, 0.0, LOG, LOG.darkened(0.3))
-	# Potence vers le chemin, lanterne suspendue.
-	var lx := x - side * 0.32
-	var arm: Array = []
-	for yy in [1.62, 1.7]:
-		for q: Vector2 in [Vector2(minf(x, lx) - 0.02, z - 0.03), Vector2(maxf(x, lx) + 0.02, z - 0.03),
-				Vector2(maxf(x, lx) + 0.02, z + 0.03), Vector2(minf(x, lx) - 0.02, z + 0.03)]:
-			arm.append(fr.p(q.x, yy, q.y))
-	mb.add_block(ROLE_WOOD, arm, 0.01, 0.0, LOG, LOG.darkened(0.3))
-	var s := 0.11
-	var box: Array = []
-	for yy in [1.2, 1.5]:
-		for q: Vector2 in [Vector2(lx - s, z - s), Vector2(lx + s, z - s), Vector2(lx + s, z + s), Vector2(lx - s, z + s)]:
-			box.append(fr.p(q.x, yy, q.y))
-	mb.add_block(ROLE_PAPER, box, 0.01, 0.0, Color(1.0, 0.86, 0.6), Color(0.3, 0.2, 0.1))
-	var cap: Array = []
-	for yy in [1.5, 1.58]:
-		for q: Vector2 in [Vector2(lx - s - 0.03, z - s - 0.03), Vector2(lx + s + 0.03, z - s - 0.03),
-				Vector2(lx + s + 0.03, z + s + 0.03), Vector2(lx - s - 0.03, z + s + 0.03)]:
-			cap.append(fr.p(q.x, yy, q.y))
-	mb.add_block(ROLE_WOOD, cap, 0.02, 0.0, IRON, IRON)
-	return fr.p(lx, 1.35, z)
+	var x := m.cx + side * (door_r + 0.66)
+	var zf := fr.face_z(x)
+	var top := fr.face_top(x) - LIP_DROP - 0.18
+	var y := clampf(top - 0.55, 1.2, 1.95)
+	var z := zf - 0.36
+	# Potence fixée au poteau.
+	_box(mb, fr, ROLE_WOOD, x - 0.025, x + 0.025, y + 0.36, y + 0.42, z - 0.02, zf - 0.1, IRON, IRON, 0.005)
+	var s := 0.1
+	_box(mb, fr, ROLE_PAPER, x - s, x + s, y, y + 0.27, z - s, z + s, Color(1.0, 0.86, 0.6), Color(0.3, 0.2, 0.1), 0.01)
+	_box(mb, fr, ROLE_WOOD, x - s - 0.03, x + s + 0.03, y + 0.27, y + 0.34, z - s - 0.03, z + s + 0.03, IRON, IRON, 0.01)
+	_box(mb, fr, ROLE_WOOD, x - s - 0.01, x + s + 0.01, y - 0.04, y, z - s - 0.01, z + s + 0.01, IRON, IRON, 0.005)
+	return fr.p(x, y + 0.13, z)
 
 
 # --- Abords : bûches, tonneau, foin, potager en caisse --------------------------------
@@ -736,11 +720,13 @@ static func _props(mb: BastideMeshBuilder, fr: Frame, groups: Dictionary, m: Mou
 				var lx := x + (k - (count - 1) * 0.5) * 0.27
 				var ly := 0.13 + row * 0.23
 				_log(mb, fr, Vector2(lx, z), ly, 0.13, 0.8, m.seed + row * 10 + k)
-	# Tonneau de pluie près de la porte, de l'autre côté.
-	if BastideRng.randf_at(m.seed, "tonneau") < 0.6:
-		var x := m.cx - side * (door_r + 1.45)
-		var z := fr.face_z(x) - 0.5
-		_barrel(mb, fr, Vector2(x, z), 0.27, 0.78, m.seed)
+	# Banc de bois contre la façade et tonneau de pluie, de l'autre côté.
+	var bx := m.cx - side * (door_r + 1.55)
+	_bench(mb, fr, bx, fr.face_z(bx) - 0.5, coll)
+	if BastideRng.randf_at(m.seed, "tonneau") < 0.7:
+		var x := m.cx - side * (door_r + 0.75)
+		var z := fr.face_z(x) - 0.75
+		_barrel(mb, fr, Vector2(x, z), 0.25, 0.72, m.seed)
 	# Hors du muret : meule de foin et potager en caisse, sur les côtés extérieurs.
 	var outer_left := first
 	var outer_right := last
@@ -1082,3 +1068,75 @@ static func carve(data: Dictionary, xf: Transform3D, base: BastideHeightField) -
 			heights[jj * w + ii] = (xf * Vector3(l.x, fr.y0 + h, l.z)).y if h > 0.01 else NAN
 	var r := Rect2(base.origin + Vector2(i0, j0) * base.cell, Vector2(w, d) * base.cell)
 	return {"type": "mound", "i0": i0, "j0": j0, "w": w, "d": d, "heights": heights, "rect": r.grow(base.cell)}
+
+
+# --- Charpente de façade et mobilier ------------------------------------------------
+
+static func _box(mb: BastideMeshBuilder, fr: Frame, role: StringName, x0: float, x1: float, y0: float, y1: float,
+		z0: float, z1: float, col: Color, edge: Color, bevel := 0.015) -> Array:
+	var kk: Array = []
+	for yy in [y0, y1]:
+		for q: Vector2 in [Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)]:
+			kk.append(fr.p(q.x, yy, q.y))
+	mb.add_block(role, kk, bevel, 0.004, col, edge)
+	return kk
+
+
+## Charpente de bois de la façade : sablière sous l'avancée d'herbe, bandeau au bord
+## de l'herbe, poteaux aux extrémités et de part et d'autre de la porte.
+static func _timber(mb: BastideMeshBuilder, fr: Frame, m: Mound, door_r: float, holes: Array,
+		bs: BastideBuildingStyle) -> void:
+	var wood := bs.wood_color
+	var edge := wood.darkened(0.35)
+	var xa := m.cx - m.face_half
+	var xb := m.cx + m.face_half
+	# Sablière et bandeau, par tronçons qui suivent la courbe du haut de la façade.
+	var n := maxi(6, ceili((xb - xa) / 0.32))
+	for k in n:
+		var x0 := lerpf(xa, xb, float(k) / n)
+		var x1 := lerpf(xa, xb, float(k + 1) / n)
+		var xm := (x0 + x1) * 0.5
+		var ft := fr.face_top(xm)
+		if ft < 0.6 or fr.owner(xm) != m:
+			continue
+		var top := ft - LIP_DROP
+		var zf := fr.face_z(xm)
+		var tint := BastideRng.signed_at(m.seed, "poutre", k) * 0.04
+		var c := wood.lightened(tint) if tint > 0.0 else wood.darkened(-tint)
+		_box(mb, fr, ROLE_WOOD, x0 - 0.01, x1 + 0.01, top - 0.2, top + 0.01, zf - 0.1, zf + 0.06, c, edge)
+		_box(mb, fr, ROLE_WOOD, x0 - 0.01, x1 + 0.01, ft - 0.15, ft + 0.03, zf - LIP - 0.07, zf - LIP + 0.05,
+				c.darkened(0.08), edge)
+	# Poteaux : aux deux bouts, et encadrant la porte (sans couper une fenêtre).
+	var posts := [m.face_half * 0.86 - 0.12, -(m.face_half * 0.86 - 0.12), door_r + 0.66, -(door_r + 0.66)]
+	for dx: float in posts:
+		var x := m.cx + dx
+		var ok := true
+		for hole: Array in holes:
+			if absf(x - float(hole[0])) < float(hole[2]) + 0.22 and absf(float(hole[0]) - m.cx) > 0.1:
+				ok = false
+		if not ok:
+			continue
+		var top := fr.face_top(x) - LIP_DROP - 0.18
+		if top < 0.8:
+			continue
+		var zf := fr.face_z(x)
+		_box(mb, fr, ROLE_WOOD, x - 0.11, x + 0.11, -0.1, top, zf - 0.13, zf + 0.06, wood.darkened(0.05), edge)
+
+
+## Banc de planches sur deux pieds, contre la façade.
+static func _bench(mb: BastideMeshBuilder, fr: Frame, x: float, z: float, coll: BastideBuildResult) -> void:
+	var wood := Color(0.46, 0.32, 0.2)
+	var edge := wood.darkened(0.35)
+	var hw := 0.62
+	for s in [-1.0, 1.0]:
+		_box(mb, fr, ROLE_WOOD, x + s * (hw - 0.1) - 0.05, x + s * (hw - 0.1) + 0.05, -0.05, 0.42, z - 0.17, z + 0.17,
+				wood.darkened(0.12), edge)
+	var seat := _box(mb, fr, ROLE_WOOD, x - hw, x + hw, 0.42, 0.48, z - 0.21, z + 0.21, wood, edge)
+	# Dossier : deux planches sur montants.
+	for s in [-1.0, 1.0]:
+		_box(mb, fr, ROLE_WOOD, x + s * (hw - 0.1) - 0.04, x + s * (hw - 0.1) + 0.04, 0.48, 0.95, z + 0.14, z + 0.22,
+				wood.darkened(0.1), edge)
+	for yy in [0.62, 0.82]:
+		_box(mb, fr, ROLE_WOOD, x - hw, x + hw, yy, yy + 0.11, z + 0.16, z + 0.23, wood.lightened(0.04), edge)
+	if coll:
+		coll.add_box(seat)

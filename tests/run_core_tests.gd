@@ -1884,8 +1884,8 @@ func _test_burrows() -> void:
 			hi = maxf(hi, v.y)
 	check(lo > -0.01 and hi > 2.6 and hi < 5.5, "butte entre le sol et %.1f m" % hi)
 	var long: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(20, 0), Vector2(20, 7), Vector2(0, 7)])
-	check(int(long.stats.get("buttes", 0)) == 2 and (long.anchors["doors"] as Array).size() == 2,
-			"un long tracé : deux buttes, deux portes")
+	check(int(long.stats.get("buttes", 0)) == 1 and (long.anchors["doors"] as Array).size() == 1,
+			"un long tracé : un seul terrier, de taille bornée")
 	var tiny: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(4, 0), Vector2(4, 4), Vector2(0, 4)])
 	check(not tiny.is_empty() and (tiny.anchors["doors"] as Array).size() == 1, "un tout petit tracé donne quand même sa butte")
 	var again: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)], 2)

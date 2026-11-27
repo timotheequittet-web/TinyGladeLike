@@ -1,8 +1,8 @@
 shader_type spatial;
 // Herbe rase des buttes des maisons-terriers. Mêmes taches de prairie que le sol
 // peint (bastide_meadow.gdshaderinc, lues en coordonnées monde) : la butte sort de
-// la prairie sans couture. COLOR.rgb : ombre douce (pied de la butte, dessous de
-// l'avancée d'herbe) ; COLOR.a : part de terre nue (0 = herbe, 1 = terre).
+// la prairie sans couture. Repli quand aucun relief ne fournit son matériau de sol
+// (voir BastideTerrain.shared_material).
 
 #include "res://addons/bastide/shaders/bastide_meadow.gdshaderinc"
 
@@ -35,9 +35,6 @@ void fragment() {
 	vec3 petal = h > 0.975 ? vec3(0.98, 0.78, 0.85) : (h > 0.945 ? vec3(0.98, 0.88, 0.42) : vec3(0.97, 0.96, 0.92));
 	col = mix(col, petal, flower);
 	// Terre nue (dessous de l'avancée d'herbe, racines).
-	vec3 soil = soil_color * (0.8 + fine * 0.35);
-	col = mix(col, soil, clamp(COLOR.a, 0.0, 1.0));
-	col *= COLOR.rgb;
 	col *= meadow_clouds(p, TIME);
 	ALBEDO = col;
 	ROUGHNESS = 0.95;

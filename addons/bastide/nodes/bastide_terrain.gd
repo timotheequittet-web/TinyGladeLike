@@ -66,6 +66,7 @@ const GROUP := &"bastide_terrain"
 @export var material: Material:
 	set(v):
 		material = v
+		shared_material = v
 		for mi: MeshInstance3D in _chunks.values():
 			mi.material_override = v
 ## Les collines portent-elles ombre (réglage graphique ; voir _build_chunk_shadow).
@@ -83,6 +84,9 @@ const GROUP := &"bastide_terrain"
 			_body.collision_layer = v
 
 ## Le relief tel qu'on le lit (étangs creusés compris).
+## Matériau du sol du dernier relief réglé : les buttes des terriers le reprennent,
+## pour porter exactement la même herbe que la prairie.
+static var shared_material: Material
 var field: BastideHeightField
 ## Le relief d'origine, avant les étangs (les étangs se calent dessus).
 var base_field: BastideHeightField

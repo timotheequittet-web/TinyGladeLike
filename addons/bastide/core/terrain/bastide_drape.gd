@@ -47,6 +47,10 @@ static func apply(result: BastideBuildResult, field: BastideHeightField, xf: Tra
 			nt.origin = inv * (w + Vector3(0, dy, 0))
 			out.append(nt)
 		g["transforms"] = out
+	for t: Dictionary in result.trunks:
+		var w := xf * (t["pos"] as Vector3)
+		var dy := lift if mode == Mode.RIGID else field.height(w.x, w.z)
+		t["pos"] = inv * (w + Vector3(0, dy, 0))
 	result.stats["terrain_lift"] = snappedf(lift, 0.01)
 	return lift
 

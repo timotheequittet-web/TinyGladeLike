@@ -19,6 +19,11 @@ var anchors := {}
 ## vis_begin, vis_end (m, 0 = sans limite), custom (facultatif : Array[Color], une
 ## donnée par instance pour le shader)} devient un MultiMeshInstance3D.
 var instances: Array = []
+## Troncs d'arbres : une collision légère (cylindre) par arbre, et de quoi retirer
+## l'arbre plus tard (abattage). Chaque entrée : {pos: Vector3 (pied, local),
+## r: float, h: float, parts: Array de [groupe d'instances, rang dans le groupe]}.
+## L'indice dans ce tableau sert d'identifiant de l'arbre dans sa structure.
+var trunks: Array = []
 
 
 func is_empty() -> bool:
@@ -32,6 +37,14 @@ func add_instances(m: Mesh, material: Material, transforms: Array, shadow := Geo
 		return
 	instances.append({"mesh": m, "material": material, "transforms": transforms, "shadow": shadow,
 		"vis_begin": vis_begin, "vis_end": vis_end})
+
+
+## Ajoute le tronc d'un arbre (voir `trunks`) ; renvoie son identifiant.
+## `parts` : les instances qui dessinent cet arbre, [indice du groupe dans
+## `instances`, rang de la transformation], pour pouvoir l'effacer un jour.
+func add_trunk(pos: Vector3, radius: float, height: float, parts: Array = []) -> int:
+	trunks.append({"pos": pos, "r": clampf(radius, 0.08, 1.5), "h": height, "parts": parts})
+	return trunks.size() - 1
 
 
 ## Ajoute un prisme vertical à `sides` pans (tronc d'arbre) aux triangles de collision.

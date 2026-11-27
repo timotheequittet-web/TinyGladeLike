@@ -11,6 +11,7 @@ extends RefCounted
 const MESH_NAME := &"_BastideMesh"
 const BODY_NAME := &"_BastideBody"
 const MULTI_PREFIX := "_BastideMulti"
+const TREES_NAME := &"_BastideTrees"
 
 
 static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool, collision_layer := 1) -> void:
@@ -22,6 +23,7 @@ static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool
 	mi.mesh = result.mesh
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_apply_instances(host, result.instances)
+	_apply_trunks(host, result.trunks if with_collision else [], collision_layer)
 
 	var body := host.get_node_or_null(NodePath(BODY_NAME)) as StaticBody3D
 	if not with_collision or result.collision_faces.is_empty():
@@ -43,11 +45,28 @@ static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool
 
 
 static func clear(host: Node3D) -> void:
-	for n in [MESH_NAME, BODY_NAME]:
+	for n in [MESH_NAME, BODY_NAME, TREES_NAME]:
 		var node := host.get_node_or_null(NodePath(n))
 		if node:
 			node.queue_free()
 	_apply_instances(host, [])
+
+
+## Troncs d'arbres : un BastideTreeBody (un cylindre par arbre), à part du corps concave.
+static func _apply_trunks(host: Node3D, trunks: Array, collision_layer: int) -> void:
+	var tb := host.get_node_or_null(NodePath(TREES_NAME)) as BastideTreeBody
+	if trunks.is_empty():
+		if tb:
+			tb.name = "_old%d" % tb.get_instance_id()
+			tb.queue_free()
+		return
+	if tb == null:
+		tb = BastideTreeBody.new()
+		tb.name = TREES_NAME
+		host.add_child(tb, false, Node.INTERNAL_MODE_BACK)
+	tb.host = host
+	tb.collision_layer = collision_layer
+	tb.set_trunks(trunks)
 
 
 ## Groupes d'instances (arbres d'une forêt) : un MultiMeshInstance3D interne par groupe,

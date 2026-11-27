@@ -146,7 +146,9 @@ static func tree(species: String, variant: int, scale: float, far := false) -> D
 	if not (shadow_arr as Array).is_empty():
 		shadow.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, shadow_arr)
 	built["shadow"] = shadow
-	built["trunk_r"] = _trunk_radius(arr)
+	# Rayon mesuré sur l'écorce seule (le feuillage bas ne compte pas).
+	var bark_mesh := built.get("trunk") as ArrayMesh
+	built["trunk_r"] = _trunk_radius(bark_mesh.surface_get_arrays(0) if bark_mesh and bark_mesh.get_surface_count() > 0 else arr)
 	built["height"] = float(sp["height"]) * scale
 	_mutex.lock()
 	_cache[key] = built
@@ -300,24 +302,29 @@ static func conifer_shadow(kind: String, variant: int, height: float) -> Array:
 	return arr
 
 
-## Rayon du tronc au pied (sommets d'écorce sous 1,2 m), pour les collisions.
+## Rayon du tronc à hauteur d'homme (sommets d'écorce entre 0,9 et 1,7 m, au-dessus de
+## l'évasement des racines), pour les collisions. On prend la médiane des distances à l'axe :
+## une branche basse isolée n'élargit pas le cylindre.
 static func _trunk_radius(arr: Array) -> float:
 	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var cols: Variant = arr[Mesh.ARRAY_COLOR]
-	var r := 0.0
-	var n := 0
-	var c := Vector2.ZERO
-	for i in v.size():
-		if v[i].y < 1.2 and v[i].y > 0.1:
-			c += Vector2(v[i].x, v[i].z)
-			n += 1
-	if n == 0:
+	var pts: Array[Vector2] = []
+	for lo_hi: Vector2 in [Vector2(0.9, 1.7), Vector2(0.1, 1.2)]:
+		for i in v.size():
+			if v[i].y < lo_hi.y and v[i].y > lo_hi.x:
+				pts.append(Vector2(v[i].x, v[i].z))
+		if pts.size() >= 6:
+			break
+	if pts.is_empty():
 		return 0.3
-	c /= n
-	for i in v.size():
-		if v[i].y < 1.2 and v[i].y > 0.1:
-			r = maxf(r, Vector2(v[i].x, v[i].z).distance_to(c))
-	return clampf(r * 0.8, 0.15, 3.0)
+	var c := Vector2.ZERO
+	for p in pts:
+		c += p
+	c /= pts.size()
+	var d: Array[float] = []
+	for p in pts:
+		d.append(p.distance_to(c))
+	d.sort()
+	return clampf(d[d.size() / 2], 0.12, 1.0)
 
 
 ## Tronc + couronne en cartes d'un tableau de surface (repris de Blossom.build).

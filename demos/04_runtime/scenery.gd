@@ -101,6 +101,8 @@ func _groves() -> void:
 	# feuillus, cèdres, pins taillés, cerisiers, quelques érables rouges et des bambous.
 	# Une instance par arbre, regroupées par modèle ; au loin, la version à peu de cartes.
 	var groups := {}
+	# Troncs (collisions légères, un identifiant par arbre : voir BastideTreeBody).
+	var trunks: Array = []
 	var placed: Array[Vector2] = []
 	var tries := 0
 	while placed.size() < 80 and tries < 3000:
@@ -128,7 +130,9 @@ func _groves() -> void:
 		var pos := Vector3(p.x, _h(p.x, p.y), p.y)
 		var xf := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), pos)
 		if roll < 0.14:
-			_add_to(groups, "bamboo", BastideKitNature.plant("bamboo"), xf.scaled_local(Vector3.ONE * _rng.randf_range(0.8, 1.1)))
+			var sb := _rng.randf_range(0.8, 1.1)
+			trunks.append({"pos": pos, "r": 0.45 * sb, "h": BastideTreeBody.DEFAULT_HEIGHT,
+				"parts": [_add_to(groups, "bamboo", BastideKitNature.plant("bamboo"), xf.scaled_local(Vector3.ONE * sb))]})
 			continue
 		if roll > 0.96:
 			_rock(pos, _rng.randf_range(0.8, 1.8))
@@ -139,9 +143,22 @@ func _groves() -> void:
 		var far := r > clearing_radius + 30.0
 		var tr := BastideKitNature.tree(sp, variant, size, far)
 		var key := "%s%d%s" % [sp, variant, "f" if far else ""]
-		_add_to(groups, "t" + key, {"mesh": tr["trunk"], "mat": BastideKitNature.trunk_material()}, xf)
-		_add_to(groups, "c" + key, {"mesh": tr["crown"], "mat": tr["crown_mat"]}, xf)
-		_add_to(groups, "s" + key, {"mesh": tr["shadow"], "mat": BastideKitNature.trunk_material(), "shadow": true}, xf)
+		var parts := [_add_to(groups, "t" + key, {"mesh": tr["trunk"], "mat": BastideKitNature.trunk_material()}, xf),
+			_add_to(groups, "c" + key, {"mesh": tr["crown"], "mat": tr["crown_mat"]}, xf),
+			_add_to(groups, "s" + key, {"mesh": tr["shadow"], "mat": BastideKitNature.trunk_material(), "shadow": true}, xf)]
+		trunks.append({"pos": pos, "r": float(tr.get("trunk_r", 0.3)), "h": BastideTreeBody.DEFAULT_HEIGHT, "parts": parts})
+	# Groupes posés dans l'ordre : `parts` [clé, rang] → [indice du MultiMesh, rang].
+	var index := {}
+	for k: String in groups:
+		index[k] = index.size()
+	for t: Dictionary in trunks:
+		t["parts"] = (t["parts"] as Array).filter(func(p: Array) -> bool: return index.has(p[0])).map(
+				func(p: Array) -> Array: return [index[p[0]], p[1]])
+	var body := BastideTreeBody.new()
+	body.name = "Troncs"
+	body.host = self
+	add_child(body)
+	body.set_trunks(trunks)
 	for k: String in groups:
 		var g: Dictionary = groups[k]
 		var mm := MultiMesh.new()
@@ -152,7 +169,7 @@ func _groves() -> void:
 		for i in xfs.size():
 			mm.set_instance_transform(i, xfs[i])
 		var mmi := MultiMeshInstance3D.new()
-		mmi.name = "Bosquet_" + k
+		mmi.name = "%s%d" % [BastideResultApplier.MULTI_PREFIX, index[k]]
 		mmi.multimesh = mm
 		mmi.material_override = g["mat"]
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if g.get("shadow", false) \
@@ -160,12 +177,14 @@ func _groves() -> void:
 		add_child(mmi)
 
 
-func _add_to(groups: Dictionary, key: String, item: Dictionary, xf: Transform3D) -> void:
+## Ajoute une instance ; renvoie [clé du groupe, rang] (clé vide si rien n'est posé).
+func _add_to(groups: Dictionary, key: String, item: Dictionary, xf: Transform3D) -> Array:
 	if item.is_empty() or item.get("mesh") == null:
-		return
+		return ["", 0]
 	if not groups.has(key):
 		groups[key] = {"mesh": item["mesh"], "mat": item["mat"], "xf": [], "shadow": item.get("shadow", false)}
 	(groups[key]["xf"] as Array).append(xf)
+	return [key, (groups[key]["xf"] as Array).size() - 1]
 
 
 func _rock(pos: Vector3, size: float) -> void:

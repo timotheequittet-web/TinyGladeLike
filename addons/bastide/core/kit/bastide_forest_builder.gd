@@ -185,11 +185,14 @@ static func build(points: PackedVector3Array, seed: int, kind: int, tree_scale: 
 	var plants: Array = pl["plants"]
 	# Groupes : (maillage, case) → transformations.
 	var groups := {}
+	# Instances de l'arbre en cours, [clé du groupe, rang] (pour l'abattage, voir BastideTreeBody).
+	var cur := {"parts": []}
 	var add := func(gkey: String, m: Mesh, mat: Material, xf: Transform3D, shadow: int, vb: float, ve: float) -> void:
 		if m == null:
 			return
 		if not groups.has(gkey):
 			groups[gkey] = {"mesh": m, "mat": mat, "xf": [], "shadow": shadow, "vb": vb, "ve": ve}
+		(cur["parts"] as Array).append([gkey, (groups[gkey]["xf"] as Array).size()])
 		(groups[gkey]["xf"] as Array).append(xf)
 	var bark := BastideKitNature.trunk_material()
 	var cards := 0
@@ -200,6 +203,7 @@ static func build(points: PackedVector3Array, seed: int, kind: int, tree_scale: 
 		var xf := Transform3D(Basis(Vector3.UP, t["rot"]).scaled(Vector3.ONE * float(t["jitter"])), t["pos"])
 		var ck := _chunk(t["pos"])
 		var id := "%s/%d/%.1f@%d,%d" % [sp, int(t["variant"]), float(t["size"]), ck.x, ck.y]
+		cur["parts"] = []
 		add.call("trunk/" + id, near["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, 0.0, 0.0)
 		add.call("crown/" + id, near["crown"], near["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, 0.0, NEAR_CROWN)
 		add.call("far/" + id, far["crown"], far["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, NEAR_CROWN, 0.0)
@@ -207,7 +211,7 @@ static func build(points: PackedVector3Array, seed: int, kind: int, tree_scale: 
 		if near["crown"]:
 			cards += (near["crown"] as ArrayMesh).surface_get_array_len(0) / 4
 		if with_collision:
-			result.add_prism(t["pos"], float(near["trunk_r"]) * float(t["jitter"]), TRUNK_COLLISION_H)
+			result.add_trunk(t["pos"], float(near["trunk_r"]) * float(t["jitter"]), TRUNK_COLLISION_H, cur["parts"])
 	for p: Dictionary in plants:
 		var type: String = p["type"]
 		var m: Mesh = null
@@ -235,11 +239,30 @@ static func build(points: PackedVector3Array, seed: int, kind: int, tree_scale: 
 		add.call("plant/%s@%d,%d" % [type, ck.x, ck.y], m, mat, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, 0.0, PLANT_RANGE)
 		if extra.has("trunk") and extra["trunk"] != null:
 			add.call("plantwood/%s@%d,%d" % [type, ck.x, ck.y], extra["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, 0.0, PLANT_RANGE)
-	for g: Dictionary in groups.values():
-		result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"], g["vb"], g["ve"])
+	_add_groups(result, groups)
 	var outline := PackedVector2Array()
 	for p in points:
 		outline.append(Vector2(p.x, p.z))
 	result.anchors = {"outline": outline, "trees": trees.map(func(t: Dictionary) -> Vector3: return t["pos"])}
 	result.stats = {"trees": trees.size(), "plants": plants.size(), "groups": groups.size(), "cards": cards}
 	return result
+
+
+## Pose les groupes d'instances et traduit les `parts` des troncs (clé de groupe →
+## indice dans result.instances).
+static func _add_groups(result: BastideBuildResult, groups: Dictionary, vis := true) -> void:
+	var index := {}
+	for k: String in groups:
+		var g: Dictionary = groups[k]
+		index[k] = result.instances.size()
+		if vis:
+			result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"], g["vb"], g["ve"])
+		else:
+			var vr: Vector2 = g["vr"]
+			result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"], vr.x, vr.y)
+	for t: Dictionary in result.trunks:
+		var out: Array = []
+		for p: Array in t.get("parts", []):
+			if p[0] is String and index.has(p[0]):
+				out.append([index[p[0]], p[1]])
+		t["parts"] = out

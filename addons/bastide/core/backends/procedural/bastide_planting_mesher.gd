@@ -189,10 +189,12 @@ static func build_planting(points: PackedVector3Array, seed: int, style: Bastide
 	draw_items(mb, kit_split(items, gs, result), gs)
 	if with_collision:
 		for it: Dictionary in items:
+			# Arbres et bambous : un cylindre de tronc (result.trunks, voir kit_split).
+			if TREES.has(it["type"]) or it["type"] == BAMBOO:
+				continue
 			var p: Vector3 = it["pos"]
-			var tall: bool = TREES.has(it["type"])
-			var r := 0.35 if tall else footprint(it) * 0.8
-			var hh: float = it["size"] * 0.9 if tall else it["size"] * 1.1
+			var r := footprint(it) * 0.8
+			var hh: float = it["size"] * 1.1
 			result.add_box([p + Vector3(-r, 0, -r), p + Vector3(r, 0, -r), p + Vector3(r, 0, r), p + Vector3(-r, 0, r),
 				p + Vector3(-r, hh, -r), p + Vector3(r, hh, -r), p + Vector3(r, hh, r), p + Vector3(-r, hh, r)])
 	result.mesh = mb.commit(BastideGardenMesher.materials(style))
@@ -360,7 +362,14 @@ const GARDEN_PLANT_RANGE := 140.0
 ## dans `result`, retirées de la liste rendue. Renvoie les plantes restantes.
 static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuildResult) -> Array:
 	if not gs.kit_plants:
+		# Arbres dessinés ici (style sans kit) : un tronc de collision quand même.
+		for it: Dictionary in items:
+			if String(it["type"]) in TREES:
+				result.add_trunk(it["pos"], clampf(float(it["size"]) * 0.05, 0.1, 0.35), BastideForestBuilder.TRUNK_COLLISION_H)
+			elif String(it["type"]) == BAMBOO:
+				result.add_trunk(it["pos"], clampf(float(it["size"]) * 0.4, 0.15, 0.45), BastideForestBuilder.TRUNK_COLLISION_H)
 		return items
+	var cur := {"parts": []}
 	var rest: Array = []
 	var groups := {}
 	# Distances d'affichage (multipliées par le réglage graphique, voir BastideGraphics) :
@@ -375,6 +384,7 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 			var kind := gkey.get_slice("/", 0)
 			var vr: Vector2 = ranges.get(kind, ranges["plant"] if kind != "trunk" else Vector2.ZERO)
 			groups[gkey] = {"mesh": m, "mat": mat, "xf": [], "shadow": shadow, "vr": vr}
+		(cur["parts"] as Array).append([gkey, (groups[gkey]["xf"] as Array).size()])
 		(groups[gkey]["xf"] as Array).append(xf)
 	var bark := BastideKitNature.trunk_material()
 	for it: Dictionary in items:
@@ -393,10 +403,12 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 				var trf := BastideKitNature.tree(sp, variant, sc, true)
 				var xf := Transform3D(Basis(Vector3.UP, rot), p)
 				var id := "%s/%d/%.1f" % [sp, variant, sc]
+				cur["parts"] = []
 				add.call("trunk/" + id, tr["trunk"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				add.call("crown/" + id, tr["crown"], tr["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				add.call("far/" + id, trf["crown"], trf["crown_mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 				add.call("shadow/" + id, tr["shadow"], bark, xf, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
+				result.add_trunk(p, float(tr.get("trunk_r", 0.2)), BastideForestBuilder.TRUNK_COLLISION_H, cur["parts"])
 			HYDRANGEA:
 				var model := "hydrangea_blue" if BastideGardenMesher.h(k, 703) < 0.55 else "hydrangea_pink"
 				if it.get("bloom", false) and BastideGardenMesher.h(k, 704) < 0.5:
@@ -426,9 +438,11 @@ static func kit_split(items: Array, gs: BastideGardenStyle, result: BastideBuild
 				add.call("fern", tf["mesh"], tf["mat"], xf, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
 			_:
 				rest.append(it)
-	for g: Dictionary in groups.values():
-		var vr: Vector2 = g["vr"]
-		result.add_instances(g["mesh"], g["mat"], g["xf"], g["shadow"], vr.x, vr.y)
+	BastideForestBuilder._add_groups(result, groups, false)
+	# Bambous (restés dessinés ici) : une touffe = un tronc.
+	for it: Dictionary in rest:
+		if String(it["type"]) == BAMBOO:
+			result.add_trunk(it["pos"], clampf(float(it["size"]) * 0.4, 0.15, 0.45), BastideForestBuilder.TRUNK_COLLISION_H)
 	return rest
 
 

@@ -16,6 +16,9 @@ var floors := 0
 var roof_type := -1
 ## Façade de la porte (indice du côté) ; < 0 pour un choix automatique.
 var door_facade := -1
+## Terriers : relief (collines comprises) autour du tracé, en repère local et
+## au-dessus du sol de la maison : {o: Vector2, cell, w, d, heights}. Vide : à plat.
+var ground := {}
 
 
 static func from_points(points: PackedVector3Array, p_seed: int, p_floors := 0, p_roof_type := -1,

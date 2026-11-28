@@ -9,6 +9,7 @@ var out_dir := "/tmp/shots"
 var hours := [15.0]
 var only := []   # numéros des vues à capturer (vide : toutes)
 var inside := false   # « dedans » : captures de l'intérieur du premier terrier
+var hill := false   # « colline » : une colline derrière le hameau
 var scene: Node
 var cam: Camera3D
 var site: BastideBuildSite
@@ -52,6 +53,8 @@ func _init() -> void:
 	if args.size() > 2:
 		if args[2] == "dedans":
 			inside = true
+		elif args[2] == "colline":
+			hill = true
 		else:
 			for v in args[2].split(","):
 				only.append(int(v))
@@ -80,6 +83,14 @@ func _run() -> void:
 		await process_frame
 	site.clear(false)
 	site.garden_style = load(TERRIER)
+	if hill:
+		# Une longue colline derrière le hameau : les terriers s'y creusent.
+		var terrain := BastideTerrain.find(site)
+		var ridge := PackedVector2Array([Vector2(-26, -30), Vector2(22, -32), Vector2(24, -9), Vector2(10, -7.5),
+			Vector2(-2, -8.5), Vector2(-14, -6.5), Vector2(-27, -10)])
+		terrain.set_carve(987654, BastideHillShape.carve(ridge, 6.5, terrain.base_field, 3))
+		for i in 10:
+			await process_frame
 	var data := village()
 	for i in data.size():
 		data[i]["id"] = i + 1

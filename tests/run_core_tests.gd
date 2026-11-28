@@ -1907,8 +1907,13 @@ func _test_burrows() -> void:
 	var md: Dictionary = opened.anchors["mound_data"]
 	var room: Rect2 = (md["mounds"][0] as Array)[9]
 	var ffr := BastideBurrowBuilder._frame_from(md)
-	check(BastideBurrowBuilder.terrain_height(ffr, [], room.get_center().x, room.get_center().y) == 0.0,
-			"le relief ne monte pas dans la pièce creusée")
+	var flat := BastideHeightField.flat(Vector2(-40, -40), 1.0, 81, 81)
+	var cv := BastideBurrowBuilder.carve(md, Transform3D.IDENTITY, flat)
+	var rc: Vector2 = ffr.o + ffr.x * room.get_center().x + ffr.z * room.get_center().y
+	var ci := roundi(rc.x - flat.origin.x) - int(cv["i0"])
+	var cj := roundi(rc.y - flat.origin.y) - int(cv["j0"])
+	check((cv["holes"] as PackedByteArray)[cj * int(cv["w"]) + ci] == 1 and is_equal_approx((cv["cut"] as PackedFloat32Array)[cj * int(cv["w"]) + ci], 0.0),
+			"le relief s'ouvre sur la pièce creusée (sol au niveau de la maison)")
 	# Catalogue : les trois styles, dans l'ordre, et le passage au suivant en boucle.
 	check(BastideStyleCatalog.size() >= 3, "trois styles au catalogue")
 	var last := BastideStyleCatalog.style(BastideStyleCatalog.size() - 1)

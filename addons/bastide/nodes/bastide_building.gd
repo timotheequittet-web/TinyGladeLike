@@ -147,7 +147,55 @@ func build_spec() -> BastideBuildingSpec:
 			roof_type = BastideRoofStyle.RoofType.GABLE
 		RoofChoice.IRIMOYA:
 			roof_type = BastideRoofStyle.RoofType.IRIMOYA
-	return BastideBuildingSpec.from_points(pts, seed, floors, roof_type, door_facade)
+	var spec := BastideBuildingSpec.from_points(pts, seed, floors, roof_type, door_facade)
+	if is_burrow():
+		spec.ground = _burrow_ground(spec.footprint)
+	return spec
+
+
+## Terrier : hauteur de pose (le plus haut point du sol d'origine sous et autour du
+## tracé) et relief des collines autour, en repère local au-dessus de cette pose.
+## La butte s'y creuse : la colline passe par-dessus la pièce.
+var _burrow_lift := -INF
+
+
+func _burrow_ground(fp: PackedVector2Array) -> Dictionary:
+	var terrain := BastideTerrain.find(self)
+	if terrain == null or terrain.hills_field == null or fp.size() < 3 or not is_inside_tree():
+		return {}
+	var box := Rect2(fp[0], Vector2.ZERO)
+	for q in fp:
+		box = box.expand(q)
+	var xf := Transform3D(global_transform.basis.orthonormalized(), global_transform.origin)
+	var lift := -INF
+	var near := box.grow(2.5)
+	var step := 0.5
+	var y := near.position.y
+	while y <= near.end.y:
+		var x := near.position.x
+		while x <= near.end.x:
+			var w := xf * Vector3(x, 0.0, y)
+			lift = maxf(lift, terrain.base_field.height(w.x, w.z))
+			x += step
+		y += step
+	var area := box.grow(9.0)
+	var cell := 0.5
+	var gw := int(ceil(area.size.x / cell)) + 1
+	var gd := int(ceil(area.size.y / cell)) + 1
+	var hs := PackedFloat32Array()
+	hs.resize(gw * gd)
+	for j in gd:
+		for i in gw:
+			var w := xf * Vector3(area.position.x + i * cell, 0.0, area.position.y + j * cell)
+			hs[j * gw + i] = terrain.hills_field.height(w.x, w.z) - lift - xf.origin.y
+	_burrow_lift = lift
+	return {"o": area.position, "cell": cell, "w": gw, "d": gd, "heights": hs, "lift": lift}
+
+
+func _terrain_min_lift() -> float:
+	if is_burrow():
+		return _burrow_lift
+	return super._terrain_min_lift()
 
 
 # --- Intérieur ---------------------------------------------------------------------

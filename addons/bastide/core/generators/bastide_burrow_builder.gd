@@ -41,6 +41,9 @@ const SINK := 0.3
 const STEP := 0.38
 ## Les flancs de la façade avancent en arc autour de la porte.
 const WING := 1.1
+## Entaille d'une colline devant la façade : cour à plat (profondeur), talus autour.
+const COURT := 2.6
+const BANK := 0.9
 
 const STRAW := Color(0.84, 0.68, 0.34)
 const LOG := Color(0.36, 0.25, 0.16)
@@ -103,6 +106,46 @@ class Frame:
 	var z := Vector2.DOWN
 	var y0 := 0.0
 	var mounds: Array = []
+	## Relief des collines autour (voir BastideBuildingSpec.ground) ; vide : à plat.
+	var ground := {}
+
+	## Hauteur de la colline (repère de façade, au-dessus du sol de la maison).
+	func hill(px: float, pz: float) -> float:
+		if ground.is_empty():
+			return -1.0e6
+		var q := o + x * px + z * pz
+		var c: float = ground["cell"]
+		var go: Vector2 = ground["o"]
+		var gw: int = ground["w"]
+		var gd: int = ground["d"]
+		var fx := (q.x - go.x) / c
+		var fz := (q.y - go.y) / c
+		if fx < 0.0 or fz < 0.0 or fx > gw - 1 or fz > gd - 1:
+			return -1.0e6
+		var i := mini(int(fx), gw - 2)
+		var j := mini(int(fz), gd - 2)
+		var tx := fx - i
+		var tz := fz - j
+		var hs: PackedFloat32Array = ground["heights"]
+		var a := lerpf(hs[j * gw + i], hs[j * gw + i + 1], tx)
+		var b := lerpf(hs[(j + 1) * gw + i], hs[(j + 1) * gw + i + 1], tx)
+		return lerpf(a, b, tz)
+
+	## Entaille de la colline : cour à plat devant la façade, talus autour, front
+	## d'herbe au-dessus de la façade.
+	func notch(px: float, pz: float) -> float:
+		var m := owner(px)
+		var d := absf(px - m.cx)
+		var e := maxf(d - m.face_half - 0.3, 0.0)
+		var zf := face_z(px)
+		if pz >= zf:
+			return (brow(px) if d <= m.face_half else 0.0) + BANK * e + BROW_SLOPE * (pz - zf)
+		var fb := maxf(zf - COURT - pz, 0.0)
+		return BANK * sqrt(e * e + fb * fb)
+
+	## Devant la façade : le sol (la cour, et les talus si une colline l'entoure).
+	func front(px: float, pz: float) -> float:
+		return maxf(minf(hill(px, pz), notch(px, pz)), 0.0)
 
 	func p(px: float, py: float, pz: float) -> Vector3:
 		var q := o + x * px + z * pz
@@ -150,7 +193,10 @@ class Frame:
 	func surface(px: float, pz: float) -> float:
 		var zf := face_z(px)
 		var hh := height(px, maxf(pz, zf))
-		return minf(hh, brow(px) + BROW_SLOPE * maxf(pz - zf, 0.0))
+		var dome := minf(hh, brow(px) + BROW_SLOPE * maxf(pz - zf, 0.0))
+		if ground.is_empty():
+			return dome
+		return maxf(dome, minf(hill(px, pz), notch(px, pz)))
 
 
 ## `open` : variante « on peut entrer » (vantail à part, passage dans la collision,
@@ -212,6 +258,8 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	var x_lo := -width * 0.5 - SKIRT - 0.2
 	var x_hi := width * 0.5 + SKIRT + 0.2
 	_mound(mb, fr, x_lo, x_hi, depth + SKIRT, result if with_collision else null)
+	for m: Mound in fr.mounds:
+		_front(mb, fr, m, result if with_collision else null)
 	_facade(mb, fr, x_lo, x_hi, holes, bs, result if with_collision else null, door_r if open else 0.0)
 	for m: Mound in fr.mounds:
 		_timber(mb, fr, m, door_r, holes, bs)
@@ -308,6 +356,7 @@ static func _frame(fp: PackedVector2Array, spec: BastideBuildingSpec, bs: Bastid
 	fr.z = fz
 	fr.o = a + fx * (x0 + x1) * 0.5
 	fr.y0 = spec.base_y
+	fr.ground = spec.ground
 	# Un terrier par tracé, de taille bornée : un grand tracé ne fait pas une rangée
 	# de maisons, juste une maison un peu plus large, centrée.
 	var width := clampf(x1 - x0, 3.0, bs.burrow_width * 1.3)
@@ -882,32 +931,46 @@ static func _barrel(mb: BastideMeshBuilder, fr: Frame, c: Vector2, r: float, h: 
 
 ## Meule de foin : un dôme de paille un peu affaissé.
 static func _hay(mb: BastideMeshBuilder, fr: Frame, c: Vector2, r: float, seed: int) -> void:
-	var sides := 18
-	var rings := 9
-	var h := r * 1.05
-	var prev: Array = []
-	var cen := fr.p(c.x, h * 0.35, c.y)
-	for j in rings + 1:
-		var t := float(j) / rings
-		var ang := t * PI * 0.5
-		var rr := r * cos(ang) * (1.0 if j > 0 else 1.06)
-		var y := h * sin(ang) - 0.05
-		var cur: Array = []
+	# Botte ronde couchée : un rouleau de paille, ses faces enroulées en spirale.
+	var rad := r * 0.62
+	var half := r * 0.62
+	var ang := BastideRng.randf_at(seed, "foin_a") * PI
+	var ax := Vector2(cos(ang), sin(ang))
+	var sides := 20
+	var bright := STRAW.lightened(0.12)
+	var ring0: Array = []
+	var ring1: Array = []
+	var nrm: Array = []
+	for k in sides:
+		var a := TAU * k / sides
+		var off := Vector2(-ax.y, ax.x) * cos(a) * rad
+		var y := rad + sin(a) * rad - 0.04
+		ring0.append(fr.p(c.x - ax.x * half + off.x, y, c.y - ax.y * half + off.y))
+		ring1.append(fr.p(c.x + ax.x * half + off.x, y, c.y + ax.y * half + off.y))
+		nrm.append((fr.dir(-ax.y * cos(a), ax.x * cos(a)) + Vector3.UP * sin(a)).normalized())
+	for k in sides:
+		var k1 := (k + 1) % sides
+		var t := 0.9 + 0.1 * sin(k * 2.3 + seed)
+		var col := Color(bright.r * t, bright.g * t, bright.b * t)
+		mb.add_tri_smooth(ROLE_WOOD, ring0[k], ring1[k], ring1[k1], nrm[k], nrm[k], nrm[k1], col, col, col)
+		mb.add_tri_smooth(ROLE_WOOD, ring0[k], ring1[k1], ring0[k1], nrm[k], nrm[k1], nrm[k1], col, col, col)
+	# Faces : anneaux concentriques, plus sombres vers le cœur.
+	for e in 2:
+		var sgn := -1.0 if e == 0 else 1.0
+		var ctr := fr.p(c.x + ax.x * half * sgn * 1.01, rad - 0.04, c.y + ax.y * half * sgn * 1.01)
+		var outn := fr.dir(ax.x * sgn, ax.y * sgn)
+		var ring: Array = ring0 if e == 0 else ring1
 		for k in sides:
-			var a := TAU * k / sides
-			var wob := 1.0 + BastideRng.signed_at(seed, "foin_w", k + j * 17) * 0.05
-			cur.append(fr.p(c.x + cos(a) * rr * wob, y, c.y + sin(a) * rr * wob))
-		if j > 0:
-			for k in sides:
-				var a: Vector3 = prev[k]
-				var b: Vector3 = prev[(k + 1) % sides]
-				var cc: Vector3 = cur[(k + 1) % sides]
-				var d: Vector3 = cur[k]
-				var shade := (0.8 + 0.2 * t) * (0.95 + 0.08 * sin(float(j) * 2.7 + float(seed % 7)))
-				var col := Color(STRAW.r * shade, STRAW.g * shade, STRAW.b * shade, 0.0)
-				mb.add_tri_smooth(ROLE_EARTH, a, b, cc, (a - cen).normalized(), (b - cen).normalized(), (cc - cen).normalized(), col, col, col)
-				mb.add_tri_smooth(ROLE_EARTH, a, cc, d, (a - cen).normalized(), (cc - cen).normalized(), (d - cen).normalized(), col, col, col)
-		prev = cur
+			var k1 := (k + 1) % sides
+			for band in 3:
+				var f0 := 1.0 - band / 3.0
+				var f1 := 1.0 - (band + 1) / 3.0
+				var p0: Vector3 = ctr.lerp(ring[k], f0)
+				var p1: Vector3 = ctr.lerp(ring[k1], f0)
+				var q0: Vector3 = ctr.lerp(ring[k], f1)
+				var q1: Vector3 = ctr.lerp(ring[k1], f1)
+				var col := STRAW.darkened(0.08 * band + (0.06 if (band + k) % 2 == 0 else 0.0))
+				mb.add_quad(ROLE_WOOD, p0, p1, q1, q0, outn, col, col, col, col)
 
 
 ## Potager en caisse : un bac de planches rempli de terre, des légumes dedans.
@@ -1084,7 +1147,7 @@ static func _terrain_data(fr: Frame, seed: int) -> Dictionary:
 				continue
 			knolls.append([c.x, c.y, kr,
 					lerpf(0.6, 1.5, BastideRng.randf_at(m.seed, "colline_h", k))])
-	return {"o": fr.o, "x": fr.x, "z": fr.z, "y0": fr.y0, "mounds": mounds, "knolls": knolls}
+	return {"o": fr.o, "x": fr.x, "z": fr.z, "y0": fr.y0, "mounds": mounds, "knolls": knolls, "ground": fr.ground}
 
 
 static func _frame_from(data: Dictionary) -> Frame:
@@ -1093,6 +1156,7 @@ static func _frame_from(data: Dictionary) -> Frame:
 	fr.x = data["x"]
 	fr.z = data["z"]
 	fr.y0 = data["y0"]
+	fr.ground = data.get("ground", {})
 	for a: Array in data["mounds"]:
 		var m := Mound.new()
 		m.cx = a[0]; m.w = a[1]; m.h = a[2]; m.ax = a[3]; m.zc = a[4]; m.az = a[5]; m.dz = a[6]
@@ -1113,9 +1177,6 @@ static func terrain_height(fr: Frame, knolls: Array, px: float, pz: float) -> fl
 	var fade := lerpf(1.0, smoothstep(zf + 0.3, zf + 1.3, pz), near_face)
 	# Au-dessus de la pièce creusée, le relief reste au sol : seule la butte maillée
 	# couvre la voûte (sinon le sol du terrain traverserait la pièce).
-	for o: Mound in fr.mounds:
-		if o.room.size.x > 0.0 and o.hollow().has_point(Vector2(px, pz)):
-			return 0.0
 	var h := maxf(fr.surface(px, pz) - 0.08, 0.0)
 	# Grande colline douce : la butte s'étale dans la prairie.
 	for o: Mound in fr.mounds:
@@ -1157,6 +1218,10 @@ static func carve(data: Dictionary, xf: Transform3D, base: BastideHeightField) -
 	var d := maxi(0, j1 - j0 + 1)
 	var heights := PackedFloat32Array()
 	heights.resize(w * d)
+	var cut := PackedFloat32Array()
+	cut.resize(w * d)
+	var holes := PackedByteArray()
+	holes.resize(w * d)
 	var inv := xf.affine_inverse()
 	for jj in d:
 		for ii in w:
@@ -1164,10 +1229,23 @@ static func carve(data: Dictionary, xf: Transform3D, base: BastideHeightField) -
 			var wz := base.origin.y + (j0 + jj) * base.cell
 			var l := inv * Vector3(wx, 0.0, wz)
 			var q := Vector2(l.x, l.z) - fr.o
-			var h := terrain_height(fr, knolls, q.dot(fr.x), q.dot(fr.z))
+			var px := q.dot(fr.x)
+			var pz := q.dot(fr.z)
+			var h := terrain_height(fr, knolls, px, pz)
 			heights[jj * w + ii] = (xf * Vector3(l.x, fr.y0 + h, l.z)).y if h > 0.01 else NAN
+			# Pièce et cour : le sol n'est pas dessiné (la butte maillée le remplace)
+			# et reste au niveau de la maison (chemins, collision). Autour, une
+			# colline est entaillée (cour et talus devant la façade).
+			var hole := false
+			for m: Mound in fr.mounds:
+				if m.room.size.x > 0.0 and m.hollow().has_point(Vector2(px, pz)):
+					hole = true
+			holes[jj * w + ii] = 1 if hole else 0
+			var cv := 0.0 if hole else maxf(fr.notch(px, pz), h)
+			cut[jj * w + ii] = (xf * Vector3(l.x, fr.y0 + cv, l.z)).y if cv < 14.0 else NAN
 	var r := Rect2(base.origin + Vector2(i0, j0) * base.cell, Vector2(w, d) * base.cell)
-	return {"type": "mound", "i0": i0, "j0": j0, "w": w, "d": d, "heights": heights, "rect": r.grow(base.cell)}
+	return {"type": "mound", "i0": i0, "j0": j0, "w": w, "d": d, "heights": heights, "cut": cut, "holes": holes,
+		"rect": r.grow(base.cell)}
 
 
 # --- Charpente de façade et mobilier ------------------------------------------------
@@ -1439,9 +1517,19 @@ static func _grass_cards(fr: Frame, groups: Dictionary, m: Mound, hol: Rect2, r:
 	for c in count:
 		var x := hol.position.x + r.randf() * hol.size.x
 		var z := hol.position.y + r.randf() * hol.size.y
-		if z < fr.face_z(x) + 0.3 or fr.owner(x) != m:
+		if fr.owner(x) != m:
 			continue
-		var y := fr.surface(x, z)
+		var zf := fr.face_z(x)
+		var y := 0.0
+		if z >= zf + 0.3:
+			y = fr.surface(x, z)
+		elif z < zf - LIP - 0.1:
+			# Talus devant la façade, quand le terrier est creusé dans une colline.
+			y = fr.front(x, z)
+			if y < 0.25:
+				continue
+		else:
+			continue
 		if y < 0.1:
 			continue
 		var q := fr.p(x, y - 0.02, z)
@@ -1469,3 +1557,36 @@ static func _grass_cards(fr: Frame, groups: Dictionary, m: Mound, hol: Rect2, r:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	mesh.custom_aabb = AABB(lo - Vector3(1, 1, 1), hi - lo + Vector3(2, 2, 2))
 	groups["herbe_butte_%d" % m.seed] = {"mesh": mesh, "mat": BastideGrass.mound_material, "xf": [Transform3D.IDENTITY], "range": 60.0}
+
+
+## Devant la façade, sur la zone où le sol n'est pas dessiné : la cour, et les talus
+## quand le terrier est creusé dans une colline.
+static func _front(mb: BastideMeshBuilder, fr: Frame, m: Mound, coll: BastideBuildResult) -> void:
+	if m.room.size.x <= 0.0:
+		return
+	var hol := m.hollow()
+	var cols := maxi(4, ceili(hol.size.x / STEP))
+	const ROWS := 12
+	var grid: Array = []
+	for i in cols + 1:
+		var x := lerpf(hol.position.x, hol.end.x, float(i) / cols)
+		var z_end := fr.face_z(x) - LIP
+		var col: Array = []
+		for j in ROWS + 1:
+			var z := lerpf(hol.position.y - 0.6, z_end, float(j) / ROWS)
+			var y := fr.front(x, z)
+			var e := 0.2
+			var n := (fr.dir(-(fr.front(x + e, z) - fr.front(x - e, z)) / (2.0 * e), -(fr.front(x, z + e) - fr.front(x, z - e)) / (2.0 * e)) + Vector3.UP).normalized()
+			col.append([fr.p(x, y, z), n])
+		grid.append(col)
+	var c := Color(0.0, 0.0, 1.0, 0.0)
+	for i in cols:
+		for j in ROWS:
+			var a: Array = grid[i][j]
+			var b: Array = grid[i + 1][j]
+			var cc: Array = grid[i + 1][j + 1]
+			var d: Array = grid[i][j + 1]
+			mb.add_tri_smooth(ROLE_TURF, a[0], b[0], cc[0], a[1], b[1], cc[1], c, c, c)
+			mb.add_tri_smooth(ROLE_TURF, a[0], cc[0], d[0], a[1], cc[1], d[1], c, c, c)
+			if coll and ((a[0] as Vector3).y > fr.y0 + 0.05 or (cc[0] as Vector3).y > fr.y0 + 0.05):
+				coll.collision_faces.append_array(PackedVector3Array([a[0], b[0], cc[0], a[0], cc[0], d[0]]))

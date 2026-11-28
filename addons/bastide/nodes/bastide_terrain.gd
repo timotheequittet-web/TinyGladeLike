@@ -104,6 +104,12 @@ var _carve_dirty := Rect2()
 var _carve_queued := false
 ## Couleur du sol par point de grille : r = berge mouillée, g = lit d'étang.
 var _paint := PackedColorArray()
+## Sommets percés (1) : le sol n'y est pas dessiné, une structure le remplace
+## (façade et pièce d'un terrier creusé dans une colline).
+var _holes := PackedByteArray()
+## Relief d'origine + collines seules (sans buttes ni entailles) : ce sur quoi un
+## terrier se creuse.
+var hills_field: BastideHeightField
 var _chunks := {}  # Vector2i -> MeshInstance3D
 
 var _body: StaticBody3D
@@ -188,8 +194,10 @@ func has_carve(key: int) -> bool:
 static func _same_carve(a: Dictionary, b: Dictionary) -> bool:
 	if a.get("type", "pond") != b.get("type", "pond"):
 		return false
-	if a.get("type", "pond") in ["floor", "mound"]:
-		return a["i0"] == b["i0"] and a["j0"] == b["j0"] and a["w"] == b["w"] and a["heights"] == b["heights"]
+	if a.get("type", "pond") in ["floor", "mound", "hill"]:
+		return a["i0"] == b["i0"] and a["j0"] == b["j0"] and a["w"] == b["w"] and a["heights"] == b["heights"] \
+				and a.get("cut", PackedFloat32Array()) == b.get("cut", PackedFloat32Array()) \
+				and a.get("holes", PackedByteArray()) == b.get("holes", PackedByteArray())
 	return is_equal_approx(float(a["level"]), float(b["level"])) and a["poly"] == b["poly"] \
 			and is_equal_approx(float(a["depth"]), float(b["depth"]))
 
@@ -213,12 +221,32 @@ func _carved(base: BastideHeightField) -> BastideHeightField:
 	for c: Dictionary in _carves.values():
 		if c.get("type", "pond") == "floor":
 			_apply_floor(f, c)
-	# Buttes des maisons-terriers : le sol monte (jamais ne descend).
+	# Collines tracées à la main : le sol monte.
+	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") == "hill":
+			_apply_floor(f, c, true)
+	hills_field = BastideHeightField.flat(base.origin, base.cell, base.width, base.depth)
+	hills_field.heights = f.heights.duplicate()
+	# Buttes des maisons-terriers : le sol monte (jamais ne descend)…
 	for c: Dictionary in _carves.values():
 		if c.get("type", "pond") == "mound":
 			_apply_floor(f, c, true)
+	# …puis leurs entailles : la colline s'ouvre devant la façade et sur la pièce.
+	_holes = PackedByteArray()
+	_holes.resize(f.width * f.depth)
 	for c: Dictionary in _carves.values():
-		if c.get("type", "pond") in ["floor", "mound"]:
+		if c.has("cut"):
+			_apply_floor(f, {"heights": c["cut"], "i0": c["i0"], "j0": c["j0"], "w": c["w"], "d": c["d"]})
+		if c.has("holes"):
+			var hb: PackedByteArray = c["holes"]
+			for jj in int(c["d"]):
+				var j := int(c["j0"]) + jj
+				for ii in int(c["w"]):
+					var i := int(c["i0"]) + ii
+					if hb[jj * int(c["w"]) + ii] != 0 and i >= 0 and j >= 0 and i < f.width and j < f.depth:
+						_holes[j * f.width + i] = 1
+	for c: Dictionary in _carves.values():
+		if c.get("type", "pond") in ["floor", "mound", "hill"]:
 			continue
 		BastidePondShape.apply(f, base, _paint, c)
 		f.waters.append({"poly": c["poly"], "level": c["level"], "rect": BastidePondShape.rect_of(c["poly"])})
@@ -390,12 +418,18 @@ func _build_chunk(c: Vector2i) -> void:
 	var idx := PackedInt32Array()
 	idx.resize((w - 1) * (d - 1) * 6)
 	var t := 0
+	var holed := _holes.size() == field.width * field.depth
 	for j in d - 1:
 		for i in w - 1:
+			if holed:
+				var g := (j0 + j) * field.width + i0 + i
+				if _holes[g] + _holes[g + 1] + _holes[g + field.width] + _holes[g + field.width + 1] > 0:
+					continue
 			var a := j * w + i
 			idx[t] = a; idx[t + 1] = a + 1; idx[t + 2] = a + w
 			idx[t + 3] = a + 1; idx[t + 4] = a + w + 1; idx[t + 5] = a + w
 			t += 6
+	idx.resize(t)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts

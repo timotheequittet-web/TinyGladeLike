@@ -296,7 +296,7 @@ func _apply_carves() -> void:
 ## Les structures posées sur la zone creusée se reposent sur le nouveau sol (sauf
 ## les étangs : ils se calent sur le sol d'origine).
 func _rebuild_near(n: Node, r: Rect2) -> void:
-	if n is BastideStructure and not n is BastidePond and not n is BastideFarm:
+	if n is BastideStructure and not n is BastidePond and not n is BastideFarm and not n is BastideHill:
 		var s := n as BastideStructure
 		var mi := s.get_mesh_instance()
 		var hit := false

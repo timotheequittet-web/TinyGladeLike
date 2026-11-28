@@ -83,15 +83,11 @@ func _run() -> void:
 		await process_frame
 	site.clear(false)
 	site.garden_style = load(TERRIER)
-	if hill:
-		# Une longue colline derrière le hameau : les terriers s'y creusent.
-		var terrain := BastideTerrain.find(site)
-		var ridge := PackedVector2Array([Vector2(-26, -30), Vector2(22, -32), Vector2(24, -9), Vector2(10, -7.5),
-			Vector2(-2, -8.5), Vector2(-14, -6.5), Vector2(-27, -10)])
-		terrain.set_carve(987654, BastideHillShape.carve(ridge, 6.5, terrain.base_field, 3))
-		for i in 10:
-			await process_frame
 	var data := village()
+	if hill:
+		# Une longue colline derrière le hameau, tracée comme en jeu : les terriers s'y creusent.
+		data.push_front({"kind": "hill", "seed": 3, "style": TERRIER, "closed": true,
+			"points": [[-26, 0, -30], [22, 0, -32], [24, 0, -9], [10, 0, -7.5], [-2, 0, -8.5], [-14, 0, -6.5], [-27, 0, -10]]})
 	for i in data.size():
 		data[i]["id"] = i + 1
 	site.from_data(data, false)

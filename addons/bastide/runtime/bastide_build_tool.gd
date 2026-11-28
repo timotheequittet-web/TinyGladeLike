@@ -37,7 +37,7 @@ extends Node3D
 ## Le nœud ne contient aucune règle de génération : il fabrique des records et les
 ## confie au BastideBuildSite, qui fait le reste.
 
-enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST, POND, FARM }
+enum Mode { WALL, HOUSE, PATH, TORII, PLANTS, TERRACE, FOREST, POND, FARM, HILL }
 ## Variantes du mode MUR.
 enum WallVariant { ROOFED, DRY_STONE, BAMBOO }
 
@@ -86,6 +86,7 @@ signal history_changed(can_undo: bool, can_redo: bool)
 		_emit_hint()
 ## Surface minimale d'une forêt (m²).
 @export var forest_min_area := 60.0
+@export var hill_min_area := 25.0
 ## Sorte des étangs tracés en mode ÉTANG (voir BastidePondBuilder.Kind).
 @export var pond_kind := BastidePondBuilder.Kind.GARDEN:
 	set(value):
@@ -693,6 +694,8 @@ func _on_key(k: InputEventKey) -> void:
 					mode = Mode.POND
 				elif k.keycode == KEY_H:
 					mode = Mode.FARM
+				elif k.keycode == KEY_K:
+					mode = Mode.HILL
 				elif k.keycode == KEY_R:
 					reroll_selected()
 				elif k.keycode == KEY_G:
@@ -805,6 +808,8 @@ func _draw_kind() -> String:
 			return "pond"
 		Mode.FARM:
 			return "farm"
+		Mode.HILL:
+			return "hill"
 	return "wall" if wall_variant == WallVariant.ROOFED else "fence"
 
 
@@ -830,6 +835,8 @@ func _new_record(kind: String) -> Dictionary:
 		rec["closed"] = true
 	if kind == "farm":
 		rec["farm_kind"] = int(farm_kind)
+		rec["closed"] = true
+	if kind == "hill":
 		rec["closed"] = true
 	return rec
 
@@ -872,7 +879,7 @@ func _draw_wall(g: Vector3) -> void:
 		else:
 			_draw_ink(BastideStroke.wall_path(control, false, 0.6), false)
 		return
-	if _draft_rec["kind"] == "forest":
+	if _draft_rec["kind"] in ["forest", "hill"]:
 		# Une forêt est toujours une zone : le contour se referme tout seul. Elle
 		# n'apparaît qu'au relâcher (des centaines d'arbres : pas de fantôme en direct).
 		_draft_rec["points"] = control
@@ -1042,8 +1049,8 @@ func _finish_draw() -> void:
 	_ink_mesh.clear_surfaces()
 	var rec := _draft_rec
 	var pts: PackedVector3Array = rec.get("points", PackedVector3Array())
-	if rec.get("kind") in ["forest", "pond", "farm"]:
-		var min_area: float = {"forest": forest_min_area, "pond": pond_min_area, "farm": farm_min_area}[rec.get("kind")]
+	if rec.get("kind") in ["forest", "pond", "farm", "hill"]:
+		var min_area: float = {"forest": forest_min_area, "pond": pond_min_area, "farm": farm_min_area, "hill": hill_min_area}[rec.get("kind")]
 		if pts.size() >= 3 and absf(BastideStroke.signed_area(pts)) >= min_area:
 			rec["points"] = BastideStroke.ensure_direct(pts)
 			_update_draft()
@@ -1465,6 +1472,8 @@ func current_hint() -> String:
 				return "Fais le tour de l'étang, relâche pour le creuser"
 			if mode == Mode.FARM:
 				return "Fais le tour du champ, relâche pour le cultiver"
+			if mode == Mode.HILL:
+				return "Fais le tour de la colline, relâche pour la faire monter"
 			if mode == Mode.TERRACE:
 				if _terrace_engawa:
 					return "Relâche : un engawa le long de la façade"
@@ -1513,6 +1522,8 @@ func current_hint() -> String:
 			var fnames2 := ["potager", "rizière en terrasses", "champ de thé"]
 			return "Maintiens le clic et fais le tour d'un %s  ·  sur une pente : des terrasses  ·  V : changer" % fnames2[int(farm_kind)] \
 					if int(farm_kind) != 1 else "Maintiens le clic et fais le tour d'une rizière  ·  sur une pente : des terrasses  ·  V : changer"
+		Mode.HILL:
+			return "Maintiens le clic et fais le tour d'une colline  ·  un terrier posé contre elle s'y creuse"
 		Mode.POND:
 			var pnames := ["étang de jardin", "source chaude", "mare sauvage"]
 			return "Maintiens le clic et fais le tour d'un %s  ·  un chemin qui le traverse aura son pont  ·  V : changer" % pnames[int(pond_kind)] \

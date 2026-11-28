@@ -320,6 +320,7 @@ func _build_ui() -> void:
 	_mode_buttons[BastideBuildTool.Mode.FOREST] = _button(hb, "Forêt  B", func() -> void: tool.mode = BastideBuildTool.Mode.FOREST, true)
 	_mode_buttons[BastideBuildTool.Mode.POND] = _button(hb, "Étang  J", func() -> void: tool.mode = BastideBuildTool.Mode.POND, true)
 	_mode_buttons[BastideBuildTool.Mode.FARM] = _button(hb, "Champ  H", func() -> void: tool.mode = BastideBuildTool.Mode.FARM, true)
+	_mode_buttons[BastideBuildTool.Mode.HILL] = _button(hb, "Colline  K", func() -> void: tool.mode = BastideBuildTool.Mode.HILL, true)
 	_sep(hb)
 	_undo_btn = _button(hb, "Annuler", tool.undo)
 	_redo_btn = _button(hb, "Rétablir", tool.redo)

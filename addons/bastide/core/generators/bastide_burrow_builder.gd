@@ -1048,7 +1048,8 @@ static func _greenery(fr: Frame, groups: Dictionary, m: Mound, bs: BastideBuildi
 	if m.room.size.x > 0.0:
 		var hol := m.hollow()
 		if BastideGrass.mound_material:
-			_grass_cards(fr, groups, m, hol, r)
+			# Toute la zone où l'herbe de la prairie est retenue (contour de la maison).
+			_grass_cards(fr, groups, m, hol.grow(1.1), r)
 			hol = Rect2()
 		var step := 0.5
 		var gx := hol.position.x
@@ -1327,8 +1328,9 @@ static func _bench(mb: BastideMeshBuilder, fr: Frame, x: float, z: float, coll: 
 ## Pièce de la butte : sous la voûte, il reste toujours de l'herbe au-dessus.
 static func _plan_room(fr: Frame, m: Mound, depth: float) -> void:
 	var zi := m.face_z(m.cx) + 0.24
-	var rw := m.face_half * 0.8 - 0.15
-	var rd := clampf(depth * 0.75, 3.2, 5.0)
+	# La pièce grandit avec le terrier : plus large, plus profonde.
+	var rw := clampf(m.w * 0.42, m.face_half * 0.8 - 0.15, 5.5)
+	var rd := clampf(depth * 0.8, 3.2, 6.5)
 	m.room = Rect2(m.cx - rw, zi, rw * 2.0, rd)
 	# Voûte : sous la façade près de l'entrée, et sous la butte (marge d'herbe) partout.
 	var top := fr.face_top(m.cx) - LIP_DROP - 0.12
@@ -1504,7 +1506,7 @@ static func _interior(fr: Frame, m: Mound, door_r: float, holes: Array, style: B
 ## Herbe peinte sur la butte, au-dessus de la pièce (là où le relief ne monte pas) :
 ## les mêmes cartes que la prairie, pieds posés sur le maillage de la butte.
 static func _grass_cards(fr: Frame, groups: Dictionary, m: Mound, hol: Rect2, r: RandomNumberGenerator) -> void:
-	var density := 22.0
+	var density := 30.0
 	var count := int(hol.size.x * hol.size.y * density)
 	var verts := PackedVector3Array()
 	var uvs := PackedVector2Array()

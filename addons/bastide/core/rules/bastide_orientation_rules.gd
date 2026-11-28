@@ -110,6 +110,61 @@ static func placement_axis(base: Vector3, steps: int, p: Vector3, footprints: Ar
 	return turn(axis, magnet(axis, p, footprints))
 
 
+## Distance (m) en dessous de laquelle une façade qu'on déplace s'aligne sur celle
+## d'une maison voisine (dans le prolongement, ou collée contre elle).
+const SLIDE_MAGNET := 0.45
+
+
+## Décalage (sur XZ) qui aligne le contour `moving` qu'on fait glisser sur les
+## façades des maisons voisines : une façade parallèle à moins de `tol` m d'une
+## autre (même droite) s'y cale. Au plus deux calages, sur deux directions
+## différentes (une façade et son équerre). Vector2.ZERO si rien n'est assez près.
+static func slide_magnet(moving: PackedVector2Array, footprints: Array, tol := SLIDE_MAGNET,
+		radius := MAGNET_RADIUS) -> Vector2:
+	if moving.size() < 2:
+		return Vector2.ZERO
+	var center := Vector2.ZERO
+	for q in moving:
+		center += q
+	center /= moving.size()
+	var cands: Array = []  # [|d|, normale, d]
+	for fp: PackedVector2Array in footprints:
+		if fp.size() < 3:
+			continue
+		var near := false
+		for q in fp:
+			if q.distance_to(center) < radius:
+				near = true
+				break
+		if not near:
+			continue
+		for i in fp.size():
+			var a := fp[i]
+			var e := fp[(i + 1) % fp.size()] - a
+			if e.length() < MIN_EDGE:
+				continue
+			var dir := e.normalized()
+			var n := Vector2(-dir.y, dir.x)
+			for j in moving.size():
+				var b := moving[j]
+				var f := moving[(j + 1) % moving.size()] - b
+				if f.length() < MIN_EDGE or absf(dir.cross(f.normalized())) > 0.035:
+					continue
+				var d := (a - b).dot(n)
+				if absf(d) < tol:
+					cands.append([absf(d), n, d])
+	if cands.is_empty():
+		return Vector2.ZERO
+	cands.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+	var first: Array = cands[0]
+	var out: Vector2 = (first[1] as Vector2) * float(first[2])
+	for c: Array in cands:
+		if absf((c[1] as Vector2).dot(first[1])) < 0.5:
+			out += (c[1] as Vector2) * float(c[2])
+			break
+	return out
+
+
 ## Vrai si deux contours au sol se chevauchent (plus de `min_area` m²).
 static func overlaps(a: PackedVector2Array, b: PackedVector2Array, min_area := 0.05) -> bool:
 	var area := 0.0

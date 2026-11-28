@@ -14,7 +14,9 @@ const MULTI_PREFIX := "_BastideMulti"
 const TREES_NAME := &"_BastideTrees"
 
 
-static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool, collision_layer := 1) -> void:
+## keep_collision : laisse les collisions telles quelles (aperçu pendant un geste).
+static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool, collision_layer := 1,
+		keep_collision := false) -> void:
 	var mi := host.get_node_or_null(NodePath(MESH_NAME)) as MeshInstance3D
 	if mi == null:
 		mi = MeshInstance3D.new()
@@ -23,6 +25,8 @@ static func apply(host: Node3D, result: BastideBuildResult, with_collision: bool
 	mi.mesh = result.mesh
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_apply_instances(host, result.instances)
+	if keep_collision:
+		return
 	_apply_trunks(host, result.trunks if with_collision else [], collision_layer)
 
 	var body := host.get_node_or_null(NodePath(BODY_NAME)) as StaticBody3D

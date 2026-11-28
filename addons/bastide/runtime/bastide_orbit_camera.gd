@@ -52,7 +52,10 @@ var _walk_pitch := 0.0
 var _goal_walk_pitch := 0.0
 var _bob := 0.0
 var _orbit_fov := 75.0
+## Hauteur du regard, lissée (ce que voit l'œil).
 var _eye_y := 0.0
+## Hauteur réelle des pieds, recalée à chaque pas (sert aux rayons de marche).
+var _foot_y := 0.0
 ## En promenade, on entre dans les maisons proches (un BastideInteriors est créé
 ## s'il n'y en a pas dans la scène).
 @export var enter_buildings := true
@@ -209,7 +212,8 @@ func set_walking(on: bool) -> void:
 		_orbit_fov = fov
 		_walk_pos = Vector3(target.x, ground_height, target.z)
 		_walk_pos = _free_spot(_walk_pos)
-		_eye_y = _floor_at(_walk_pos)
+		_foot_y = _floor_at(_walk_pos)
+		_eye_y = _foot_y
 		_walk_vel = Vector3.ZERO
 		_walk_pitch = -0.05
 		_goal_walk_pitch = -0.05
@@ -233,13 +237,14 @@ func set_walking(on: bool) -> void:
 
 ## Position des pieds du promeneur (monde).
 func walker_position() -> Vector3:
-	return Vector3(_walk_pos.x, _eye_y, _walk_pos.z)
+	return Vector3(_walk_pos.x, _foot_y, _walk_pos.z)
 
 
 ## Place le promeneur (parties scriptées, téléportation).
 func place_walker(p: Vector3, yaw_deg := INF) -> void:
 	_walk_pos = Vector3(p.x, p.y, p.z)
 	_eye_y = p.y
+	_foot_y = p.y
 	_walk_vel = Vector3.ZERO
 	if is_finite(yaw_deg):
 		_goal_yaw = deg_to_rad(yaw_deg)
@@ -292,14 +297,21 @@ func _walk(delta: float) -> void:
 		want = (right * move.x - fwd * move.y) * speed
 	# Pas amortis : on démarre et on s'arrête en douceur.
 	_walk_vel = _walk_vel.lerp(want, 1.0 - exp(-8.0 * delta))
-	var step := _slide(_walk_pos, _walk_vel * delta)
-	_walk_pos += step
-	var flat := Vector2(_walk_pos.x, _walk_pos.z)
-	if flat.length() > bounds_radius + 30.0:
-		flat = flat.normalized() * (bounds_radius + 30.0)
-		_walk_pos = Vector3(flat.x, _walk_pos.y, flat.y)
-	var floor_y := _floor_at(_walk_pos)
-	_eye_y = lerpf(_eye_y, floor_y, 1.0 - exp(-10.0 * delta))
+	# Petits pas (15 cm au plus) : les pieds se recalent sur chaque marche, même en
+	# courant ou quand les images sont lentes. Les rayons partent des pieds, pas du
+	# regard lissé (qui traîne derrière et passait sous la rampe de l'escalier).
+	var motion := _walk_vel * delta
+	var sub := maxi(1, ceili(motion.length() / 0.15))
+	for i in sub:
+		_walk_pos += _slide(_walk_pos, motion / sub)
+		var flat := Vector2(_walk_pos.x, _walk_pos.z)
+		if flat.length() > bounds_radius + 30.0:
+			flat = flat.normalized() * (bounds_radius + 30.0)
+			_walk_pos = Vector3(flat.x, _walk_pos.y, flat.y)
+		_foot_y = _floor_at(_walk_pos)
+	# Le regard suit en douceur, sans jamais traîner de plus de 25 cm.
+	_eye_y = lerpf(_eye_y, _foot_y, 1.0 - exp(-12.0 * delta))
+	_eye_y = clampf(_eye_y, _foot_y - 0.25, _foot_y + 0.25)
 	# Léger balancement de la marche, proportionnel à la vitesse.
 	var v := _walk_vel.length()
 	_bob += delta * v * 2.1
@@ -331,7 +343,7 @@ func _slide(from: Vector3, step: Vector3) -> Vector3:
 		var found := false
 		# Deux hauteurs : genoux et poitrine, pour ne buter ni sur une marche ni sous un toit.
 		for h: float in [0.7, 1.3]:
-			var o := Vector3(from.x, _eye_y + h, from.z)
+			var o := Vector3(from.x, _foot_y + h, from.z)
 			var q := PhysicsRayQueryParameters3D.create(o, o + dir * (len + 0.35))
 			var r := space.intersect_ray(q)
 			if not r.is_empty() and (r["normal"] as Vector3).y < 0.6:
@@ -357,14 +369,14 @@ func _floor_at(p: Vector3) -> float:
 	var field := BastideTerrain.field_for(self)
 	var base := field.height(p.x, p.z) if field else ground_height
 	var space := get_world_3d().direct_space_state
-	var top := maxf(_eye_y, base) + 0.45
+	var top := maxf(_foot_y, base) + 0.45
 	var q := PhysicsRayQueryParameters3D.create(Vector3(p.x, top, p.z), Vector3(p.x, base - 1.0, p.z))
 	var r := space.intersect_ray(q)
 	if r.is_empty():
 		return base
 	var y: float = (r["position"] as Vector3).y
 	if (r["normal"] as Vector3).y < 0.6:
-		return maxf(_eye_y, base)
+		return maxf(_foot_y, base)
 	return maxf(y, base)
 
 

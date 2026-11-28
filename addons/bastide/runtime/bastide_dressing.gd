@@ -24,6 +24,7 @@ var _hosts := {}       # id → Node3D
 var _lights := {}      # id → PackedVector3Array (monde)
 var _pending := {}     # id → true
 var _watched := {}     # id → true (signal rebuilt branché)
+var _base := {}        # id → [repère de la maison, repère de l'habillage] à l'habillage
 var _props_mat: StandardMaterial3D
 var _paper_mat: StandardMaterial3D
 var _cloth_mat: StandardMaterial3D
@@ -35,6 +36,7 @@ func _ready() -> void:
 		site.structure_added.connect(_mark)
 		site.structure_changed.connect(_mark)
 		site.structure_removed.connect(_remove)
+		site.structure_previewed.connect(_follow)
 		for id in site.ids():
 			_mark(id)
 
@@ -55,8 +57,26 @@ func _on_rebuilt(_stats: Dictionary, id: int) -> void:
 	_pending[id] = true
 
 
+## Pendant un geste : l'habillage suit la maison qu'on déplace ou qu'on tourne, et
+## se cache quand on change sa forme (il sera refait à la fin du geste).
+func _follow(id: int) -> void:
+	if not _hosts.has(id) or not _base.has(id):
+		return
+	var host := _hosts[id] as Node3D
+	var node := site.node_of(id)
+	if node == null:
+		return
+	if node.live_edit:
+		host.visible = false
+		return
+	var b: Array = _base[id]
+	var now := Transform3D(node.global_transform.basis.orthonormalized(), node.global_transform.origin)
+	host.global_transform = now * (b[0] as Transform3D).affine_inverse() * (b[1] as Transform3D)
+
+
 func _remove(id: int) -> void:
 	_pending.erase(id)
+	_base.erase(id)
 	_watched.erase(id)
 	if _hosts.has(id):
 		(_hosts[id] as Node).queue_free()
@@ -89,6 +109,8 @@ func _process(_delta: float) -> void:
 		if not node is BastideBuilding or node.last_anchors.is_empty():
 			_pending.erase(id)
 			continue
+		if node.live_edit or site.is_live(id):
+			continue  # refait à la fin du geste
 		_pending.erase(id)
 		_dress(id, node)
 		return
@@ -107,6 +129,7 @@ func _dress(id: int, node: BastideStructure) -> void:
 	# Même repère que la maison, posée sur le relief comme elle (hauteur de pose).
 	var lift: float = node.last_stats.get("terrain_lift", 0.0)
 	host.global_transform = Transform3D(node.global_transform.basis.orthonormalized(), node.global_transform.origin + Vector3(0, lift, 0))
+	_base[id] = [Transform3D(node.global_transform.basis.orthonormalized(), node.global_transform.origin), host.global_transform]
 	var range_end := visible_distance
 	_mesh(host, res["props"], _props_mat, range_end)
 	_mesh(host, res["paper"], _paper_mat, range_end)

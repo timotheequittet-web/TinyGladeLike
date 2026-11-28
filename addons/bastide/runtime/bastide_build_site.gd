@@ -31,6 +31,10 @@ extends Node3D
 signal structure_added(id: int)
 signal structure_changed(id: int)
 signal structure_removed(id: int)
+## Aperçu pendant un geste (déplacer, tourner, tirer une poignée) : la structure a
+## bougé ou changé de forme, mais sa génération complète (collisions, voisins,
+## habillage, herbe) n'arrivera qu'à la fin du geste, avec structure_changed.
+signal structure_previewed(id: int)
 
 ## Durée de l'apparition (pousse depuis le sol) et de la disparition.
 @export var rise_time := 0.9
@@ -58,6 +62,7 @@ var _records := {}  # id -> Dictionary
 var _next_id := 1
 var _style_cache := {}
 var _dust_texture: Texture2D
+var _live := {}  # id -> true : structures en cours de geste (voir end_live)
 
 
 func _ready() -> void:
@@ -148,10 +153,65 @@ func apply_record(id: int, rec: Variant, animate := true) -> void:
 	if node.is_queued_for_deletion():
 		return
 	_records[id] = r
+	if _live.erase(id):
+		node.live_edit = false
 	configure(node, r)
 	if animate:
 		_settle(node)
 	structure_changed.emit(id)
+
+
+# --- Gestes en direct --------------------------------------------------------------
+# Pendant un geste, on évite de tout régénérer à chaque image : déplacer et tourner
+# ne font que bouger le nœud (rien n'est recalculé), tirer une poignée régénère la
+# forme seule (sans collisions ni voisins). end_live fait la génération complète.
+
+## Déplace ou tourne des structures d'un seul coup : `delta` s'applique au nœud
+## (dans le repère du chantier) et `recs[i]` est le record déjà transformé de `ids[i]`.
+func move_live(ids: Array, recs: Array, delta: Transform3D) -> void:
+	for i in ids.size():
+		var id: int = ids[i]
+		var node := node_of(id)
+		if node == null or node.is_queued_for_deletion():
+			continue
+		_records[id] = copy_record(recs[i])
+		node.transform = delta * node.transform
+		_live[id] = true
+		structure_previewed.emit(id)
+
+
+## Change la forme d'une structure en aperçu léger (poignée tirée).
+func reshape_live(id: int, rec: Dictionary) -> void:
+	var node := node_of(id)
+	if node == null or node.is_queued_for_deletion():
+		return
+	_records[id] = copy_record(rec)
+	node.live_edit = true
+	configure(node, _records[id])
+	_live[id] = true
+	structure_previewed.emit(id)
+
+
+func is_live(id: int) -> bool:
+	return _live.has(id)
+
+
+## Fin du geste : une seule génération complète par structure touchée.
+func end_live(settle := true) -> void:
+	if _live.is_empty():
+		return
+	var ids := _live.keys()
+	_live = {}
+	for id: int in ids:
+		var node := node_of(id)
+		if node == null or node.is_queued_for_deletion():
+			continue
+		node.live_edit = false
+		configure(node, _records[id])
+		node.queue_rebuild()
+		if settle:
+			_settle(node)
+		structure_changed.emit(id)
 
 
 ## Adopte une structure d'aperçu (déjà dans l'arbre, déjà générée) comme structure
@@ -230,10 +290,12 @@ func configure(node: BastideStructure, rec: Dictionary) -> void:
 		node.style = st
 	if node.seed != int(rec.get("seed", 1)):
 		node.seed = int(rec.get("seed", 1))
-	var origin := node.position
+	# Repère du nœud sans son échelle (animée quand la structure sort de terre) ; il
+	# peut être tourné : une structure tournée en direct garde sa forme locale.
+	var to_local := Transform3D(node.transform.basis.orthonormalized(), node.position).affine_inverse()
 	var local := PackedVector3Array()
 	for p: Vector3 in rec.get("points", PackedVector3Array()):
-		local.append(p - origin)
+		local.append(to_local * p)
 	if node is BastideBuilding:
 		var b := node as BastideBuilding
 		var f := int(rec.get("floors", 0))
@@ -351,6 +413,7 @@ func from_data(data: Array, animate := true, stagger := 0.0) -> void:
 func _remove(id: int, animate: bool) -> void:
 	var node := node_of(id)
 	var rec: Variant = _records.get(id)
+	_live.erase(id)
 	_nodes.erase(id)
 	_records.erase(id)
 	if node == null:

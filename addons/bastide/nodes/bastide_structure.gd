@@ -230,6 +230,11 @@ func _to_world(points: PackedVector3Array) -> PackedVector3Array:
 		out.append(xf * p)
 	return out
 
+## Vrai pendant un geste d'édition en jeu (poignée tirée) : chaque génération reste
+## légère (pas de collisions, les voisins ne sont pas prévenus) ; la génération
+## complète est relancée à la fin du geste (BastideBuildSite.end_live).
+var live_edit := false
+
 var _queued := false
 var _task_id := -1
 ## Pose sur le relief à appliquer au prochain résultat (voir _prepare_job).
@@ -381,12 +386,13 @@ func _apply(result: BastideBuildResult) -> void:
 		last_anchors = {}
 		_notify_dependents()
 		return
-	BastideResultApplier.apply(self, result, generate_collision, collision_layer)
+	BastideResultApplier.apply(self, result, generate_collision, collision_layer, live_edit)
 	_apply_look()
 	last_stats = result.stats
 	last_anchors = result.anchors
 	rebuilt.emit(last_stats)
-	_notify_dependents()
+	if not live_edit:
+		_notify_dependents()
 
 
 func get_effective_style() -> BastideStyle:

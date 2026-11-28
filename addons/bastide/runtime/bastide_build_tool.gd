@@ -134,7 +134,7 @@ const DRAG_THRESHOLD := 6.0
 const FREEZE_DIST := 4.0
 const HANDLE_PICK_RADIUS := 17.0
 
-enum _State { IDLE, PRESSING, DRAWING, DRAGGING }
+enum _State { IDLE, PRESSING, DRAWING, DRAGGING, MOVING }
 var _state := _State.IDLE
 var _press_screen := Vector2.ZERO
 var _press_ground := Vector3.ZERO
@@ -185,6 +185,16 @@ var _rot_blocked := false
 # Structures tournées depuis le début de la rotation en cours : id -> record d'avant.
 # Les crans s'appliquent tout de suite, l'historique ne reçoit qu'une action à la fin.
 var _rot_pending := {}
+var _rot_live_token := 0
+
+# Déplacement de la sélection (glisser la structure sélectionnée).
+var _press_on_selected := false
+var _move_ids: Array = []
+var _move_before := {}  # id -> record avant le déplacement
+var _move_start := Vector3.ZERO
+var _move_applied := Vector3.ZERO
+var _move_blocked := false
+var _move_snapped := false
 
 
 func _ready() -> void:
@@ -527,17 +537,12 @@ func rotate_selected(dir: int) -> void:
 	after["points"] = R.rotate_points(pts, pivot, a)
 	var changes: Array = [[selected, before, after]]
 	var moved := {selected: true}
-	if kind == "house":
-		var fp := R.flat(pts)
-		for id in site.ids():
-			if id == selected:
-				continue
-			var rec: Dictionary = site.get_record(id)
-			if rec["kind"] == "terrace" and _hugs(R.flat(rec["points"]), fp):
-				var r2 := rec.duplicate(true)
-				r2["points"] = R.rotate_points(rec["points"], pivot, a)
-				changes.append([id, rec, r2])
-				moved[id] = true
+	for id: int in _followers(selected):
+		var rec: Dictionary = site.get_record(id)
+		var r2 := rec.duplicate(true)
+		r2["points"] = R.rotate_points(rec["points"], pivot, a)
+		changes.append([id, rec, r2])
+		moved[id] = true
 	if kind == "house" or kind == "terrace":
 		for id in site.ids():
 			if moved.has(id):
@@ -562,10 +567,23 @@ func rotate_selected(dir: int) -> void:
 	_rot_total += a
 	_rot_last_ms = now
 	# Les crans d'une même rotation s'annulent d'un seul Ctrl+Z (voir _flush_rotation).
+	# Pendant la rotation, on tourne seulement les nœuds (rien n'est régénéré) ;
+	# la génération complète se fait quand la molette s'arrête.
+	var ids: Array = []
+	var recs: Array = []
 	for ch: Array in changes:
 		if not _rot_pending.has(ch[0]):
 			_rot_pending[ch[0]] = ch[1]
-		site.apply_record(ch[0], ch[2], true)
+		ids.append(ch[0])
+		recs.append(ch[2])
+	var piv := Vector3(pivot.x, 0.0, pivot.z)
+	var turn := Basis(Vector3.UP, -a)
+	site.move_live(ids, recs, Transform3D(turn, piv - turn * piv))
+	_rot_live_token += 1
+	var live_token := _rot_live_token
+	get_tree().create_timer(0.3).timeout.connect(func() -> void:
+		if live_token == _rot_live_token and _state == _State.IDLE:
+			site.end_live())
 	_refresh_look(site.node_of(selected))
 	_rebuild_handles()
 	history_changed.emit(true, false)
@@ -576,6 +594,7 @@ func rotate_selected(dir: int) -> void:
 
 ## Range la rotation en cours dans l'historique (une seule action pour tous ses crans).
 func _flush_rotation() -> void:
+	site.end_live()
 	if _rot_pending.is_empty():
 		return
 	var changes: Array = []
@@ -596,6 +615,111 @@ func _hugs(t: PackedVector2Array, house: PackedVector2Array) -> bool:
 		if d < BastideTerraceRules.HOUSE_GAP + 0.35:
 			touching += 1
 	return touching >= 2
+
+
+## Structures qui suivent `id` quand on la tourne ou la déplace : les engawa d'une maison.
+func _followers(id: int) -> Array:
+	var out: Array = []
+	var rec: Dictionary = site.get_record(id)
+	if rec["kind"] != "house":
+		return out
+	var fp := BastideOrientationRules.flat(rec["points"])
+	for other in site.ids():
+		if other == id:
+			continue
+		var r: Dictionary = site.get_record(other)
+		if r["kind"] == "terrace" and _hugs(BastideOrientationRules.flat(r["points"]), fp):
+			out.append(other)
+	return out
+
+
+# --- Déplacer -------------------------------------------------------------------
+# On attrape la structure sélectionnée et on la fait glisser : seul le nœud bouge
+# pendant le geste (aucune régénération), la génération complète se fait au
+# relâchement. Une maison emmène ses engawa, s'aimante sur l'alignement des façades
+# voisines et ne passe pas à travers une autre maison.
+
+func _start_move() -> void:
+	_flush_rotation()
+	_state = _State.MOVING
+	_move_ids = [selected] + _followers(selected)
+	_move_before = {}
+	for id: int in _move_ids:
+		_move_before[id] = site.get_record(id)
+	_move_start = _press_ground
+	_move_applied = Vector3.ZERO
+	_move_blocked = false
+	_move_snapped = false
+	_cursor.visible = false
+	_emit_hint()
+
+
+func _continue_move(g: Vector3) -> void:
+	if not site.has(selected):
+		return
+	var R := BastideOrientationRules
+	var off := g - _move_start
+	off.y = 0.0
+	var main: Dictionary = _move_before[selected]
+	var kind: String = main["kind"]
+	var others := _house_footprints(selected)
+	var snapped := false
+	if kind in ["house", "terrace", "torii"]:
+		var m := R.slide_magnet(R.flat(_shift(main["points"], off)), others)
+		snapped = m != Vector2.ZERO
+		off += Vector3(m.x, 0.0, m.y)
+	var recs: Array = []
+	for id: int in _move_ids:
+		var r: Dictionary = (_move_before[id] as Dictionary).duplicate(true)
+		r["points"] = _shift(r["points"], off)
+		recs.append(r)
+	if kind == "house" or kind == "terrace":
+		for r: Dictionary in recs:
+			if r["kind"] == "torii":
+				continue
+			var fp := R.flat(r["points"])
+			for ofp: PackedVector2Array in others:
+				if R.overlaps(fp, ofp):
+					# Bloqué : on reste à la dernière place valable.
+					if not _move_blocked:
+						_move_blocked = true
+						_emit_hint()
+					return
+	var changed := _move_blocked or snapped != _move_snapped
+	_move_blocked = false
+	_move_snapped = snapped
+	var step := off - _move_applied
+	if step.length_squared() > 1e-8:
+		site.move_live(_move_ids, recs, Transform3D(Basis(), step))
+		_move_applied = off
+		_rebuild_handles()
+	if changed:
+		_emit_hint()
+
+
+func _finish_move() -> void:
+	_state = _State.IDLE
+	var changes: Array = []
+	if _move_applied.length_squared() > 1e-8:
+		for id: int in _move_ids:
+			if site.has(id):
+				changes.append([id, _move_before[id], site.get_record(id)])
+	site.end_live(not changes.is_empty())
+	if not changes.is_empty():
+		_commit("Déplacer", changes, false)
+		edited.emit()
+	_move_ids = []
+	_move_before = {}
+	_move_blocked = false
+	_emit_hint()
+
+
+static func _shift(pts: PackedVector3Array, off: Vector3) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	out.resize(pts.size())
+	for i in pts.size():
+		out[i] = pts[i] + off
+	return out
 
 
 ## Arc d'encre autour de la structure qui tourne, qui s'efface tout seul.
@@ -719,6 +843,7 @@ func _on_press(screen: Vector2) -> void:
 	var g: Variant = _ground(screen)
 	if g == null:
 		return
+	_press_on_selected = selected >= 0 and _hover == selected and site.has(selected) and mode != Mode.TORII
 	_state = _State.PRESSING
 	_press_screen = screen
 	_press_ground = g
@@ -738,18 +863,25 @@ func _on_motion(screen: Vector2) -> void:
 				elif _draft:
 					cancel_draft()
 		_State.PRESSING:
-			if mode == Mode.TORII:
+			if mode == Mode.TORII and not _press_on_selected:
 				if g != null:
 					_torii_preview(g)
 			elif screen.distance_to(_press_screen) > DRAG_THRESHOLD and g != null:
-				_start_draw()
-				_continue_draw(g)
+				if _press_on_selected:
+					_start_move()
+					_continue_move(g)
+				else:
+					_start_draw()
+					_continue_draw(g)
 		_State.DRAWING:
 			if g != null:
 				_continue_draw(g)
 		_State.DRAGGING:
 			if g != null:
 				_continue_handle_drag(g)
+		_State.MOVING:
+			if g != null:
+				_continue_move(g)
 
 
 func _on_release(screen: Vector2) -> void:
@@ -768,7 +900,10 @@ func _on_release(screen: Vector2) -> void:
 			_finish_draw()
 		_State.DRAGGING:
 			_finish_handle_drag()
+		_State.MOVING:
+			_finish_move()
 	_state = _State.IDLE
+	_press_on_selected = false
 
 
 # --- Tracé ----------------------------------------------------------------------
@@ -1190,6 +1325,7 @@ func _start_handle_drag(screen: Vector2) -> void:
 	var g: Variant = _ground(screen)
 	if g == null:
 		return
+	_flush_rotation()
 	_state = _State.DRAGGING
 	_drag_handle = _handles[_hover_handle]
 	_drag_before = site.get_record(selected)
@@ -1212,7 +1348,7 @@ func _continue_handle_drag(g: Vector3) -> void:
 		var r := BastideStroke.ensure_direct(BastideStroke.rectangle(opp, g, axis, 0.25, 1.2))
 		pts = BastideTerraceRules.fit_rect(BastideTerraceRules.snap_to_house(r, site.context())["points"])
 		rec["points"] = pts
-		site.apply_record(selected, rec, false)
+		site.reshape_live(selected, rec)
 		_rebuild_handles()
 		return
 	match _drag_handle["kind"]:
@@ -1231,7 +1367,8 @@ func _continue_handle_drag(g: Vector3) -> void:
 	if rec["kind"] == "torii" and pts.size() >= 2:
 		pts = BastideGardenRules.fit_torii(pts[0], pts[1])
 	rec["points"] = pts
-	site.apply_record(selected, rec, false)
+	if pts != (site.get_record(selected)["points"] as PackedVector3Array):
+		site.reshape_live(selected, rec)
 	_rebuild_handles()
 
 
@@ -1264,11 +1401,12 @@ func _finish_handle_drag() -> void:
 	if not site.has(selected):
 		return
 	var after: Dictionary = site.get_record(selected)
-	if after["points"] != _drag_before["points"]:
+	var changed: bool = after["points"] != _drag_before["points"]
+	# Fin du geste : la génération complète (collisions, voisins, habillage), avec
+	# un petit tassement.
+	site.end_live(changed)
+	if changed:
 		_commit("Retoucher", [[selected, _drag_before, after]], false)
-		var node := site.node_of(selected)
-		if node:
-			site.apply_record(selected, after, true)  # petit tassement
 		edited.emit()
 	_emit_hint()
 
@@ -1474,6 +1612,12 @@ func current_hint() -> String:
 			return "Tire pour donner sa taille à la maison  ·  molette : tourner (%s)" % _steps_text(place_steps)
 		_State.DRAGGING:
 			return "Glisse pour retoucher"
+		_State.MOVING:
+			if _move_blocked:
+				return "Elle toucherait une autre maison : on reste là"
+			if _move_snapped:
+				return "Alignée sur la façade voisine  ·  relâche pour la poser"
+			return "Glisse pour déplacer  ·  relâche pour la poser"
 	if _hover_handle >= 0:
 		var h: Dictionary = _handles[_hover_handle]
 		if h["kind"] == "edge":
@@ -1490,8 +1634,8 @@ func current_hint() -> String:
 		if _rot_blocked:
 			return "Elle toucherait une autre maison : on reste là  ·  Maj + molette dans l'autre sens"
 		if kind == "house":
-			return "%s  ·  G : autre silhouette  ·  + / − : étages  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
-		return "Poignées : retoucher  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer"
+			return "%s  ·  glisser : déplacer  ·  G : autre silhouette  ·  + / − : étages  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer" % selected_silhouette_name().capitalize()
+		return "Glisser : déplacer  ·  poignées : retoucher  ·  Maj + molette : tourner  ·  R : autre variation  ·  Suppr : retirer"
 	if _hover >= 0:
 		return "Clic : sélectionner"
 	match mode:

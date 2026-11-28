@@ -1891,6 +1891,24 @@ func _test_burrows() -> void:
 	var again: BastideBuildResult = mk.call([Vector2(0, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)], 2)
 	check(again.mesh.get_faces().size() == one.mesh.get_faces().size(), "même tracé, même seed : même terrier")
 	check(BastideSilhouette.style_for(st, BastideSilhouette.Kind.TOWER) == st, "pas de tour ni de kura en style terrier")
+	# Intérieur : la variante ouverte porte un vantail, une pièce voûtée et son plan.
+	var ospec := BastideBuildingSpec.new()
+	ospec.footprint = PackedVector2Array([Vector2(0, 0), Vector2(8, 0), Vector2(8, 6), Vector2(0, 6)])
+	ospec.seed = 5
+	ospec.door_facade = 2
+	var opened := BastideBurrowBuilder.build(ospec, st, true, true)
+	var inr: BastideBuildResult = opened.anchors.get("interior_result")
+	var il: BastideInteriorLayout = opened.anchors.get("interior_layout")
+	check((opened.anchors.get("door_leaves", []) as Array).size() == 1, "terrier ouvert : un vantail qui pivote")
+	check(inr != null and inr.mesh != null and inr.mesh.get_faces().size() > 300 and not inr.collision_faces.is_empty(),
+			"terrier ouvert : pièce voûtée avec plancher et collisions")
+	check(il != null and il.levels.size() == 1 and BastidePolygon.signed_area(il.inner) > 10.0,
+			"terrier ouvert : plan d'une pièce de %.0f m²" % (BastidePolygon.signed_area(il.inner) if il else 0.0))
+	var md: Dictionary = opened.anchors["mound_data"]
+	var room: Rect2 = (md["mounds"][0] as Array)[9]
+	var ffr := BastideBurrowBuilder._frame_from(md)
+	check(BastideBurrowBuilder.terrain_height(ffr, [], room.get_center().x, room.get_center().y) == 0.0,
+			"le relief ne monte pas dans la pièce creusée")
 	# Catalogue : les trois styles, dans l'ordre, et le passage au suivant en boucle.
 	check(BastideStyleCatalog.size() >= 3, "trois styles au catalogue")
 	var last := BastideStyleCatalog.style(BastideStyleCatalog.size() - 1)

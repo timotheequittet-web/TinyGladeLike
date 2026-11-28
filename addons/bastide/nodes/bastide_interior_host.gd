@@ -86,7 +86,14 @@ func _start() -> void:
 	st.prepare()
 	var with_collision := building.generate_collision
 	var ground_top := _ground_top(spec.footprint)
+	var burrow := building.is_burrow()
 	var job := func() -> Array:
+		if burrow:
+			# Terrier : la butte « ouverte » porte elle-même sa pièce voûtée.
+			var br := BastideBurrowBuilder.build(spec, st, with_collision, true)
+			if not br.anchors.has("interior_result"):
+				return []
+			return [br, br.anchors["interior_result"], br.anchors["interior_layout"]]
 		var lay := BastideBuildingGenerator.generate(spec, st)
 		if lay.is_empty():
 			return []
@@ -139,7 +146,7 @@ func _finish(gen: int, out: Array) -> void:
 	var inr: BastideBuildResult = out[1]
 	layout = out[2]
 	_lift = float(building.last_stats.get("terrain_lift", 0.0))
-	var field := BastideTerrain.field_for(building)
+	var field := building._drape_field() if building.is_burrow() else BastideTerrain.field_for(building)
 	if field != null and building.last_stats.has("terrain_lift"):
 		var xf := Transform3D(building.global_transform.basis.orthonormalized(), building.global_transform.origin)
 		_lift = BastideDrape.apply(ext, field, xf, BastideDrape.Mode.RIGID, _lift - 0.01)

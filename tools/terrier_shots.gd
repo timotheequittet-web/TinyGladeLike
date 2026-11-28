@@ -8,6 +8,7 @@ const TERRIER := "res://addons/bastide/styles/presets/burrow_hill.tres"
 var out_dir := "/tmp/shots"
 var hours := [15.0]
 var only := []   # numéros des vues à capturer (vide : toutes)
+var inside := false   # « dedans » : captures de l'intérieur du premier terrier
 var scene: Node
 var cam: Camera3D
 var site: BastideBuildSite
@@ -49,8 +50,11 @@ func _init() -> void:
 		for h in args[1].split(","):
 			hours.append(float(h))
 	if args.size() > 2:
-		for v in args[2].split(","):
-			only.append(int(v))
+		if args[2] == "dedans":
+			inside = true
+		else:
+			for v in args[2].split(","):
+				only.append(int(v))
 	_run.call_deferred()
 
 
@@ -86,6 +90,10 @@ func _run() -> void:
 	for i in 60:
 		await process_frame
 	cam.set_process(false)
+	if inside:
+		await _inside()
+		quit()
+		return
 	var views := _views()
 	for h: float in hours:
 		day.hour = h
@@ -161,3 +169,42 @@ func _all_built(n: int) -> bool:
 		if node == null or node.last_stats.is_empty():
 			return false
 	return site.garden != null and not site.garden.last_stats.is_empty()
+
+
+## Entre dans le premier terrier : porte ouverte de dehors, puis la pièce de dedans.
+func _inside() -> void:
+	var b: BastideBuilding = null
+	for id in site.ids():
+		if site.node_of(id) is BastideBuilding:
+			b = site.node_of(id)
+			break
+	b.set_interior_active(true)
+	var t0 := Time.get_ticks_msec()
+	while not b.is_interior_ready() and Time.get_ticks_msec() - t0 < 60000:
+		await process_frame
+	var il := b.interior_layout()
+	var d: Dictionary = b.describe()["doors"][0]
+	var p: Vector3 = d["pos"]
+	var o: Vector3 = d["out"]
+	var xf := b.global_transform
+	var lift: float = b.last_stats.get("terrain_lift", 0.0)
+	var door := xf * (p + Vector3(0, lift, 0))
+	var outw := -(xf.basis * o).normalized()
+	var c2 := BastidePolygon.centroid(il.inner)
+	var center := xf * Vector3(c2.x, p.y + lift + 1.2, c2.y)
+	var deep := (center - door)
+	deep.y = 0.0
+	deep = deep.normalized()
+	var shots := [
+		[door + outw * 4.5 + Vector3(0, 1.5, 0), door + Vector3(0, 1.0, 0), "dedans_porte"],
+		[door - outw * 0.5 + Vector3(0, 1.55, 0), center + deep * 3.0 + Vector3(0, -0.4, 0), "dedans_fond"],
+		[center + deep * 1.4 + Vector3(0, 0.35, 0), door + Vector3(0, 1.0, 0), "dedans_entree"],
+	]
+	for s in shots:
+		cam.fov = 70.0
+		cam.look_at_from_position(s[0], s[1])
+		for i in 30:
+			b.update_interior(s[0], 0.1)
+			await process_frame
+		root.get_viewport().get_texture().get_image().save_png(out_dir.path_join(s[2] + ".png"))
+		print("capture ", s[2])

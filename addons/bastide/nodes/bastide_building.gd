@@ -155,9 +155,6 @@ func build_spec() -> BastideBuildingSpec:
 ## Crée (ou retire) l'intérieur : variante de la maison qu'on peut franchir, planchers,
 ## escaliers, vantaux mobiles, lumière. Rien n'existe tant qu'il n'est pas actif.
 func set_interior_active(on: bool) -> void:
-	# Les terriers n'ont pas (encore) d'intérieur : la butte reste fermée.
-	if on and is_burrow():
-		return
 	if on:
 		if _interior == null:
 			_interior = BastideInteriorHost.new(self)

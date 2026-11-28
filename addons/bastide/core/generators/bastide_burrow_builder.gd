@@ -66,6 +66,20 @@ class Mound:
 	var door_color := Color.WHITE
 	var cap := 2.5      ## haut de la façade (au-dessus de la porte)
 	var face_half := 3.3  ## demi-largeur de la façade : au-delà, l'herbe descend au sol
+	## Pièce creusée dans la butte (repère de façade : x, z, largeur, profondeur).
+	var room := Rect2()
+	## Profil de la voûte de la pièce : hauteur au milieu et au pied des murs.
+	var vault_h := 2.3
+	var wall_h := 1.25
+
+	## Haut de la voûte à l'abscisse x (repère de façade).
+	func ceil_at(x: float) -> float:
+		var u := clampf((x - cx) / (room.size.x * 0.5), -1.0, 1.0)
+		return wall_h + (vault_h - wall_h) * sqrt(maxf(1.0 - u * u, 0.0))
+
+	## Zone sans relief autour de la pièce (le sol du terrain n'y monte pas).
+	func hollow(margin := 1.2) -> Rect2:
+		return Rect2(room.position - Vector2(margin, 2.5), room.size + Vector2(margin * 2.0, margin + 2.5))
 
 	func height(x: float, z: float) -> float:
 		var dx := (x - cx) / ax
@@ -139,7 +153,9 @@ class Frame:
 		return minf(hh, brow(px) + BROW_SLOPE * maxf(pz - zf, 0.0))
 
 
-static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision: bool) -> BastideBuildResult:
+## `open` : variante « on peut entrer » (vantail à part, passage dans la collision,
+## pièce voûtée dans anchors.interior_result / interior_layout).
+static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision: bool, open := false) -> BastideBuildResult:
 	var result := BastideBuildResult.new()
 	var bs := style.get_building_style()
 	var ws := style.get_wall_style()
@@ -166,11 +182,13 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	for m: Mound in fr.mounds:
 		m.cap = minf(door_r * 1.97 + 0.55, m.h * 0.72)
 		m.face_half = minf(door_r + 0.95 + win_r * 2.0 + 0.95, m.w * 0.5 + 0.3)
+		_plan_room(fr, m, depth)
+	var leaves: Array = []
 	for m: Mound in fr.mounds:
 		var mz := m.face_z(m.cx)
 		var dyc := door_r * 0.97
 		holes.append([m.cx, dyc, door_r])
-		_door(mb, fr, m, door_r, dyc, mz, bs, ws)
+		_door(mb, fr, m, door_r, dyc, mz, bs, ws, leaves if open else null, style)
 		doors.append({"pos": fr.p(m.cx, 0.0, mz), "out": -fr.dir(0.0, 1.0), "width": door_r * 2.0})
 		for s in [-1.0, 1.0]:
 			var wx: float = m.cx + s * (door_r + 0.95 + win_r + BastideRng.randf_at(m.seed, "fenetre", int(s)) * 0.12)
@@ -185,7 +203,7 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 					continue
 			var wz := fr.face_z(wx)
 			holes.append([wx, wy, wr])
-			_window(mb, fr, wx, wy, wr, wz, bs, m.seed + int(s))
+			_window(mb, fr, wx, wy, wr, wz, bs, m.seed + int(s), open)
 			windows.append({"pos": fr.p(wx, wy, wz), "out": -fr.dir(0.0, 1.0), "width": wr * 2.0, "height": wr * 2.0, "floor": 0})
 			if BastideRng.randf_at(m.seed, "jardiniere", int(s)) < maxf(bs.flower_box_chance, 0.55):
 				_flower_box(mb, fr, groups, wx, wy - wr - 0.2, wz, bs, m.seed + int(s) * 7)
@@ -194,7 +212,7 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	var x_lo := -width * 0.5 - SKIRT - 0.2
 	var x_hi := width * 0.5 + SKIRT + 0.2
 	_mound(mb, fr, x_lo, x_hi, depth + SKIRT, result if with_collision else null)
-	_facade(mb, fr, x_lo, x_hi, holes, bs, result if with_collision else null)
+	_facade(mb, fr, x_lo, x_hi, holes, bs, result if with_collision else null, door_r if open else 0.0)
 	for m: Mound in fr.mounds:
 		_timber(mb, fr, m, door_r, holes, bs)
 
@@ -231,6 +249,12 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	var xb := last.cx + last.face_half + 0.4
 	var zf := minf(first.dz, last.dz) - 2.4
 	var zb := maxf(first.dz, last.dz) + 0.9
+	for m: Mound in fr.mounds:
+		if m.room.size.x > 0.0:
+			var hol := m.hollow(1.0)
+			xa = minf(xa, hol.position.x)
+			xb = maxf(xb, hol.end.x)
+			zb = maxf(zb, hol.end.y)
 	for c in [Vector2(xa, zf), Vector2(xb, zf), Vector2(xb, zb), Vector2(xa, zb)]:
 		var q: Vector3 = fr.p(c.x, 0.0, c.y)
 		outline.append(Vector2(q.x, q.z))
@@ -242,6 +266,11 @@ static func build(spec: BastideBuildingSpec, style: BastideStyle, with_collision
 	result.anchors = {"doors": doors, "windows": windows, "footprint": outline, "base_y": spec.base_y,
 		"eave_y": spec.base_y + top_h, "floors": 1, "floor_height": top_h, "overhang": 0.3,
 		"smoke": smoke, "lights": lights, "burrow": true, "mound_data": _terrain_data(fr, spec.seed)}
+	if open:
+		result.anchors["door_leaves"] = leaves
+		var inner := _interior(fr, fr.mounds[0], door_r, holes, style, with_collision)
+		result.anchors["interior_result"] = inner[0]
+		result.anchors["interior_layout"] = inner[1]
 	result.stats = {"buttes": fr.mounds.size(), "doors": doors.size(), "windows": windows.size(),
 		"triangles": mb.triangle_count, "notes": ", ".join(clean.notes),
 		"timings_us": {"total": Time.get_ticks_usec() - t0}}
@@ -330,7 +359,10 @@ static func _mound(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float, 
 			var z := z0 if j == 0 else zf + (z_end - zf) * pow(float(j - 1) / (ROWS - 1), 1.35)
 			# Hors du front d'herbe de la façade, la butte maillée passe juste sous le
 			# relief (voir terrain_height) : c'est l'herbe du terrain qu'on voit.
-			var y := maxf(fr.surface(x, z) - SINK * maxf(1.0 - near, smoothstep(zf + 0.9, zf + 1.9, z)), 0.0)
+			var hol := mo.hollow()
+			var gap := maxf(maxf(hol.position.x - x, x - hol.end.x), z - hol.end.y)
+			var sink := SINK * maxf(1.0 - near, smoothstep(zf + 0.9, zf + 1.9, z)) * smoothstep(0.0, 1.0, gap)
+			var y := maxf(fr.surface(x, z) - sink, 0.0)
 			var n := _normal(fr, x, z)
 			col.append([fr.p(x, y, z), n, Color(0.0, 0.0, 1.0, 0.0)])
 		grid.append(col)
@@ -395,7 +427,7 @@ static func _normal(fr: Frame, x: float, z: float) -> Vector3:
 ## Façade enduite sous l'avancée, percée de la porte et des fenêtres ; pied de
 ## pierres (le shader dessine les moellons sous l'enduit, COLOR.a < 1).
 static func _facade(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float, holes: Array,
-		bs: BastideBuildingStyle, coll: BastideBuildResult) -> void:
+		bs: BastideBuildingStyle, coll: BastideBuildResult, door_gap := 0.0) -> void:
 	var out := -fr.dir(0.0, 1.0)
 	var plaster := bs.plaster_color
 	var alt := bs.plaster_color_alt
@@ -442,7 +474,27 @@ static func _facade(mb: BastideMeshBuilder, fr: Frame, x_lo: float, x_hi: float,
 			cb.a = stone_a
 			mb.add_quad(ROLE_BODY, fr.p(xa, ya0, za), fr.p(xb, yb0, zb), fr.p(xb, yb1, zb), fr.p(xa, ya1, za), out,
 					ca, cb, cb, ca)
-	if coll:
+	if coll and door_gap > 0.0:
+		# Variante ouverte : la collision se perce à la porte.
+		var step := 0.25
+		var x := x_lo
+		while x < x_hi - 0.01:
+			var xb := minf(x + step, x_hi)
+			var top := maxf(fr.face_top(x), fr.face_top(xb))
+			var m := fr.owner((x + xb) * 0.5)
+			var dcy := door_gap * 0.97
+			var y := 0.0
+			while top > 0.1 and y < top:
+				var y1 := minf(y + step, top)
+				var mid := Vector2((x + xb) * 0.5 - m.cx, (y + y1) * 0.5 - dcy)
+				if mid.length() > door_gap - 0.05 and not (absf(mid.x) < door_gap - 0.05 and y < dcy):
+					var za := fr.face_z(x)
+					var zb := fr.face_z(xb)
+					coll.collision_faces.append_array(PackedVector3Array([fr.p(x, y, za), fr.p(xb, y, zb), fr.p(xb, y1, zb),
+						fr.p(x, y, za), fr.p(xb, y1, zb), fr.p(x, y1, za)]))
+				y = y1
+			x = xb
+	elif coll:
 		var n := 16
 		for i in n:
 			var xa := lerpf(x_lo, x_hi, float(i) / n)
@@ -485,12 +537,16 @@ static func _ring(mb: BastideMeshBuilder, fr: Frame, role: StringName, cx: float
 		mb.add_block(role, kk, 0.02, 0.008, color.lightened(t) if t > 0.0 else color.darkened(-t), edge)
 
 
-static func _door(mb: BastideMeshBuilder, fr: Frame, m: Mound, r: float, cy: float, fz: float,
-		bs: BastideBuildingStyle, ws: BastideWallStyle) -> void:
+static func _door(main: BastideMeshBuilder, fr: Frame, m: Mound, r: float, cy: float, fz: float,
+		bs: BastideBuildingStyle, ws: BastideWallStyle, leaves: Variant = null, style: BastideStyle = null) -> void:
 	var col := m.door_color
 	var wood := bs.wood_color
-	# Fond sombre derrière le trou (on ne voit jamais l'intérieur de la butte).
-	_disc(mb, fr, ROLE_BODY, m.cx, cy, r + 0.32, fz + 0.32, bs.interior_color, 0.0)
+	var mb := main
+	if leaves == null:
+		# Fond sombre derrière le trou (on ne voit jamais l'intérieur de la butte).
+		_disc(mb, fr, ROLE_BODY, m.cx, cy, r + 0.32, fz + 0.32, bs.interior_color, 0.0)
+	else:
+		mb = BastideMeshBuilder.new()
 	# Vantail : planches verticales peintes, un peu en retrait.
 	var n := maxi(5, roundi(r * 2.0 / 0.24))
 	var pw := r * 2.0 / n
@@ -510,6 +566,16 @@ static func _door(mb: BastideMeshBuilder, fr: Frame, m: Mound, r: float, cy: flo
 				fr.p(m.cx + x0, yt, fz + 0.12), -fr.dir(0.0, 1.0), edge, pc, pc, edge)
 	# Bouton de laiton au centre, et son anneau.
 	_knob(mb, fr, m.cx, cy, fz + 0.12, 0.075)
+	if leaves != null:
+		# Dos du vantail, vu de l'intérieur ; il pivote sur son bord gauche, vers l'intérieur.
+		_disc(mb, fr, ROLE_WOOD, m.cx, cy, r - 0.01, fz + 0.15, col.darkened(0.2), 0.0, -1.0)
+		var pivot := fr.p(m.cx - r, 0.0, fz + 0.13)
+		var d3 := fr.dir(1.0, 0.0)
+		var inward := fr.dir(0.0, 1.0)
+		var angle := atan2(d3.cross(inward).y, d3.dot(inward)) * 0.92
+		(leaves as Array).append({"mesh": mb.commit({ROLE_WOOD: style.get_wood_material(), ROLE_BODY: style.get_material()}),
+			"kind": "hinge", "pivot": pivot, "angle": angle})
+		mb = main
 	# Huisserie de bois, puis couronne de pierres taillées.
 	_ring(mb, fr, ROLE_WOOD, m.cx, cy, r - 0.03, r + 0.15, fz - 0.06, fz + 0.18, 28, wood, wood.darkened(0.3), m.seed)
 	var stone := ws.stone_color
@@ -545,8 +611,8 @@ static func _knob(mb: BastideMeshBuilder, fr: Frame, cx: float, cy: float, fz: f
 
 ## Disque plein dans le plan de façade (fond, vitre).
 static func _disc(mb: BastideMeshBuilder, fr: Frame, role: StringName, cx: float, cy: float, r: float, fz: float,
-		color: Color, clip_y: float) -> void:
-	var out := -fr.dir(0.0, 1.0)
+		color: Color, clip_y: float, facing := 1.0) -> void:
+	var out := -fr.dir(0.0, 1.0) * facing
 	var segs := 24
 	var c := fr.p(cx, maxf(cy, clip_y), fz)
 	for k in segs:
@@ -558,10 +624,13 @@ static func _disc(mb: BastideMeshBuilder, fr: Frame, role: StringName, cx: float
 
 
 static func _window(mb: BastideMeshBuilder, fr: Frame, cx: float, cy: float, r: float, fz: float,
-		bs: BastideBuildingStyle, seed: int) -> void:
+		bs: BastideBuildingStyle, seed: int, open := false) -> void:
 	var wood := bs.wood_color
-	_disc(mb, fr, ROLE_BODY, cx, cy, r + 0.25, fz + 0.3, bs.interior_color, -10.0)
+	if not open:
+		_disc(mb, fr, ROLE_BODY, cx, cy, r + 0.25, fz + 0.3, bs.interior_color, -10.0)
 	_disc(mb, fr, ROLE_GLASS, cx, cy, r + 0.02, fz + 0.1, bs.glass_color, -10.0)
+	if open:
+		_disc(mb, fr, ROLE_GLASS, cx, cy, r + 0.02, fz + 0.1, bs.glass_color.lightened(0.25), -10.0, -1.0)
 	# Croisillons : une croix et un petit cercle intérieur.
 	var t := 0.035
 	for bar in [[Vector2(cx - r, cy - t), Vector2(cx + r, cy + t)], [Vector2(cx - t, cy - r), Vector2(cx + t, cy + r)]]:
@@ -977,7 +1046,7 @@ static func _terrain_data(fr: Frame, seed: int) -> Dictionary:
 	var knolls: Array = []
 	for i in fr.mounds.size():
 		var m: Mound = fr.mounds[i]
-		mounds.append([m.cx, m.w, m.h, m.ax, m.zc, m.az, m.dz, m.cap, m.face_half])
+		mounds.append([m.cx, m.w, m.h, m.ax, m.zc, m.az, m.dz, m.cap, m.face_half, m.room])
 		# Deux ou trois petites collines sur les côtés et à l'arrière.
 		var n := 2 + int(BastideRng.randf_at(m.seed, "collines") * 2.0)
 		for k in n:
@@ -1004,6 +1073,8 @@ static func _frame_from(data: Dictionary) -> Frame:
 		var m := Mound.new()
 		m.cx = a[0]; m.w = a[1]; m.h = a[2]; m.ax = a[3]; m.zc = a[4]; m.az = a[5]; m.dz = a[6]
 		m.cap = a[7]; m.face_half = a[8]
+		if a.size() > 9:
+			m.room = a[9]
 		fr.mounds.append(m)
 	return fr
 
@@ -1016,6 +1087,11 @@ static func terrain_height(fr: Frame, knolls: Array, px: float, pz: float) -> fl
 	var zf := fr.face_z(px)
 	var near_face := 1.0 - smoothstep(m.face_half + 0.6, m.face_half + 2.4, absf(px - m.cx))
 	var fade := lerpf(1.0, smoothstep(zf + 0.3, zf + 1.3, pz), near_face)
+	# Au-dessus de la pièce creusée, le relief reste au sol : seule la butte maillée
+	# couvre la voûte (sinon le sol du terrain traverserait la pièce).
+	for o: Mound in fr.mounds:
+		if o.room.size.x > 0.0 and o.hollow().has_point(Vector2(px, pz)):
+			return 0.0
 	var h := maxf(fr.surface(px, pz) - 0.08, 0.0)
 	# Grande colline douce : la butte s'étale dans la prairie.
 	for o: Mound in fr.mounds:
@@ -1140,3 +1216,184 @@ static func _bench(mb: BastideMeshBuilder, fr: Frame, x: float, z: float, coll: 
 		_box(mb, fr, ROLE_WOOD, x - hw, x + hw, yy, yy + 0.11, z + 0.16, z + 0.23, wood.lightened(0.04), edge)
 	if coll:
 		coll.add_box(seat)
+
+
+# --- Intérieur ------------------------------------------------------------------------
+# Une pièce voûtée creusée derrière la façade : plancher de bois, murs et voûte
+# enduits, arcs de bois, âtre de briques au fond, table et tabourets.
+
+## Pièce de la butte : sous la voûte, il reste toujours de l'herbe au-dessus.
+static func _plan_room(fr: Frame, m: Mound, depth: float) -> void:
+	var zi := m.face_z(m.cx) + 0.24
+	var rw := m.face_half * 0.8 - 0.15
+	var rd := clampf(depth * 0.75, 3.2, 5.0)
+	m.room = Rect2(m.cx - rw, zi, rw * 2.0, rd)
+	# Voûte : sous la façade près de l'entrée, et sous la butte (marge d'herbe) partout.
+	var top := fr.face_top(m.cx) - LIP_DROP - 0.12
+	var low := INF
+	for k in 9:
+		var x := lerpf(m.room.position.x, m.room.end.x, k / 8.0)
+		for j in 6:
+			var z := lerpf(zi, m.room.end.y, j / 5.0)
+			low = minf(low, fr.surface(x, z) - 0.55)
+	m.vault_h = clampf(minf(top, 2.45), 2.0, 2.6)
+	m.wall_h = clampf(minf(low, 1.35), 1.0, 1.35)
+	# Les côtés de la voûte restent sous l'herbe : on les abaisse s'il le faut.
+	for k in 9:
+		var x := lerpf(m.room.position.x, m.room.end.x, k / 8.0)
+		var room_top := INF
+		for j in 6:
+			room_top = minf(room_top, fr.surface(x, lerpf(zi, m.room.end.y, j / 5.0)) - 0.4)
+		if m.ceil_at(x) > room_top and absf(x - m.cx) > 0.3:
+			m.vault_h = maxf(m.wall_h + 0.4, m.vault_h - (m.ceil_at(x) - room_top))
+
+
+static func _interior(fr: Frame, m: Mound, door_r: float, holes: Array, style: BastideStyle,
+		with_collision: bool) -> Array:
+	var bs := style.get_building_style()
+	var res := BastideBuildResult.new()
+	var mb := BastideMeshBuilder.new()
+	var coll: BastideBuildResult = res if with_collision else null
+	var x0 := m.room.position.x
+	var x1 := m.room.end.x
+	var zi := m.room.position.y
+	var zb := m.room.end.y
+	var fy := 0.07
+	var fwd := fr.dir(0.0, 1.0)
+	var plaster := bs.plaster_color.lightened(0.04)
+	var alt := bs.plaster_color_alt
+	var wood := bs.wood_color
+	var floor_c := Color(0.55, 0.38, 0.24)
+	var cols := maxi(6, ceili((x1 - x0) / 0.26))
+	for i in cols:
+		var xa := lerpf(x0, x1, float(i) / cols)
+		var xb := lerpf(x0, x1, float(i + 1) / cols)
+		# Plancher : une lame par colonne.
+		var t := BastideRng.signed_at(m.seed, "lame", i) * 0.07
+		var pc := floor_c.lightened(t) if t > 0.0 else floor_c.darkened(-t)
+		mb.add_quad(ROLE_WOOD, fr.p(xa, fy, zi - 0.3), fr.p(xb, fy, zi - 0.3), fr.p(xb, fy, zb), fr.p(xa, fy, zb), Vector3.UP,
+				pc.darkened(0.1), pc, pc, pc.darkened(0.1))
+		# Voûte enduite.
+		var ya := m.ceil_at(xa)
+		var yb := m.ceil_at(xb)
+		var mid := fr.p((xa + xb) * 0.5, 0.0, 0.0)
+		var hint := Vector3.DOWN + (fr.p(m.cx, 0.0, 0.0) - mid) * 0.3
+		var ca := plaster.lerp(alt, BastideRng.noise1(m.seed, "voute", xa) * 0.5 + 0.5)
+		mb.add_quad(ROLE_BODY, fr.p(xa, ya, zi), fr.p(xb, yb, zi), fr.p(xb, yb, zb), fr.p(xa, ya, zb), hint, ca, ca, ca, ca)
+		# Mur du fond.
+		mb.add_quad(ROLE_BODY, fr.p(xa, 0.0, zb), fr.p(xb, 0.0, zb), fr.p(xb, yb, zb), fr.p(xa, ya, zb), -fwd, ca, ca, ca, ca)
+		# Mur de façade, côté intérieur, percé de la porte et des fenêtres.
+		var rows := ceili(maxf(ya, yb) / 0.16)
+		for j in rows:
+			var y0 := j * 0.16
+			var y1 := minf((j + 1) * 0.16, minf(ya, yb))
+			if y1 <= y0:
+				continue
+			var c := Vector2((xa + xb) * 0.5, (y0 + y1) * 0.5)
+			var skip := false
+			for hole: Array in holes:
+				if c.distance_to(Vector2(hole[0], hole[1])) < float(hole[2]) + 0.02:
+					skip = true
+			if not skip:
+				mb.add_quad(ROLE_BODY, fr.p(xa, y0, zi), fr.p(xb, y0, zi), fr.p(xb, y1, zi), fr.p(xa, y1, zi), fwd, ca, ca, ca, ca)
+	# Murs des côtés.
+	for s in [-1.0, 1.0]:
+		var x: float = x1 if s > 0.0 else x0
+		var hh := m.ceil_at(x)
+		mb.add_quad(ROLE_BODY, fr.p(x, 0.0, zi), fr.p(x, 0.0, zb), fr.p(x, hh, zb), fr.p(x, hh, zi), fr.dir(-s, 0.0), plaster, plaster, plaster, plaster)
+	# Embrasures : de la façade au mur intérieur, autour de chaque trou.
+	for hole: Array in holes:
+		var hx: float = hole[0]
+		var hy: float = hole[1]
+		var hr: float = float(hole[2]) + 0.02
+		var z0 := fr.face_z(hx) + 0.12
+		for k in 24:
+			var a0 := TAU * k / 24.0
+			var a1 := TAU * (k + 1) / 24.0
+			var p0 := Vector2(hx + cos(a0) * hr, maxf(hy + sin(a0) * hr, 0.0))
+			var p1 := Vector2(hx + cos(a1) * hr, maxf(hy + sin(a1) * hr, 0.0))
+			var inward := fr.p(hx, hy, z0) - fr.p((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5, z0)
+			mb.add_quad(ROLE_WOOD, fr.p(p0.x, p0.y, z0), fr.p(p1.x, p1.y, z0), fr.p(p1.x, p1.y, zi + 0.01), fr.p(p0.x, p0.y, zi + 0.01),
+					inward, wood.darkened(0.1), wood.darkened(0.1), wood, wood)
+	# Arcs de bois sous la voûte, et leurs poteaux.
+	var n_ribs := maxi(2, roundi((zb - zi) / 1.4))
+	for r in n_ribs:
+		var z := lerpf(zi + 0.5, zb - 0.45, float(r) / maxf(n_ribs - 1, 1))
+		for i in cols:
+			var xa := lerpf(x0, x1, float(i) / cols)
+			var xb := lerpf(x0, x1, float(i + 1) / cols)
+			var ya := m.ceil_at(xa) - 0.06
+			var yb := m.ceil_at(xb) - 0.06
+			mb.add_quad(ROLE_WOOD, fr.p(xa, ya, z - 0.08), fr.p(xb, yb, z - 0.08), fr.p(xb, yb, z + 0.08), fr.p(xa, ya, z + 0.08),
+					Vector3.DOWN, wood, wood, wood, wood)
+			mb.add_quad(ROLE_WOOD, fr.p(xa, ya, z - 0.08), fr.p(xb, yb, z - 0.08), fr.p(xb, yb + 0.06, z - 0.08), fr.p(xa, ya + 0.06, z - 0.08),
+					-fwd, wood.darkened(0.15), wood.darkened(0.15), wood.darkened(0.15), wood.darkened(0.15))
+		for s in [-1.0, 1.0]:
+			var x: float = (x1 - 0.09) if s > 0.0 else (x0 + 0.09)
+			_box(mb, fr, ROLE_WOOD, x - 0.09, x + 0.09, 0.0, m.ceil_at(x) - 0.05, z - 0.08, z + 0.08, wood, wood.darkened(0.3))
+	# Âtre de briques au fond, linteau de bois, braises.
+	var hx := m.cx + (x1 - x0) * 0.18
+	_box(mb, fr, ROLE_BODY, hx - 0.75, hx - 0.45, 0.0, 1.05, zb - 0.45, zb, Color(BRICK, 1.0), BRICK.darkened(0.3), 0.02)
+	_box(mb, fr, ROLE_BODY, hx + 0.45, hx + 0.75, 0.0, 1.05, zb - 0.45, zb, Color(BRICK_ALT, 1.0), BRICK.darkened(0.3), 0.02)
+	_box(mb, fr, ROLE_BODY, hx - 0.45, hx + 0.45, 0.78, 1.05, zb - 0.45, zb, Color(BRICK, 1.0), BRICK.darkened(0.3), 0.02)
+	_box(mb, fr, ROLE_BODY, hx - 0.45, hx + 0.45, 0.0, 0.78, zb - 0.06, zb, Color(0.08, 0.06, 0.05, 1.0), Color(0.05, 0.04, 0.03), 0.0)
+	_box(mb, fr, ROLE_WOOD, hx - 0.85, hx + 0.85, 1.05, 1.17, zb - 0.55, zb, wood.darkened(0.1), wood.darkened(0.4))
+	_box(mb, fr, ROLE_PAPER, hx - 0.25, hx + 0.25, 0.0, 0.12, zb - 0.35, zb - 0.12, Color(1.0, 0.55, 0.2), Color(0.6, 0.2, 0.05), 0.02)
+	# Table ronde et tabourets.
+	var tc := Vector2(m.cx - (x1 - x0) * 0.12, (zi + zb) * 0.5 + 0.2)
+	var tw := Color(0.5, 0.34, 0.2)
+	_box(mb, fr, ROLE_WOOD, tc.x - 0.07, tc.x + 0.07, 0.0, 0.7, tc.y - 0.07, tc.y + 0.07, tw.darkened(0.15), tw.darkened(0.4))
+	var top: Array = []
+	for yy in [0.7, 0.76]:
+		for k in 8:
+			var a := TAU * k / 8.0 + 0.39
+			top.append(fr.p(tc.x + cos(a) * 0.55, yy, tc.y + sin(a) * 0.55))
+	for k in 8:
+		var a0 := TAU * k / 8.0 + 0.39
+		var a1 := TAU * (k + 1) / 8.0 + 0.39
+		var c := fr.p(tc.x, 0.76, tc.y)
+		mb.add_tri(ROLE_WOOD, c, fr.p(tc.x + cos(a0) * 0.55, 0.76, tc.y + sin(a0) * 0.55),
+				fr.p(tc.x + cos(a1) * 0.55, 0.76, tc.y + sin(a1) * 0.55), Vector3.UP, tw, tw, tw)
+		mb.add_quad(ROLE_WOOD, fr.p(tc.x + cos(a0) * 0.55, 0.7, tc.y + sin(a0) * 0.55), fr.p(tc.x + cos(a1) * 0.55, 0.7, tc.y + sin(a1) * 0.55),
+				fr.p(tc.x + cos(a1) * 0.55, 0.76, tc.y + sin(a1) * 0.55), fr.p(tc.x + cos(a0) * 0.55, 0.76, tc.y + sin(a0) * 0.55),
+				fr.dir(cos((a0 + a1) * 0.5), sin((a0 + a1) * 0.5)), tw.darkened(0.2), tw.darkened(0.2), tw.darkened(0.2), tw.darkened(0.2))
+	for k in 2:
+		var a := 0.6 + k * 2.6
+		var sc := tc + Vector2(cos(a), sin(a)) * 0.85
+		_box(mb, fr, ROLE_WOOD, sc.x - 0.17, sc.x + 0.17, 0.0, 0.44, sc.y - 0.17, sc.y + 0.17, tw.lightened(0.05), tw.darkened(0.35))
+	# Collision : plancher, murs.
+	if coll:
+		var e := 0.2
+		var q := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+			coll.collision_faces.append_array(PackedVector3Array([a, b, c, a, c, d]))
+		q.call(fr.p(x0, fy, zi - 0.3), fr.p(x1, fy, zi - 0.3), fr.p(x1, fy, zb), fr.p(x0, fy, zb))
+		q.call(fr.p(x0, 0.0, zb), fr.p(x1, 0.0, zb), fr.p(x1, 2.6, zb), fr.p(x0, 2.6, zb))
+		for s in [-1.0, 1.0]:
+			var x: float = (x1 - e) if s > 0.0 else (x0 + e)
+			q.call(fr.p(x, 0.0, zi), fr.p(x, 0.0, zb), fr.p(x, 2.6, zb), fr.p(x, 2.6, zi))
+		coll.add_box([fr.p(tc.x - 0.5, 0.0, tc.y - 0.5), fr.p(tc.x + 0.5, 0.0, tc.y - 0.5), fr.p(tc.x + 0.5, 0.0, tc.y + 0.5),
+			fr.p(tc.x - 0.5, 0.0, tc.y + 0.5), fr.p(tc.x - 0.5, 0.76, tc.y - 0.5), fr.p(tc.x + 0.5, 0.76, tc.y - 0.5),
+			fr.p(tc.x + 0.5, 0.76, tc.y + 0.5), fr.p(tc.x - 0.5, 0.76, tc.y + 0.5)])
+	res.mesh = mb.commit({
+		ROLE_BODY: style.get_material(),
+		ROLE_WOOD: style.get_wood_material(),
+		ROLE_PAPER: style.get_paper_material(),
+	})
+	res.anchors["lights"] = PackedVector3Array([fr.p(m.cx, m.vault_h - 0.5, (zi + zb) * 0.5), fr.p(hx, 0.45, zb - 0.7)])
+	# Plan : une pièce, un niveau (les lumières s'allument quand on y entre).
+	var il := BastideInteriorLayout.new()
+	var poly := PackedVector2Array()
+	for c in [Vector2(x0, zi - 0.3), Vector2(x1, zi - 0.3), Vector2(x1, zb), Vector2(x0, zb)]:
+		var w: Vector2 = fr.o + fr.x * c.x + fr.z * c.y
+		poly.append(w)
+	il.inner = BastidePolygon.ensure_direct(poly)
+	il.base_y = fr.y0
+	var lvl := BastideInteriorLayout.Level.new()
+	lvl.y = fr.y0 + fy
+	lvl.ceiling_y = fr.y0 + m.vault_h
+	lvl.pieces = [il.inner]
+	lvl.rooms = [{"poly": il.inner, "kind": "terrier"}]
+	il.levels = [lvl]
+	var dp := fr.o + fr.x * m.cx + fr.z * zi
+	il.door = {"pos": dp, "inward": fr.z}
+	return [res, il]

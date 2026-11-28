@@ -34,6 +34,9 @@ uniform float lod_min = 0.06;
 uniform float max_widen = 2.0;
 // Près de l'œil (promenade), les cartes s'effacent pour ne pas boucher la vue.
 uniform float eye_clear = 0.9;
+// 1 : pieds des cartes donnés par le maillage, en repère local (UV2 = xz, VERTEX.y =
+// hauteur) : herbe posée sur une forme qui n'est pas le relief (buttes des terriers).
+uniform float local_roots = 0.0;
 
 varying vec2 v_root;
 varying vec3 v_rnd;
@@ -50,9 +53,12 @@ float noise(vec2 p) {
 void vertex() {
 	vec3 origin = MODEL_MATRIX[3].xyz;
 	vec3 root = origin + vec3(UV2.x, 0.0, UV2.y);
+	if (local_roots > 0.5) {
+		root = (MODEL_MATRIX * vec4(UV2.x, VERTEX.y, UV2.y, 1.0)).xyz;
+	}
 	float t = UV.y;
 	float ground = 0.0;
-	if (height_rect.z > 0.0) {
+	if (height_rect.z > 0.0 && local_roots < 0.5) {
 		// Même découpe en triangles que le maillage du relief (diagonale a+1 / a+w) :
 		// les pieds des cartes ne s'enfoncent pas dans le sol sur les bosses.
 		ivec2 ts = textureSize(height_tex, 0);
@@ -106,7 +112,7 @@ void vertex() {
 	float tt = t * t;
 	p.xz += wd * bend * tt * h * 1.3;
 	p.y -= bend * bend * tt * h * 0.3;
-	VERTEX = p - origin;
+	VERTEX = local_roots > 0.5 ? (inverse(MODEL_MATRIX) * vec4(p, 1.0)).xyz : p - origin;
 	// Éclairée comme le sol : l'herbe et la prairie ne font qu'un.
 	NORMAL = vec3(0.0, 1.0, 0.0);
 	v_root = root.xz;

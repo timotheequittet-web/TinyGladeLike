@@ -46,6 +46,8 @@ const STYLE_NAMES := ["peinte", "naturelle"]
 @export_group("Anneau proche")
 @export var near_radius := 26.0
 @export var near_tile := 6.0
+## Matériau des cartes d'herbe posées sur les buttes des terriers (style peint), ou null.
+static var mound_material: ShaderMaterial
 @export var near_density := 20.0       # brins par m² (peu de brins, mais larges : façon BotW)
 @export var near_width := 0.12
 @export_group("Anneau lointain")
@@ -150,6 +152,14 @@ func _build_rings() -> void:
 	if ground_material:
 		ground_material.set_shader_parameter("painted", 1.0 if style == Style.PEINTE else 0.0)
 	_near_mat.set_shader_parameter("mask", _viewport.get_texture())
+	# Herbe des buttes de terriers : mêmes cartes, posées par le maillage de la butte.
+	if painted:
+		var mm := _material(0.0, 0.0, 1.0e6, 1.0, _near_lod() * sqrt(density_scale), painted_near_width)
+		mm.set_shader_parameter("local_roots", 1.0)
+		mm.set_shader_parameter("mask_rect", Vector4(1.0e6, 1.0e6, 1.0, 1.0))
+		mound_material = mm
+	else:
+		mound_material = null
 	_far_mat.set_shader_parameter("mask", _viewport.get_texture())
 	var ds := minf(density_scale, 1.0)
 	if style == Style.PEINTE:

@@ -980,6 +980,30 @@ static func _greenery(fr: Frame, groups: Dictionary, m: Mound, bs: BastideBuildi
 	r.seed = m.seed * 7919 + 3
 	var fz := m.dz
 	var flowers := bs.flower_colors
+	# Au-dessus de la pièce creusée, le relief ne monte pas : l'herbe du terrain n'y
+	# pousse pas. Des touffes serrées la remplacent sur la butte maillée.
+	if m.room.size.x > 0.0:
+		var hol := m.hollow()
+		if BastideGrass.mound_material:
+			_grass_cards(fr, groups, m, hol, r)
+			hol = Rect2()
+		var step := 0.5
+		var gx := hol.position.x
+		while hol.size.x > 0.0 and gx < hol.end.x:
+			var gz := hol.position.y
+			while gz < hol.end.y:
+				var x := gx + r.randf_range(0.0, step)
+				var z := gz + r.randf_range(0.0, step)
+				gz += step
+				if z < fr.face_z(x) + 0.35 or fr.owner(x) != m:
+					continue
+				var y := fr.surface(x, z)
+				if y < 0.15:
+					continue
+				# Teinte verte : les fleurs du motif se fondent dans l'herbe.
+				_plant(groups, "meadow", Color(0.5, 0.8, 0.36).lerp(Color(0.62, 0.86, 0.42), r.randf()), r.randf_range(0.85, 1.2),
+						fr.p(x, y - 0.05, z), r.randf() * 10.0)
+			gx += step
 	# Touffes d'herbe et fleurs sur les flancs et au pied de la butte.
 	for k in 12:
 		var x := m.cx + r.randf_range(-m.ax, m.ax)
@@ -1397,3 +1421,51 @@ static func _interior(fr: Frame, m: Mound, door_r: float, holes: Array, style: B
 	var dp := fr.o + fr.x * m.cx + fr.z * zi
 	il.door = {"pos": dp, "inward": fr.z}
 	return [res, il]
+
+
+## Herbe peinte sur la butte, au-dessus de la pièce (là où le relief ne monte pas) :
+## les mêmes cartes que la prairie, pieds posés sur le maillage de la butte.
+static func _grass_cards(fr: Frame, groups: Dictionary, m: Mound, hol: Rect2, r: RandomNumberGenerator) -> void:
+	var density := 22.0
+	var count := int(hol.size.x * hol.size.y * density)
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var uv2s := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var corners := [Vector2(-1, 0), Vector2(1, 0), Vector2(-1, 1), Vector2(1, 1)]
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for c in count:
+		var x := hol.position.x + r.randf() * hol.size.x
+		var z := hol.position.y + r.randf() * hol.size.y
+		if z < fr.face_z(x) + 0.3 or fr.owner(x) != m:
+			continue
+		var y := fr.surface(x, z)
+		if y < 0.1:
+			continue
+		var q := fr.p(x, y - 0.02, z)
+		lo = lo.min(q)
+		hi = hi.max(q)
+		var col := Color(r.randf(), r.randf(), r.randf(), r.randf())
+		var v := verts.size()
+		for k in 4:
+			var cu: Vector2 = corners[k]
+			verts.append(Vector3(q.x + cu.x * 0.2, q.y, q.z))
+			uvs.append(cu)
+			uv2s.append(Vector2(q.x, q.z))
+			cols.append(col)
+		idx.append_array(PackedInt32Array([v, v + 1, v + 2, v + 1, v + 3, v + 2]))
+	if verts.is_empty():
+		return
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_TEX_UV2] = uv2s
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	mesh.custom_aabb = AABB(lo - Vector3(1, 1, 1), hi - lo + Vector3(2, 2, 2))
+	groups["herbe_butte_%d" % m.seed] = {"mesh": mesh, "mat": BastideGrass.mound_material, "xf": [Transform3D.IDENTITY], "range": 60.0}
